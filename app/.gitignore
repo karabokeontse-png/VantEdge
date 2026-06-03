@@ -1,0 +1,36 @@
+# ========================
+# SENSITIVE & LOCAL CONFIG
+# ========================
+local.properties
+*.key
+secrets.properties
+
+# ========================
+# BUILD & GRADLE OUTPUTS
+# ========================
+/build
+.gradle/
+app/build/
+*.apk
+*.aab
+*.ap_
+*.class
+*.dex
+*.jar
+
+# ========================
+# IDE & OS FILES
+# ========================
+.idea/
+*.iml
+.DS_Store
+Thumbs.db
+*.log
+*.tmp
+
+# ========================
+# ANDROID / COMPOSE
+# ========================
+captures/
+lint-results/
+*.hprof
