@@ -1,11 +1,20 @@
-*.iml
-.gradle
+# Recovery archive
+/recovery_archive/
+
+# Build artifacts
+/app/build/
+/.gradle/
+*/build/
 /local.properties
-/.idea/caches/build_file_checksums.ser
-/.idea/libraries
-/.idea/modules.xml
-/.idea/workspace.xml
+
+# JDK
+/jdk-17.0.19+10/
+/jdk.tar.gz
+
+# IDE
+.idea/
+*.iml
+
+# OS
 .DS_Store
-/build
-/captures
-.externalNativeBuild
+Thumbs.db

@@ -1,32 +1,48 @@
-package com.vantedge.app.data.engine
+package com.vantedge.app.data.engine;
 
-import com.vantedge.app.data.model.UserProfile
+import com.google.android.gms.common.Scopes;
+import com.vantedge.app.data.model.UserProfile;
+import kotlin.Metadata;
+import kotlin.jvm.internal.Intrinsics;
+import kotlin.text.StringsKt;
 
-data class VantEdgeScoreResult(
-    val score: Int,
-    val interpretation: String
-)
+/* compiled from: ScoreEngine.kt */
+@Metadata(d1 = {"\u0000\u0018\n\u0002\u0018\u0002\n\u0002\u0010\u0000\n\u0002\b\u0002\n\u0002\u0018\u0002\n\u0000\n\u0002\u0018\u0002\n\u0000\bÇ\u0002\u0018\u00002\u00020\u0001B\u0007\b\u0002¢\u0006\u0002\u0010\u0002J\u000e\u0010\u0003\u001a\u00020\u00042\u0006\u0010\u0005\u001a\u00020\u0006¨\u0006\u0007"}, d2 = {"Lcom/vantedge/app/data/engine/ScoreEngine;", "", "()V", "calculate", "Lcom/vantedge/app/data/engine/VantEdgeScoreResult;", Scopes.PROFILE, "Lcom/vantedge/app/data/model/UserProfile;", "app_debug"}, k = 1, mv = {1, 9, 0}, xi = 48)
+/* loaded from: classes6.dex */
+public final class ScoreEngine {
+    public static final int $stable = 0;
+    public static final ScoreEngine INSTANCE = new ScoreEngine();
 
-object ScoreEngine {
+    private ScoreEngine() {
+    }
 
-    fun calculate(profile: UserProfile): VantEdgeScoreResult {
-
-        var score = 0
-
-        if (profile.name.isNotBlank()) score += 10
-        if (profile.summary.isNotBlank()) score += 15
-        if (profile.skills.isNotEmpty()) score += 20
-        if (profile.workHistory.isNotEmpty()) score += 25
-        if (profile.education.isNotEmpty()) score += 10
-        if (profile.certifications.isNotEmpty()) score += 10
-        if (profile.languages.isNotEmpty()) score += 10
-
-        val interpretation = when {
-            score >= 80 -> "Strong Profile"
-            score >= 50 -> "Moderate Profile"
-            else -> "Needs Improvement"
+    public final VantEdgeScoreResult calculate(UserProfile profile) {
+        String interpretation;
+        Intrinsics.checkNotNullParameter(profile, "profile");
+        int score = StringsKt.isBlank(profile.getName()) ^ true ? 0 + 10 : 0;
+        if (!StringsKt.isBlank(profile.getSummary())) {
+            score += 15;
         }
-
-        return VantEdgeScoreResult(score, interpretation)
+        if (!profile.getSkills().isEmpty()) {
+            score += 20;
+        }
+        if (!profile.getWorkHistory().isEmpty()) {
+            score += 25;
+        }
+        if (!profile.getEducation().isEmpty()) {
+            score += 10;
+        }
+        if (!profile.getCertifications().isEmpty()) {
+            score += 10;
+        }
+        if (!profile.getLanguages().isEmpty()) {
+            score += 10;
+        }
+        if (score >= 80) {
+            interpretation = "Strong Profile";
+        } else {
+            interpretation = score >= 50 ? "Moderate Profile" : "Needs Improvement";
+        }
+        return new VantEdgeScoreResult(score, interpretation);
     }
 }
