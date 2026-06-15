@@ -1,93 +1,235 @@
-package com.vantedge.app.data.engine;
+package com.vantedge.app.data.engine
 
-import com.google.android.gms.common.Scopes;
-import com.vantedge.app.data.model.UserProfile;
-import com.vantedge.app.data.network.AiGateway;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Iterator;
-import java.util.List;
-import kotlin.Metadata;
-import kotlin.Pair;
-import kotlin.collections.CollectionsKt;
-import kotlin.collections.IntIterator;
-import kotlin.jvm.internal.Intrinsics;
-import kotlin.ranges.RangesKt;
-import org.json.JSONArray;
-import org.json.JSONObject;
+import android.util.Log
+import com.vantedge.app.data.model.UserProfile
+import com.vantedge.app.data.network.GeminiService
+import org.json.JSONObject
 
-/* compiled from: GeneratorEngine.kt */
-@Metadata(d1 = {"\u00004\n\u0002\u0018\u0002\n\u0002\u0010\u0000\n\u0000\n\u0002\u0018\u0002\n\u0002\b\u0002\n\u0002\u0018\u0002\n\u0002\u0010\u000e\n\u0000\n\u0002\u0018\u0002\n\u0002\b\u0007\n\u0002\u0010\u0002\n\u0002\b\u0002\n\u0002\u0018\u0002\n\u0002\b\u0003\b\u0007\u0018\u00002\u00020\u0001B\r\u0012\u0006\u0010\u0002\u001a\u00020\u0003¢\u0006\u0002\u0010\u0004JJ\u0010\u0005\u001a\u000e\u0012\u0004\u0012\u00020\u0007\u0012\u0004\u0012\u00020\u00070\u00062\u0006\u0010\b\u001a\u00020\t2\u0006\u0010\n\u001a\u00020\u00072\u0006\u0010\u000b\u001a\u00020\u00072\u0006\u0010\f\u001a\u00020\u00072\u0006\u0010\r\u001a\u00020\u00072\u0006\u0010\u000e\u001a\u00020\u00072\u0006\u0010\u000f\u001a\u00020\u0007JT\u0010\u0010\u001a\u00020\u00112\u0006\u0010\b\u001a\u00020\t2\u0006\u0010\u0012\u001a\u00020\u00072\u0006\u0010\u000e\u001a\u00020\u00072\u0006\u0010\u000f\u001a\u00020\u00072\u0006\u0010\n\u001a\u00020\u00072\u0006\u0010\u000b\u001a\u00020\u00072\u0014\u0010\u0013\u001a\u0010\u0012\u0006\u0012\u0004\u0018\u00010\u0007\u0012\u0004\u0012\u00020\u00110\u0014H\u0086@¢\u0006\u0002\u0010\u0015JT\u0010\u0016\u001a\u00020\u00112\u0006\u0010\b\u001a\u00020\t2\u0006\u0010\u0012\u001a\u00020\u00072\u0006\u0010\u000e\u001a\u00020\u00072\u0006\u0010\u000f\u001a\u00020\u00072\u0006\u0010\n\u001a\u00020\u00072\u0006\u0010\u000b\u001a\u00020\u00072\u0014\u0010\u0013\u001a\u0010\u0012\u0006\u0012\u0004\u0018\u00010\u0007\u0012\u0004\u0012\u00020\u00110\u0014H\u0086@¢\u0006\u0002\u0010\u0015R\u000e\u0010\u0002\u001a\u00020\u0003X\u0082\u0004¢\u0006\u0002\n\u0000¨\u0006\u0017"}, d2 = {"Lcom/vantedge/app/data/engine/GeneratorEngine;", "", "aiGateway", "Lcom/vantedge/app/data/network/AiGateway;", "(Lcom/vantedge/app/data/network/AiGateway;)V", "applyDesignToContent", "Lkotlin/Pair;", "", Scopes.PROFILE, "Lcom/vantedge/app/data/model/UserProfile;", "jobTitle", "company", "matchedKeywordsJson", "coverLetterBody", "designId", "schemeId", "generateCoverLetter", "", "jobDescription", "onResult", "Lkotlin/Function1;", "(Lcom/vantedge/app/data/model/UserProfile;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lkotlin/jvm/functions/Function1;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;", "generateCv", "app_debug"}, k = 1, mv = {1, 9, 0}, xi = 48)
-/* loaded from: classes6.dex */
-public final class GeneratorEngine {
-    public static final int $stable = 8;
-    private final AiGateway aiGateway;
+class GeneratorEngine {
 
-    public GeneratorEngine(AiGateway aiGateway) {
-        Intrinsics.checkNotNullParameter(aiGateway, "aiGateway");
-        this.aiGateway = aiGateway;
-    }
+    private val service = GeminiService()
 
-    /* JADX WARN: Removed duplicated region for block: B:11:0x0037  */
-    /* JADX WARN: Removed duplicated region for block: B:14:0x00cd  */
-    /* JADX WARN: Removed duplicated region for block: B:16:0x00d9  */
-    /* JADX WARN: Removed duplicated region for block: B:29:0x0042  */
-    /* JADX WARN: Removed duplicated region for block: B:8:0x002f  */
-    /*
-        Code decompiled incorrectly, please refer to instructions dump.
-        To view partially-correct add '--show-bad-code' argument
-    */
-    public final java.lang.Object generateCv(com.vantedge.app.data.model.UserProfile r22, java.lang.String r23, java.lang.String r24, java.lang.String r25, java.lang.String r26, java.lang.String r27, kotlin.jvm.functions.Function1<? super java.lang.String, kotlin.Unit> r28, kotlin.coroutines.Continuation<? super kotlin.Unit> r29) {
-        /*
-            Method dump skipped, instructions count: 374
-            To view this dump add '--comments-level debug' option
-        */
-        throw new UnsupportedOperationException("Method not decompiled: com.vantedge.app.data.engine.GeneratorEngine.generateCv(com.vantedge.app.data.model.UserProfile, java.lang.String, java.lang.String, java.lang.String, java.lang.String, java.lang.String, kotlin.jvm.functions.Function1, kotlin.coroutines.Continuation):java.lang.Object");
-    }
-
-    /* JADX WARN: Removed duplicated region for block: B:11:0x0034  */
-    /* JADX WARN: Removed duplicated region for block: B:14:0x00f9  */
-    /* JADX WARN: Removed duplicated region for block: B:16:0x0105  */
-    /* JADX WARN: Removed duplicated region for block: B:18:0x003e  */
-    /* JADX WARN: Removed duplicated region for block: B:8:0x002c  */
-    /*
-        Code decompiled incorrectly, please refer to instructions dump.
-        To view partially-correct add '--show-bad-code' argument
-    */
-    public final java.lang.Object generateCoverLetter(com.vantedge.app.data.model.UserProfile r22, java.lang.String r23, java.lang.String r24, java.lang.String r25, java.lang.String r26, java.lang.String r27, kotlin.jvm.functions.Function1<? super java.lang.String, kotlin.Unit> r28, kotlin.coroutines.Continuation<? super kotlin.Unit> r29) {
-        /*
-            Method dump skipped, instructions count: 298
-            To view this dump add '--comments-level debug' option
-        */
-        throw new UnsupportedOperationException("Method not decompiled: com.vantedge.app.data.engine.GeneratorEngine.generateCoverLetter(com.vantedge.app.data.model.UserProfile, java.lang.String, java.lang.String, java.lang.String, java.lang.String, java.lang.String, kotlin.jvm.functions.Function1, kotlin.coroutines.Continuation):java.lang.Object");
-    }
-
-    public final Pair<String, String> applyDesignToContent(UserProfile profile, String jobTitle, String company, String matchedKeywordsJson, String coverLetterBody, String designId, String schemeId) {
-        List keywords;
-        Intrinsics.checkNotNullParameter(profile, "profile");
-        Intrinsics.checkNotNullParameter(jobTitle, "jobTitle");
-        Intrinsics.checkNotNullParameter(company, "company");
-        Intrinsics.checkNotNullParameter(matchedKeywordsJson, "matchedKeywordsJson");
-        Intrinsics.checkNotNullParameter(coverLetterBody, "coverLetterBody");
-        Intrinsics.checkNotNullParameter(designId, "designId");
-        Intrinsics.checkNotNullParameter(schemeId, "schemeId");
-        try {
-            JSONObject json = new JSONObject(matchedKeywordsJson);
-            JSONArray arr = json.getJSONArray("matchedKeywords");
-            Iterable $this$map$iv = RangesKt.until(0, arr.length());
-            Collection destination$iv$iv = new ArrayList(CollectionsKt.collectionSizeOrDefault($this$map$iv, 10));
-            Iterator<Integer> it = $this$map$iv.iterator();
-            while (it.hasNext()) {
-                int item$iv$iv = ((IntIterator) it).nextInt();
-                destination$iv$iv.add(arr.getString(item$iv$iv));
-                json = json;
+    suspend fun generateCv(
+        profile: UserProfile,
+        jobDescription: String,
+        designId: String,
+        schemeId: String,
+        jobTitle: String,
+        company: String,
+        onResult: (String?) -> Unit
+    ) {
+        val prompt = """
+            Analyse this job description and return ONLY a JSON object with this exact structure, nothing else:
+            {
+              "matchedKeywords": ["keyword1", "keyword2"],
+              "relevantSummary": "rewritten summary tailored to this role in 2-3 sentences",
+              "relevantExperience": ["rewritten bullet point 1", "rewritten bullet point 2"]
             }
-            keywords = (List) destination$iv$iv;
-        } catch (Exception e) {
-            keywords = CollectionsKt.emptyList();
+
+            Return ONLY the JSON. No explanation. No markdown. No code blocks.
+
+            JOB DESCRIPTION:
+            $jobDescription
+
+            PROFILE SUMMARY:
+            ${profile.summary}
+
+            PROFILE EXPERIENCE:
+            ${profile.workHistory.joinToString("\n") { "${it.role} at ${it.company}: ${it.description}" }}
+        """.trimIndent()
+
+        val result = service.generate(prompt)
+
+        if (result == null) {
+            Log.e("GeneratorEngine", "CV: AI returned null")
+            onResult(null)
+            return
         }
-        String cvHtml = CVTemplate.INSTANCE.render(profile, jobTitle, company, keywords, designId, schemeId);
-        String coverLetterHtml = CVTemplate.INSTANCE.renderCoverLetter(profile, jobTitle, company, coverLetterBody, designId, schemeId);
-        return new Pair<>(cvHtml, coverLetterHtml);
+
+        Log.d("GeneratorEngine", "CV raw AI response: $result")
+
+        try {
+            val startIndex = result.indexOf("{")
+            val endIndex = result.lastIndexOf("}") + 1
+
+            if (startIndex == -1 || endIndex == 0) {
+                Log.e("GeneratorEngine", "CV: No JSON found in response")
+                onResult("{\"matchedKeywords\":[]}")
+                return
+            }
+
+            val clean = result.substring(startIndex, endIndex)
+            val json = JSONObject(clean)
+            json.getJSONArray("matchedKeywords")
+            onResult(clean)
+
+        } catch (e: Exception) {
+            Log.e("GeneratorEngine", "CV parse error: ${e.message}")
+            onResult("{\"matchedKeywords\":[]}")
+        }
+    }
+
+    suspend fun generateCoverLetter(
+        profile: UserProfile,
+        jobDescription: String,
+        designId: String,
+        schemeId: String,
+        jobTitle: String,
+        company: String,
+        onResult: (String?) -> Unit
+    ) {
+        val prompt = """
+            Write a professional cover letter body for this role.
+            Output ONLY plain HTML paragraph tags like this: <p>paragraph text here</p>
+            No greetings line. No sign-off. No subject line. Just the body paragraphs.
+            Under 350 words. Bold any keywords from the job description like this: <b>keyword</b>
+            Tailor content specifically to prove competency for this role using the profile below.
+            Do NOT invent information not in the profile.
+            Do NOT output any HTML document structure, head tags, or body tags.
+            ONLY output <p> tags with the letter content.
+
+            PROFILE:
+            Name: ${profile.name}
+            Summary: ${profile.summary}
+            Skills: ${profile.skills.joinToString(", ")}
+            Experience: ${profile.workHistory.joinToString("\n") { "${it.role} at ${it.company}: ${it.description}" }}
+
+            JOB DESCRIPTION:
+            $jobDescription
+        """.trimIndent()
+
+        val result = service.generate(prompt)
+
+        if (result == null) {
+            Log.e("GeneratorEngine", "Cover letter: AI returned null")
+            onResult(null)
+            return
+        }
+
+        Log.d("GeneratorEngine", "Cover letter raw AI response: $result")
+        onResult(result)
+    }
+
+    fun applyDesignToContent(
+        profile: UserProfile,
+        jobTitle: String,
+        company: String,
+        matchedKeywordsJson: String,
+        coverLetterBody: String,
+        designId: String,
+        schemeId: String
+    ): Pair<String, String> {
+        val keywords = try {
+            val json = JSONObject(matchedKeywordsJson)
+            val arr = json.getJSONArray("matchedKeywords")
+            (0 until arr.length()).map { arr.getString(it) }
+        } catch (e: Exception) {
+            emptyList()
+        }
+
+        val cvHtml = CVTemplate.render(
+            profile = profile,
+            jobTitle = jobTitle,
+            company = company,
+            matchedKeywords = keywords,
+            designId = designId,
+            schemeId = schemeId
+        )
+
+        val coverLetterHtml = CVTemplate.renderCoverLetter(
+            profile = profile,
+            jobTitle = jobTitle,
+            company = company,
+            content = coverLetterBody,
+            designId = designId,
+            schemeId = schemeId
+        )
+
+        return Pair(cvHtml, coverLetterHtml)
+    }
+
+    suspend fun generateCvDocx(
+        profile: UserProfile,
+        jobDescription: String,
+        onResult: (String?) -> Unit
+    ) {
+        val prompt = """
+            Generate an ATS-optimized CV as plain text formatted for Microsoft Word.
+            Use clear section headers in ALL CAPS.
+            Use simple bullet points with dashes (-).
+            No HTML. No markdown. Plain text only.
+            Bold keywords from the job description by wrapping them in **double asterisks**.
+            Keep it under one page worth of content.
+            Do NOT invent information not in the profile.
+
+            PROFILE:
+            Name: ${profile.name}
+            Email: ${profile.email}
+            Phone: ${profile.phone}
+            Location: ${profile.location}
+            LinkedIn: ${profile.linkedIn}
+            Summary: ${profile.summary}
+            Skills: ${profile.skills.joinToString(", ")}
+            Work History: ${profile.workHistory.joinToString("\n") {
+                "${it.role} at ${it.company} (${it.startDate} - ${it.endDate}): ${it.description}"
+            }}
+            Education: ${profile.education.joinToString(", ")}
+            Certifications: ${profile.certifications.joinToString(", ")}
+            Languages: ${profile.languages.joinToString(", ")}
+
+            JOB DESCRIPTION:
+            $jobDescription
+        """.trimIndent()
+
+        val result = service.generate(prompt)
+        onResult(result)
+    }
+
+    suspend fun extractJobFields(
+        rawText: String,
+        onResult: (jobTitle: String?, company: String?, jobDescription: String?) -> Unit
+    ) {
+        val prompt = """
+            Extract the following from this job posting text and return ONLY a JSON object:
+            {
+              "jobTitle": "extracted job title or empty string",
+              "company": "extracted company name or empty string",
+              "jobDescription": "cleaned job description text, max 2000 characters"
+            }
+
+            Return ONLY the JSON. No explanation. No markdown. No code blocks.
+
+            TEXT:
+            ${rawText.take(4000)}
+        """.trimIndent()
+
+        val result = service.generate(prompt)
+
+        if (result == null) {
+            onResult(null, null, rawText)
+            return
+        }
+
+        try {
+            val startIndex = result.indexOf("{")
+            val endIndex = result.lastIndexOf("}") + 1
+
+            if (startIndex == -1 || endIndex == 0) {
+                onResult(null, null, rawText)
+                return
+            }
+
+            val clean = result.substring(startIndex, endIndex)
+            val json = JSONObject(clean)
+
+            val jobTitle = json.optString("jobTitle").takeIf { it.isNotBlank() }
+            val company = json.optString("company").takeIf { it.isNotBlank() }
+            val jobDescription = json.optString("jobDescription").takeIf { it.isNotBlank() } ?: rawText
+
+            onResult(jobTitle, company, jobDescription)
+
+        } catch (e: Exception) {
+            onResult(null, null, rawText)
+        }
     }
 }
