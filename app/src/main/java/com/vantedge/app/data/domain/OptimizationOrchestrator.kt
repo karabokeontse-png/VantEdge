@@ -1,4 +1,4 @@
-package com.vantedge.app.domain
+package com.vantedge.app.data.domain
 
 import com.vantedge.app.data.engine.CompatibilityEngine
 import com.vantedge.app.data.engine.GeneratorEngine

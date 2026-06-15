@@ -18,11 +18,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.vantedge.app.data.viewmodel.ExtractionState
+import com.vantedge.app.data.viewmodel.OnboardingExtractionState
 
 @Composable
 fun ExtractingScreen(
-    extractionState: ExtractionState,
+    extractionState: OnboardingExtractionState,
     onRetry: () -> Unit
 ) {
     val teal = Color(0xFF00BFA5)
@@ -36,7 +36,7 @@ fun ExtractingScreen(
     ) {
         when (val state = extractionState) {
 
-            is ExtractionState.Failure -> {
+            is OnboardingExtractionState.Failure -> {
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier.padding(horizontal = 32.dp)
@@ -66,8 +66,8 @@ fun ExtractingScreen(
 
             else -> {
                 val statusText = when (state) {
-                    is ExtractionState.Extracting -> state.statusText
-                    is ExtractionState.Retrying -> state.statusText
+                    is OnboardingExtractionState.Extracting -> state.statusText
+                    is OnboardingExtractionState.Retrying -> state.statusText
                     else -> "Analyzing your document..."
                 }
 
