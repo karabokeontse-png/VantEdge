@@ -12,7 +12,7 @@ import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import com.vantedge.app.data.model.*
-import com.vantedge.app.data.network.GeminiService
+import com.vantedge.app.data.network.AiGateway
 import com.vantedge.app.util.HashUtils
 import com.vantedge.app.util.TelemetryCollector
 import kotlinx.collections.immutable.persistentListOf
@@ -28,31 +28,6 @@ import java.util.zip.ZipInputStream
 // ==========================================
 // GATE 0 ENUMS & METADATA
 // ==========================================
-
-enum class Gate0Reason {
-    ACCEPTED,
-    LOW_STRUCTURAL_EVIDENCE,
-    HIGH_NARRATIVE_DENSITY,
-    NO_CHRONOLOGY,
-    NO_SECTIONAL_STRUCTURE,
-    OCR_TOO_FRAGMENTED
-}
-
-enum class ExtractionMode {
-    PDF_TEXT,  // Native PDFBox extraction
-    OCR,       // ML Kit OCR fallback
-    DOCX       // DOCX XML parsing
-}
-
-data class Gate0Result(
-    val score: Int,
-    val threshold: Int,
-    val accepted: Boolean,
-    val reason: Gate0Reason,
-    val extractionMode: ExtractionMode  // PROVENANCE ONLY — do NOT use in scoring logic for P0
-)
-
-// ==========================================
 // CONSTRUCTOR CHANGE (Phase 3 — Telemetry)
 // Added: telemetryCollector: TelemetryCollector
 //
@@ -62,7 +37,7 @@ data class Gate0Result(
 
 class ProfileExtractionEngine(
     private val context: Context,
-    private val geminiService: GeminiService,
+    private val aiGateway: AiGateway,
     private val telemetryCollector: TelemetryCollector
 ) {
 
@@ -397,7 +372,7 @@ class ProfileExtractionEngine(
         onProgress("Extracting structured data...")
 
         val prompt = "Extract this CV into the STRICT JSON canonical schema provided.\n\nCV:\n$rawText"
-        val response = geminiService.generate(prompt, onProgress)
+        val response = aiGateway.generate("profile_extraction", prompt, onProgress)
 
         if (response.isNullOrBlank()) {
             throw Exception("EMPTY_AI_RESPONSE")

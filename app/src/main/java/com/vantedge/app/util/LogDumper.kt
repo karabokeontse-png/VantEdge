@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import androidx.core.content.FileProvider
+import com.vantedge.app.BuildConfig
 import java.io.File
 
 object LogDumper {
@@ -19,7 +20,7 @@ object LogDumper {
                     "-v",
                     "threadtime",
                     "-t",
-                    "1000",
+                    "3000",
                     "*:V"
                 )
             )
@@ -32,13 +33,27 @@ object LogDumper {
 
             process.waitFor()
 
+            val lifecycleLogs = logs.lines().filter { line ->
+                line.contains("AiGateway") || line.contains("GeneratorEngine") || line.contains("GeneratorViewModel") || line.contains("CompatibilityEngine") || line.contains("ProfileExtractionEngine") || line.contains("GeminiService") || line.contains("VantEdge") || line.contains("[REQ-")
+            }.joinToString("\n")
+
             val finalText = buildString {
                 appendLine("=== VANTEDGE LOG DUMP ===")
                 appendLine("Device: ${Build.MANUFACTURER} ${Build.MODEL}")
                 appendLine("Android: ${Build.VERSION.SDK_INT}")
+                appendLine("Version: ${BuildConfig.VERSION_NAME}")
+                appendLine("Code: ${BuildConfig.VERSION_CODE}")
+                appendLine("Build: ${BuildConfig.BUILD_TYPE}")
+                appendLine("AppId: ${BuildConfig.APPLICATION_ID}")
                 appendLine("Exit code: ${process.exitValue()}")
                 appendLine("====================================")
                 appendLine()
+
+                if (lifecycleLogs.isNotBlank()) {
+                    appendLine("=== AI LIFECYCLE ===")
+                    appendLine(lifecycleLogs)
+                    appendLine()
+                }
 
                 appendLine("=== LOGS ===")
                 appendLine(logs)

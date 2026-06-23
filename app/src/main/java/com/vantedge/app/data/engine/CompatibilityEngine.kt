@@ -8,13 +8,13 @@ import com.vantedge.app.data.model.ProfileStats
 import com.vantedge.app.data.model.QualificationRatio
 import com.vantedge.app.data.model.RelevancyItem
 import com.vantedge.app.data.model.UserProfile
-import com.vantedge.app.data.network.GeminiService
+import com.vantedge.app.data.network.AiGateway
 import org.json.JSONArray
 import org.json.JSONObject
 
-class CompatibilityEngine {
-
-    private val service = GeminiService()
+class CompatibilityEngine(
+    private val aiGateway: AiGateway
+) {
 
     suspend fun analyze(
         profile: UserProfile,
@@ -103,7 +103,7 @@ JOB DESCRIPTION:
 $jobDescription
         """.trimIndent()
 
-        val result = service.generate(prompt)
+        val result = aiGateway.generate("compatibility", prompt)
 
         if (result == null) {
             Log.e("CompatibilityEngine", "AI returned null")
@@ -214,53 +214,6 @@ $jobDescription
         } catch (e: Exception) {
             Log.e("CompatibilityEngine", "Parse error: ${e.message}")
             onResult(null)
-        }
-    }
-
-    suspend fun extractJobFields(
-        rawText: String,
-        onResult: (jobTitle: String?, company: String?, jobDescription: String?) -> Unit
-    ) {
-        val prompt = """
-Extract job posting details from this text.
-Return ONLY a JSON object with this exact structure. No markdown. No explanation. No code blocks.
-{
-  "jobTitle": "exact job title from the posting",
-  "company": "company name from the posting",
-  "jobDescription": "the full job description text cleaned up"
-}
-
-STRICT RULES:
-- Extract ONLY what is actually written in the text below
-- Do NOT invent, assume, or hallucinate any details
-- If a field cannot be found, use an empty string ""
-- jobDescription must be the actual description text, not a summary
-
-TEXT:
-${rawText.take(4000)}
-        """.trimIndent()
-
-        val result = service.generate(prompt)
-
-        if (result == null) {
-            onResult(null, null, rawText.take(3000))
-            return
-        }
-
-        try {
-            val start = result.indexOf("{")
-            val end = result.lastIndexOf("}") + 1
-            if (start == -1 || end == 0) {
-                onResult(null, null, rawText.take(3000))
-                return
-            }
-            val json = JSONObject(result.substring(start, end))
-            val title = json.optString("jobTitle", "").ifBlank { null }
-            val company = json.optString("company", "").ifBlank { null }
-            val desc = json.optString("jobDescription", "").ifBlank { rawText.take(3000) }
-            onResult(title, company, desc)
-        } catch (e: Exception) {
-            onResult(null, null, rawText.take(3000))
         }
     }
 }

@@ -2,12 +2,17 @@ package com.vantedge.app.data.engine
 
 import android.util.Log
 import com.vantedge.app.data.model.UserProfile
-import com.vantedge.app.data.network.GeminiService
+import com.vantedge.app.data.network.AiGateway
 import org.json.JSONObject
 
-class GeneratorEngine {
+sealed class EngineResult {
+    data class Success(val data: String) : EngineResult()
+    data class Failure(val type: String, val detail: String?) : EngineResult()
+}
 
-    private val service = GeminiService()
+class GeneratorEngine(
+    private val aiGateway: AiGateway
+) {
 
     suspend fun generateCv(
         profile: UserProfile,
@@ -16,7 +21,7 @@ class GeneratorEngine {
         schemeId: String,
         jobTitle: String,
         company: String,
-        onResult: (String?) -> Unit
+        onResult: (EngineResult) -> Unit
     ) {
         val prompt = """
             Analyse this job description and return ONLY a JSON object with this exact structure, nothing else:
@@ -38,34 +43,49 @@ class GeneratorEngine {
             ${profile.workHistory.joinToString("\n") { "${it.role} at ${it.company}: ${it.description}" }}
         """.trimIndent()
 
-        val result = service.generate(prompt)
+        val result = aiGateway.generate("cv", prompt)
 
         if (result == null) {
-            Log.e("GeneratorEngine", "CV: AI returned null")
-            onResult(null)
+            Log.e("GeneratorEngine", "CV: aiGateway returned null | EXIT Failure(provider)")
+            onResult(EngineResult.Failure("provider", "AiGateway returned null"))
             return
         }
 
-        Log.d("GeneratorEngine", "CV raw AI response: $result")
+        Log.d("GeneratorEngine", "CV: aiGateway returned non-null | rawLength=${result.length}")
+
+        val respLength = result.length
+        val respPreview = result.take(500)
+        val hasFenceClose = result.contains("```") && result.indexOf("```") != result.lastIndexOf("```")
+        val firstOpenBrace = result.indexOf("{")
+        val lastCloseBrace = result.lastIndexOf("}")
+
+        Log.d("GeneratorEngine", "CV | length=$respLength | hasFence=$hasFenceClose | braceOpen=$firstOpenBrace | braceClose=$lastCloseBrace")
+        Log.d("GeneratorEngine", "CV preview: $respPreview")
 
         try {
-            val startIndex = result.indexOf("{")
-            val endIndex = result.lastIndexOf("}") + 1
-
-            if (startIndex == -1 || endIndex == 0) {
-                Log.e("GeneratorEngine", "CV: No JSON found in response")
-                onResult("{\"matchedKeywords\":[]}")
+            val clean: String
+            if (hasFenceClose) {
+                val start = result.indexOf("{", result.indexOf("```"))
+                val end = result.lastIndexOf("}") + 1
+                clean = if (start != -1 && end > start) result.substring(start, end) else result
+                Log.d("GeneratorEngine", "CV: fence extraction | start=$start end=$end cleanLength=${clean.length}")
+            } else if (firstOpenBrace != -1 && lastCloseBrace > firstOpenBrace) {
+                clean = result.substring(firstOpenBrace, lastCloseBrace + 1)
+                Log.d("GeneratorEngine", "CV: brace extraction | cleanLength=${clean.length}")
+            } else {
+                Log.e("GeneratorEngine", "CV: No JSON found in response | firstBrace=$firstOpenBrace lastBrace=$lastCloseBrace fences=$hasFenceClose | EXIT Failure(schema)")
+                onResult(EngineResult.Failure("schema", "No JSON found in AI response"))
                 return
             }
 
-            val clean = result.substring(startIndex, endIndex)
             val json = JSONObject(clean)
             json.getJSONArray("matchedKeywords")
-            onResult(clean)
+            Log.d("GeneratorEngine", "CV: JSON parse OK | extractedLength=${clean.length} | matchedKeywords=${json.getJSONArray("matchedKeywords").length()} | EXIT Success")
+            onResult(EngineResult.Success(clean))
 
         } catch (e: Exception) {
-            Log.e("GeneratorEngine", "CV parse error: ${e.message}")
-            onResult("{\"matchedKeywords\":[]}")
+            Log.e("GeneratorEngine", "CV: parse failed | error=${e.message} | extractedLength=${try { result.substring(firstOpenBrace, lastCloseBrace + 1).length } catch (_: Exception) { -1 }} | EXIT Failure(parse)")
+            onResult(EngineResult.Failure("parse", e.message))
         }
     }
 
@@ -76,7 +96,7 @@ class GeneratorEngine {
         schemeId: String,
         jobTitle: String,
         company: String,
-        onResult: (String?) -> Unit
+        onResult: (EngineResult) -> Unit
     ) {
         val prompt = """
             Write a professional cover letter body for this role.
@@ -98,16 +118,18 @@ class GeneratorEngine {
             $jobDescription
         """.trimIndent()
 
-        val result = service.generate(prompt)
+        val result = aiGateway.generate("cover_letter", prompt)
 
         if (result == null) {
-            Log.e("GeneratorEngine", "Cover letter: AI returned null")
-            onResult(null)
+            Log.e("GeneratorEngine", "Cover letter: aiGateway returned null | EXIT Failure(provider)")
+            onResult(EngineResult.Failure("provider", "AiGateway returned null"))
             return
         }
 
+        Log.d("GeneratorEngine", "Cover letter: aiGateway returned non-null | rawLength=${result.length}")
         Log.d("GeneratorEngine", "Cover letter raw AI response: $result")
-        onResult(result)
+        Log.d("GeneratorEngine", "Cover letter: EXIT Success")
+        onResult(EngineResult.Success(result))
     }
 
     fun applyDesignToContent(
@@ -151,7 +173,7 @@ class GeneratorEngine {
     suspend fun generateCvDocx(
         profile: UserProfile,
         jobDescription: String,
-        onResult: (String?) -> Unit
+        onResult: (EngineResult) -> Unit
     ) {
         val prompt = """
             Generate an ATS-optimized CV as plain text formatted for Microsoft Word.
@@ -181,55 +203,13 @@ class GeneratorEngine {
             $jobDescription
         """.trimIndent()
 
-        val result = service.generate(prompt)
-        onResult(result)
-    }
-
-    suspend fun extractJobFields(
-        rawText: String,
-        onResult: (jobTitle: String?, company: String?, jobDescription: String?) -> Unit
-    ) {
-        val prompt = """
-            Extract the following from this job posting text and return ONLY a JSON object:
-            {
-              "jobTitle": "extracted job title or empty string",
-              "company": "extracted company name or empty string",
-              "jobDescription": "cleaned job description text, max 2000 characters"
-            }
-
-            Return ONLY the JSON. No explanation. No markdown. No code blocks.
-
-            TEXT:
-            ${rawText.take(4000)}
-        """.trimIndent()
-
-        val result = service.generate(prompt)
-
+        val result = aiGateway.generate("cv_docx", prompt)
         if (result == null) {
-            onResult(null, null, rawText)
-            return
-        }
-
-        try {
-            val startIndex = result.indexOf("{")
-            val endIndex = result.lastIndexOf("}") + 1
-
-            if (startIndex == -1 || endIndex == 0) {
-                onResult(null, null, rawText)
-                return
-            }
-
-            val clean = result.substring(startIndex, endIndex)
-            val json = JSONObject(clean)
-
-            val jobTitle = json.optString("jobTitle").takeIf { it.isNotBlank() }
-            val company = json.optString("company").takeIf { it.isNotBlank() }
-            val jobDescription = json.optString("jobDescription").takeIf { it.isNotBlank() } ?: rawText
-
-            onResult(jobTitle, company, jobDescription)
-
-        } catch (e: Exception) {
-            onResult(null, null, rawText)
+            Log.e("GeneratorEngine", "CV docx: aiGateway returned null | EXIT Failure(provider)")
+            onResult(EngineResult.Failure("provider", "AiGateway returned null"))
+        } else {
+            Log.d("GeneratorEngine", "CV docx: aiGateway returned non-null | rawLength=${result.length} | EXIT Success")
+            onResult(EngineResult.Success(result))
         }
     }
 }

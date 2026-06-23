@@ -24,6 +24,7 @@ import com.vantedge.app.data.model.AcquisitionMode
 import com.vantedge.app.data.model.GenerationMode
 import com.vantedge.app.data.model.OnboardingDraft
 import com.vantedge.app.data.model.OnboardingStage
+import com.vantedge.app.data.network.AiGateway
 import com.vantedge.app.data.network.GeminiService
 import com.vantedge.app.data.storage.CompatibilityStore
 import com.vantedge.app.data.storage.HistoryStore
@@ -32,10 +33,11 @@ import com.vantedge.app.data.storage.UserPreferences
 import com.vantedge.app.data.storage.VantEdgeDatabase
 import com.vantedge.app.data.viewmodel.CompatibilityViewModel
 import com.vantedge.app.data.viewmodel.CycleViewModel
+import com.vantedge.app.data.viewmodel.GeneratorViewModel
 import com.vantedge.app.data.viewmodel.OnboardingViewModel
 import com.vantedge.app.data.viewmodel.OnboardingViewModelFactory
-import com.vantedge.app.domain.OnboardingCommitService
-import com.vantedge.app.domain.OptimizationOrchestrator
+import com.vantedge.app.data.domain.OnboardingCommitService
+import com.vantedge.app.data.domain.OptimizationOrchestrator
 import com.vantedge.app.ui.screens.ChoosePathScreen
 import com.vantedge.app.ui.screens.CompatibilityInputScreen
 import com.vantedge.app.ui.screens.CVDesignScreen
@@ -87,14 +89,15 @@ fun AppNavigation(userPreferences: UserPreferences) {
     val context = LocalContext.current
 
     val geminiService = remember { GeminiService() }
+    val aiGateway = remember { AiGateway(geminiService) }
     val db = remember { VantEdgeDatabase.getInstance(context) }
 
     val historyStore = remember { HistoryStore(db.cycleDao()) }
     val compatibilityStore = remember { CompatibilityStore() }
     val onboardingDraftStore = remember { OnboardingDraftStore(context) }
 
-    val compatibilityEngine = remember { CompatibilityEngine() }
-    val generatorEngine = remember { GeneratorEngine() }
+    val compatibilityEngine = remember { CompatibilityEngine(aiGateway) }
+    val generatorEngine = remember { GeneratorEngine(aiGateway) }
 
     val orchestrator = remember {
         OptimizationOrchestrator(
@@ -109,7 +112,7 @@ fun AppNavigation(userPreferences: UserPreferences) {
     val telemetryCollector = remember { TelemetryCollector(context) }
 
     val extractionEngine = remember {
-        ProfileExtractionEngine(context, geminiService, telemetryCollector)
+        ProfileExtractionEngine(context, aiGateway, telemetryCollector)
     }
 
     val onboardingCommitService = remember {
@@ -151,7 +154,8 @@ fun AppNavigation(userPreferences: UserPreferences) {
                     @Suppress("UNCHECKED_CAST")
                     return CompatibilityViewModel(
                         store = compatibilityStore,
-                        userPreferences = userPreferences
+                        userPreferences = userPreferences,
+                        aiGateway = aiGateway
                     ) as T
                 }
             }
@@ -371,8 +375,21 @@ fun AppNavigation(userPreferences: UserPreferences) {
         }
 
         composable("cv_generator") {
+            val generatorViewModel: GeneratorViewModel = viewModel(
+                factory = remember {
+                    object : ViewModelProvider.Factory {
+                        override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                            @Suppress("UNCHECKED_CAST")
+                            return GeneratorViewModel(
+                                historyStore = historyStore,
+                                aiGateway = aiGateway
+                            ) as T
+                        }
+                    }
+                }
+            )
             CVGeneratorScreen(
-                viewModel = viewModel(),
+                viewModel = generatorViewModel,
                 profile = profile!!,
                 designId = "modern",
                 schemeId = "navy",

@@ -50,38 +50,3 @@ class CycleStateSerializer : JsonSerializer<CycleState> {
     }
 }
 
-class CycleStateDeserializer : JsonDeserializer<CycleState> {
-    override fun deserialize(
-        json: JsonElement,
-        typeOfT: Type,
-        context: JsonDeserializationContext
-    ): CycleState {
-        val obj = json.asJsonObject
-        val type = obj.get(TYPE_KEY)?.asString
-            ?: throw JsonParseException("Missing type field in CycleState JSON")
-
-        return when (type) {
-            TYPE_ANALYSIS_ONLY -> CycleState.AnalysisOnly(
-                compatibility = context.deserialize(obj.get("compatibility"), compatibilityType)
-            )
-            TYPE_GENERATION_READY -> {
-                val keywordsElement = obj.get("matchedKeywords")
-                val keywords = if (keywordsElement != null && keywordsElement.isJsonArray) {
-                    keywordsElement.asJsonArray.map { it.asString }
-                } else emptyList()
-                CycleState.GenerationReady(
-                    compatibility = context.deserialize(obj.get("compatibility"), compatibilityType),
-                    matchedKeywords = keywords,
-                    coverLetterBody = obj.get("coverLetterBody")?.asString ?: ""
-                )
-            }
-            TYPE_FULL_CYCLE -> CycleState.FullCycle(
-                compatibility = context.deserialize(obj.get("compatibility"), compatibilityType),
-                cvContent = obj.get("cvContent")?.asString ?: "",
-                coverLetterContent = obj.get("coverLetterContent")?.asString ?: "",
-                design = context.deserialize(obj.get("design"), DesignConfig::class.java)
-            )
-            else -> throw JsonParseException("Unknown CycleState type: $type")
-        }
-    }
-}

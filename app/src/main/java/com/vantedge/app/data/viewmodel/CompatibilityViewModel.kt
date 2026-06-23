@@ -3,7 +3,10 @@ package com.vantedge.app.data.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.vantedge.app.data.engine.CompatibilityEngine
+import com.vantedge.app.data.engine.JobExtractionEngine
+import com.vantedge.app.data.network.AiGateway
 import com.vantedge.app.data.model.CompatibilityRecord
+import com.vantedge.app.data.model.JobSourceType
 import com.vantedge.app.data.model.UserProfile
 import com.vantedge.app.data.model.Certification
 import com.vantedge.app.data.storage.CompatibilityStore
@@ -23,10 +26,11 @@ sealed class CompatibilityUiState {
 
 class CompatibilityViewModel(
     private val store: CompatibilityStore,
-    private val userPreferences: UserPreferences
+    private val userPreferences: UserPreferences,
+    private val aiGateway: AiGateway
 ) : ViewModel() {
 
-    private val engine = CompatibilityEngine()
+    private val engine = CompatibilityEngine(aiGateway)
 
     private val _uiState = MutableStateFlow<CompatibilityUiState>(CompatibilityUiState.Idle)
     val uiState: StateFlow<CompatibilityUiState> = _uiState
@@ -151,12 +155,16 @@ class CompatibilityViewModel(
         onResult: (jobTitle: String?, company: String?, jobDescription: String?) -> Unit
     ) {
         viewModelScope.launch(Dispatchers.IO) {
-            com.vantedge.app.data.engine.GeneratorEngine()
-                .extractJobFields(rawText) { title, company, desc ->
-                    viewModelScope.launch(Dispatchers.Main) {
-                        onResult(title, company, desc)
-                    }
+            val result = JobExtractionEngine().extractJob(rawText, JobSourceType.USER_INPUT)
+            result.onSuccess { extraction ->
+                viewModelScope.launch(Dispatchers.Main) {
+                    onResult(extraction.jobTitle, extraction.company, extraction.description)
                 }
+            }.onFailure {
+                viewModelScope.launch(Dispatchers.Main) {
+                    onResult(null, null, rawText.take(3000))
+                }
+            }
         }
     }
 }

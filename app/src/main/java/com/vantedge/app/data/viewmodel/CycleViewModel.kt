@@ -8,8 +8,8 @@ import com.vantedge.app.data.model.GenerationCycle
 import com.vantedge.app.data.model.GenerationMode
 import com.vantedge.app.data.model.UserProfile
 import com.vantedge.app.data.storage.HistoryStore
-import com.vantedge.app.domain.OptimizationOrchestrator
-import com.vantedge.app.domain.PipelineStep
+import com.vantedge.app.data.domain.OptimizationOrchestrator
+import com.vantedge.app.data.domain.PipelineStep
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -18,29 +18,6 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
-
-enum class CycleStage {
-    ANALYZED,
-    READY_FOR_GENERATION,
-    DOCUMENTS_GENERATED,
-    IMPROVEMENT_ACTIVE
-}
-
-sealed class CycleNavEvent {
-    object ToAnalysisResult : CycleNavEvent()
-    object ToDesignPicker : CycleNavEvent()
-    object ToFinalResult : CycleNavEvent()
-    data class ToCycleRestored(val cycleId: String, val stage: CycleStage) : CycleNavEvent()
-}
-
-sealed class CycleUiState {
-    object Idle : CycleUiState()
-    data class Loading(val step: PipelineStep = PipelineStep.ANALYSING) : CycleUiState()
-    data class AnalysisDone(val cycle: GenerationCycle) : CycleUiState()
-    data class GenerationReady(val cycle: GenerationCycle) : CycleUiState()
-    data class Success(val cycle: GenerationCycle) : CycleUiState()
-    data class Error(val message: String) : CycleUiState()
-}
 
 class CycleViewModel(
     private val orchestrator: OptimizationOrchestrator,

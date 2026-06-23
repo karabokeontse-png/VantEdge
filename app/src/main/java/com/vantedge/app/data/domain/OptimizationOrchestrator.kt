@@ -1,6 +1,7 @@
 package com.vantedge.app.data.domain
 
 import com.vantedge.app.data.engine.CompatibilityEngine
+import com.vantedge.app.data.engine.EngineResult
 import com.vantedge.app.data.engine.GeneratorEngine
 import com.vantedge.app.data.model.*
 import com.vantedge.app.data.storage.HistoryStore
@@ -51,7 +52,7 @@ class OptimizationOrchestrator(
                 "${cycle.jobDescription}\n\n---\n$improvementContext"
             else cycle.jobDescription
 
-        var cvJson: String? = null
+        var cvJson: String = "{\"matchedKeywords\":[]}"
         generatorEngine.generateCv(
             profile = cycle.profileSnapshot,
             jobDescription = enrichedJobDescription,
@@ -59,11 +60,15 @@ class OptimizationOrchestrator(
             schemeId = "navy",
             jobTitle = cycle.jobTitle,
             company = cycle.company,
-            onResult = { cvJson = it }
+            onResult = { result ->
+                cvJson = when (result) {
+                    is EngineResult.Success -> result.data
+                    else -> "{\"matchedKeywords\":[]}"
+                }
+            }
         )
-        cvJson = cvJson ?: "{\"matchedKeywords\":[]}"
 
-        var coverLetterBody: String? = null
+        var coverLetterBody: String = ""
         generatorEngine.generateCoverLetter(
             profile = cycle.profileSnapshot,
             jobDescription = enrichedJobDescription,
@@ -71,11 +76,16 @@ class OptimizationOrchestrator(
             schemeId = "navy",
             jobTitle = cycle.jobTitle,
             company = cycle.company,
-            onResult = { coverLetterBody = it }
+            onResult = { result ->
+                coverLetterBody = when (result) {
+                    is EngineResult.Success -> result.data
+                    else -> ""
+                }
+            }
         )
 
         val matchedKeywords = try {
-            val json = org.json.JSONObject(cvJson!!)
+            val json = org.json.JSONObject(cvJson)
             val arr = json.getJSONArray("matchedKeywords")
             (0 until arr.length()).map { arr.getString(it) }
         } catch (e: Exception) {
@@ -86,7 +96,7 @@ class OptimizationOrchestrator(
             state = CycleState.GenerationReady(
                 compatibility = compatibility,
                 matchedKeywords = matchedKeywords,
-                coverLetterBody = coverLetterBody ?: ""
+                coverLetterBody = coverLetterBody
             ),
             title = improvementContext,
             isVisibleInHistory = true
@@ -115,7 +125,7 @@ class OptimizationOrchestrator(
             else jobDescription
 
         onProgress(PipelineStep.GENERATING_CV)
-        var cvJson: String? = null
+        var cvJson: String = "{\"matchedKeywords\":[]}"
         generatorEngine.generateCv(
             profile = profile,
             jobDescription = enrichedJobDescription,
@@ -123,12 +133,16 @@ class OptimizationOrchestrator(
             schemeId = "navy",
             jobTitle = jobTitle,
             company = company,
-            onResult = { cvJson = it }
+            onResult = { result ->
+                cvJson = when (result) {
+                    is EngineResult.Success -> result.data
+                    else -> "{\"matchedKeywords\":[]}"
+                }
+            }
         )
-        cvJson = cvJson ?: "{\"matchedKeywords\":[]}"
 
         onProgress(PipelineStep.GENERATING_COVER_LETTER)
-        var coverLetterBody: String? = null
+        var coverLetterBody: String = ""
         generatorEngine.generateCoverLetter(
             profile = profile,
             jobDescription = enrichedJobDescription,
@@ -136,11 +150,16 @@ class OptimizationOrchestrator(
             schemeId = "navy",
             jobTitle = jobTitle,
             company = company,
-            onResult = { coverLetterBody = it }
+            onResult = { result ->
+                coverLetterBody = when (result) {
+                    is EngineResult.Success -> result.data
+                    else -> ""
+                }
+            }
         )
 
         val matchedKeywords = try {
-            val json = org.json.JSONObject(cvJson!!)
+            val json = org.json.JSONObject(cvJson)
             val arr = json.getJSONArray("matchedKeywords")
             (0 until arr.length()).map { arr.getString(it) }
         } catch (e: Exception) {
@@ -155,7 +174,7 @@ class OptimizationOrchestrator(
             state = CycleState.GenerationReady(
                 compatibility = compatibility,
                 matchedKeywords = matchedKeywords,
-                coverLetterBody = coverLetterBody ?: ""
+                coverLetterBody = coverLetterBody
             ),
             title = improvementContext,
             isVisibleInHistory = true

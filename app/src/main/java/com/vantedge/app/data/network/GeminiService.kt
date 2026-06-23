@@ -96,21 +96,25 @@ class GeminiService {
     }
 
     suspend fun generate(
+        requestId: String,
         prompt: String,
-        onProgress: (String) -> Unit = {}
+        onProgress: (String) -> Unit = {},
+        onModelResult: (String, String?, String?) -> Unit = { _, _, _ -> }
     ): String? {
-        val result = tryChain(prompt, onProgress, isRetry = false)
+        val result = tryChain(requestId, prompt, onProgress, onModelResult, isRetry = false)
         if (result != null) return result
 
         onProgress("Final retry in progress...")
         delay(2_000L)
 
-        return tryChain(prompt, onProgress, isRetry = true)
+        return tryChain(requestId, prompt, onProgress, onModelResult, isRetry = true)
     }
 
     private suspend fun tryChain(
+        requestId: String,
         prompt: String,
         onProgress: (String) -> Unit,
+        onModelResult: (String, String?, String?) -> Unit,
         isRetry: Boolean
     ): String? {
 
@@ -118,24 +122,23 @@ class GeminiService {
 
             onProgress(statusForAttempt(index))
 
-            Log.d(
-                "GeminiService",
-                "DEBUG: [tryChain] ${if (isRetry) "[RETRY] " else ""}Trying model: $model"
-            )
+            val modelAttempted = java.util.concurrent.atomic.AtomicBoolean(false)
 
             val result = withTimeoutOrNull(25_000L) {
-                tryModel(model, prompt)
+                tryModel(requestId, model, prompt) { modelName, errorType, detail ->
+                    modelAttempted.set(true)
+                    onModelResult(modelName, errorType, detail)
+                }
             }
 
             if (result != null) {
-                Log.d("GeminiService", "DEBUG: [tryChain] Success with model: $model")
+                onModelResult(model, null, null)
                 return result
             }
 
-            Log.w(
-                "GeminiService",
-                "DEBUG: [tryChain] Model $model failed or timed out. Backing off for ${delayForAttempt(index)}ms"
-            )
+            if (!modelAttempted.get()) {
+                onModelResult(model, "timeout", null)
+            }
 
             delay(delayForAttempt(index))
         }
@@ -144,8 +147,10 @@ class GeminiService {
     }
 
     private suspend fun tryModel(
+        requestId: String,
         model: String,
-        prompt: String
+        prompt: String,
+        onModelResult: (String, String?, String?) -> Unit = { _, _, _ -> }
     ): String? {
 
         val json = JSONObject().apply {
@@ -185,47 +190,100 @@ class GeminiService {
             call.enqueue(object : Callback {
 
                 override fun onFailure(call: Call, e: IOException) {
-                    Log.e("GeminiService", "DEBUG: [tryModel] Network failure on $model: ${e.message}")
+                    onModelResult(model, "network", e.message)
                     if (cont.isActive) cont.resume(null)
                 }
 
                 override fun onResponse(call: Call, response: Response) {
                     val body = response.body?.string()
+                    val code = response.code
 
                     if (!cont.isActive) return
 
-                    when (response.code) {
-                        200 -> {
-                            try {
-                                val raw = JSONObject(body ?: "")
-                                    .getJSONArray("choices")
-                                    .getJSONObject(0)
-                                    .getJSONObject("message")
-                                    .getString("content")
+                    if (code == 200) {
+                        val bodyPreview = body?.take(500) ?: ""
 
-                                val cleaned = raw
-                                    .replace("```json", "")
-                                    .replace("```", "")
-                                    .replace(Regex("""\*\*(.+?)\*\*"""), "$1")
-                                    .replace(Regex("""\*(.+?)\*"""), "$1")
-                                    .trim()
-
-                                cont.resume(cleaned)
-
-                            } catch (e: Exception) {
-                                Log.e("GeminiService", "DEBUG: [tryModel] Parse error on $model: ${e.message}")
-                                cont.resume(null)
-                            }
-                        }
-                        404, 429 -> {
-                            Log.w("GeminiService", "DEBUG: [tryModel] $model returned ${response.code}, skipping to next model.")
+                        if (body.isNullOrBlank()) {
+                            Log.e("GeminiService", "[$requestId] [$model] EMPTY_RESPONSE code=$code body=$bodyPreview")
+                            onModelResult(model, "empty", null)
                             cont.resume(null)
+                            return
+                        }
+
+                        val payload: JSONObject = try {
+                            JSONObject(body)
+                        } catch (e: Exception) {
+                            Log.e("GeminiService", "[$requestId] [$model] INVALID_JSON code=$code error=${e.message} body=$bodyPreview")
+                            onModelResult(model, "invalid_json", e.message)
+                            cont.resume(null)
+                            return
+                        }
+
+                        if (payload.has("error")) {
+                            val errorObj = payload.getJSONObject("error")
+                            val errorMsg = errorObj.optString("message", errorObj.toString())
+                            Log.e("GeminiService", "[$requestId] [$model] PROVIDER_ERROR code=$code message=$errorMsg body=$bodyPreview")
+                            onModelResult(model, "provider_error", errorMsg)
+                            cont.resume(null)
+                            return
+                        }
+
+                        if (!payload.has("choices")) {
+                            val keys = mutableListOf<String>().also { list ->
+                                val iter = payload.keys()
+                                while (iter.hasNext()) list += iter.next()
+                            }
+                            Log.e("GeminiService", "[$requestId] [$model] SCHEMA_ERROR code=$code keys=$keys body=$bodyPreview")
+                            onModelResult(model, "schema_error", "No value for choices")
+                            cont.resume(null)
+                            return
+                        }
+
+                        try {
+                            val raw = payload
+                                .getJSONArray("choices")
+                                .getJSONObject(0)
+                                .getJSONObject("message")
+                                .getString("content")
+
+                            val cleaned = raw
+                                .replace("```json", "")
+                                .replace("```", "")
+                                .replace(Regex("""\*\*(.+?)\*\*"""), "$1")
+                                .replace(Regex("""\*(.+?)\*"""), "$1")
+                                .trim()
+
+                            Log.d("GeminiService", "[$requestId] [$model] SUCCESS contentLength=${cleaned.length}")
+                            cont.resume(cleaned)
+
+                        } catch (e: Exception) {
+                            val keys = mutableListOf<String>().also { list ->
+                                val iter = payload.keys()
+                                while (iter.hasNext()) list += iter.next()
+                            }
+                            Log.e("GeminiService", "[$requestId] [$model] PARSE_ERROR error=${e.message} keys=$keys body=$bodyPreview")
+                            onModelResult(model, "parse", e.message)
+                            cont.resume(null)
+                        }
+                        return
+                    }
+
+                    val bodyPreview = body?.take(200) ?: ""
+                    when (code) {
+                        404 -> {
+                            Log.w("GeminiService", "[$requestId] [$model] HTTP_404 body=$bodyPreview")
+                            onModelResult(model, "404", null)
+                        }
+                        429 -> {
+                            Log.w("GeminiService", "[$requestId] [$model] HTTP_429 body=$bodyPreview")
+                            onModelResult(model, "429", null)
                         }
                         else -> {
-                            Log.e("GeminiService", "DEBUG: [tryModel] Error ${response.code} on $model")
-                            cont.resume(null)
+                            Log.w("GeminiService", "[$requestId] [$model] HTTP_${code} body=$bodyPreview")
+                            onModelResult(model, "http_$code", null)
                         }
                     }
+                    cont.resume(null)
                 }
             })
         }

@@ -1,4 +1,4 @@
-# VANTEDGE RECOVERY MATRIX v1.0
+    # VANTEDGE RECOVERY MATRIX v1.0
 
 **Governing Document:** All reconstruction work follows this matrix.
 **Last Updated:** 2026-06-15

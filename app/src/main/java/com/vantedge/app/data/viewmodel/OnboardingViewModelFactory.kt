@@ -4,7 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import com.vantedge.app.data.engine.ProfileExtractionEngine
 import com.vantedge.app.data.storage.OnboardingDraftStore
-import com.vantedge.app.domain.OnboardingCommitService
+import com.vantedge.app.data.domain.OnboardingCommitService
 import com.vantedge.app.util.TelemetryCollector
 
 class OnboardingViewModelFactory(
