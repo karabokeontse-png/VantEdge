@@ -14,7 +14,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.vantedge.app.data.viewmodel.CycleViewModel
+import android.content.Intent
+import androidx.core.content.FileProvider
 import com.vantedge.app.util.LogDumper
+import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -199,6 +202,31 @@ fun DashboardScreen(
                         }
                     ) {
                         Text("Export Logs")
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Button(
+                        onClick = {
+                            val traceFile = File(context.cacheDir, "vantedge_trace.log")
+                            if (traceFile.exists()) {
+                                val uri = FileProvider.getUriForFile(
+                                    context,
+                                    "${context.packageName}.provider",
+                                    traceFile
+                                )
+                                val intent = Intent(Intent.ACTION_SEND).apply {
+                                    type = "text/plain"
+                                    putExtra(Intent.EXTRA_STREAM, uri)
+                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                }
+                                context.startActivity(
+                                    Intent.createChooser(intent, "Share Trace Log")
+                                )
+                            }
+                        }
+                    ) {
+                        Text("Export Trace Log")
                     }
                 }
             }

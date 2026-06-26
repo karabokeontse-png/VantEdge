@@ -1,4 +1,4 @@
-package com.vantedge.app.domain
+package com.vantedge.app.data.domain
 
 import com.vantedge.app.data.model.*
 import com.vantedge.app.data.storage.OnboardingDraftStore

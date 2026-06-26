@@ -5,10 +5,13 @@ import android.content.Context
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.vantedge.app.data.engine.DocxBuilder
+import com.vantedge.app.data.engine.EngineResult
 import com.vantedge.app.data.engine.GeneratorEngine
+import com.vantedge.app.data.network.AiGateway
 import com.vantedge.app.data.model.ApplicationRecord
 import com.vantedge.app.data.model.UserProfile
 import com.vantedge.app.data.storage.HistoryStore
@@ -20,10 +23,11 @@ import kotlinx.coroutines.withContext
 import java.io.File
 
 class GeneratorViewModel(
-    private val historyStore: HistoryStore
+    private val historyStore: HistoryStore,
+    private val aiGateway: AiGateway
 ) : ViewModel() {
 
-    private val engine = GeneratorEngine()
+    private val engine = GeneratorEngine(aiGateway)
 
     private val _uiState = MutableStateFlow<GeneratorUiState>(GeneratorUiState.Idle)
     val uiState: StateFlow<GeneratorUiState> = _uiState
@@ -56,11 +60,11 @@ class GeneratorViewModel(
     ) {
         currentMode = mode
         _uiState.value = GeneratorUiState.Loading
+        Log.d("GeneratorViewModel", "generate: ENTRY mode=$mode")
 
         viewModelScope.launch(Dispatchers.IO) {
-
-            var cvResult: String? = null
-            var coverResult: String? = null
+            var cvResult: EngineResult? = null
+            var coverResult: EngineResult? = null
 
             val cvLatch = java.util.concurrent.CountDownLatch(1)
 
@@ -85,31 +89,46 @@ class GeneratorViewModel(
 
             cvLatch.await()
 
-            if (cvResult == null) {
-                withContext(Dispatchers.Main) {
-                    _uiState.value = GeneratorUiState.Error("CV generation failed. Check internet connection.")
+            val cvSuccess = when (val r = cvResult) {
+                is EngineResult.Success -> {
+                    Log.d("GeneratorViewModel", "generate: CV success | length=${r.data.length}")
+                    r.data
                 }
-                return@launch
+                is EngineResult.Failure -> {
+                    Log.e("GeneratorViewModel", "generate: CV failure type=${r.type} detail=${r.detail}")
+                    withContext(Dispatchers.Main) {
+                        _uiState.value = GeneratorUiState.Error("CV: ${r.type} - ${r.detail ?: "unknown"}")
+                    }
+                    return@launch
+                }
+                null -> {
+                    Log.e("GeneratorViewModel", "generate: CV result was never set | EXIT Error")
+                    withContext(Dispatchers.Main) {
+                        _uiState.value = GeneratorUiState.Error("CV generation failed. No result from engine.")
+                    }
+                    return@launch
+                }
             }
 
             if (mode == "docx") {
                 if (context != null) {
-                    saveDocxToDevice(context, cvResult!!, jobTitle)
+                    saveDocxToDevice(context, cvSuccess, jobTitle)
                 }
 
-                lastCv = cvResult!!
+                lastCv = cvSuccess
                 lastCoverLetter = ""
 
                 val record = ApplicationRecord(
                     jobTitle = jobTitle,
                     company = company,
-                    cv = cvResult!!,
+                    cv = cvSuccess,
                     coverLetter = ""
                 )
                 historyStore.addRecord(record)
 
+                Log.d("GeneratorViewModel", "generate: DOCX success | cvLength=${cvSuccess.length}")
                 withContext(Dispatchers.Main) {
-                    _uiState.value = GeneratorUiState.Success(cvResult!!, "")
+                    _uiState.value = GeneratorUiState.Success(cvSuccess, "")
                 }
                 return@launch
             }
@@ -130,26 +149,42 @@ class GeneratorViewModel(
 
             coverLatch.await()
 
-            if (coverResult == null) {
-                withContext(Dispatchers.Main) {
-                    _uiState.value = GeneratorUiState.Error("Cover letter generation failed.")
+            val coverSuccess = when (val r = coverResult) {
+                is EngineResult.Success -> {
+                    Log.d("GeneratorViewModel", "generate: Cover success | length=${r.data.length}")
+                    r.data
                 }
-                return@launch
+                is EngineResult.Failure -> {
+                    Log.e("GeneratorViewModel", "generate: Cover failure type=${r.type} detail=${r.detail}")
+                    withContext(Dispatchers.Main) {
+                        _uiState.value = GeneratorUiState.Error("Cover letter: ${r.type} - ${r.detail ?: "unknown"}")
+                    }
+                    return@launch
+                }
+                null -> {
+                    Log.e("GeneratorViewModel", "generate: Cover result was never set | EXIT Error")
+                    withContext(Dispatchers.Main) {
+                        _uiState.value = GeneratorUiState.Error("Cover letter generation failed. No result from engine.")
+                    }
+                    return@launch
+                }
             }
 
-            lastCv = cvResult!!
-            lastCoverLetter = coverResult!!
+            lastCv = cvSuccess
+            lastCoverLetter = coverSuccess
+            Log.d("GeneratorViewModel", "generate: storing | cvLength=${cvSuccess.length} | coverLength=${coverSuccess.length}")
 
             val record = ApplicationRecord(
                 jobTitle = jobTitle,
                 company = company,
-                cv = cvResult!!,
-                coverLetter = coverResult!!
+                cv = cvSuccess,
+                coverLetter = coverSuccess
             )
             historyStore.addRecord(record)
 
+            Log.d("GeneratorViewModel", "generate: EXIT Success | cvStartsWith< ${cvSuccess.trimStart().startsWith("<")}")
             withContext(Dispatchers.Main) {
-                _uiState.value = GeneratorUiState.Success(cvResult!!, coverResult!!)
+                _uiState.value = GeneratorUiState.Success(cvSuccess, coverSuccess)
             }
         }
     }

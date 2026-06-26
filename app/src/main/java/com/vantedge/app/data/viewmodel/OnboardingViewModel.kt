@@ -8,7 +8,7 @@ import com.vantedge.app.data.engine.ExtractionMode
 import com.vantedge.app.data.engine.ProfileExtractionEngine
 import com.vantedge.app.data.model.*
 import com.vantedge.app.data.storage.OnboardingDraftStore
-import com.vantedge.app.domain.OnboardingCommitService
+import com.vantedge.app.data.domain.OnboardingCommitService
 import com.vantedge.app.util.HashUtils
 import com.vantedge.app.util.TelemetryCollector
 import kotlinx.coroutines.Job
@@ -222,7 +222,7 @@ class OnboardingViewModel(
             _extractionState.value = ExtractionState.Retrying("Retrying with safer parsing...")
             
             val retryResult = extractionEngine.structureProfile(
-                rawText = rawText.take(8000),
+                rawText = rawText,
                 extractionMode = extractionMode,
                 sessionId = sessionId,
                 onProgress = { status ->

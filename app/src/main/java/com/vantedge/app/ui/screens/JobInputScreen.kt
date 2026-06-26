@@ -24,10 +24,12 @@ import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.text.PDFTextStripper
-import com.vantedge.app.data.engine.GeneratorEngine
+import com.vantedge.app.data.engine.JobExtractionEngine
+import com.vantedge.app.data.model.JobSourceType
 import com.vantedge.app.data.model.GenerationMode
 import com.vantedge.app.data.model.UserProfile
-import com.vantedge.app.data.viewmodel.CycleUiState
+import com.vantedge.app.data.viewmodel.CycleNavEvent
+import com.vantedge.app.data.viewmodel.UiState
 import com.vantedge.app.data.viewmodel.CycleViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -63,43 +65,48 @@ fun JobInputScreen(
     var showUrlInput by remember { mutableStateOf(false) }
     var isExtracting by remember { mutableStateOf(false) }
 
-    val isLoading = uiState is CycleUiState.Loading
+    val isLoading = uiState is UiState.Loading
 
     LaunchedEffect(jobTitle) { viewModel.savedJobTitle = jobTitle }
     LaunchedEffect(company) { viewModel.savedCompany = company }
     LaunchedEffect(jobDescription) { viewModel.savedJobDescription = jobDescription }
 
-    LaunchedEffect(uiState) {
-        when (uiState) {
-            is CycleUiState.AnalysisDone -> {
-                val cycle = (uiState as CycleUiState.AnalysisDone).cycle
-                when (mode) {
-                    GenerationMode.QUICK_GENERATE -> {
-                        viewModel.setCurrentCycle(cycle)
-                        onNavigateToDesign()
-                    }
-                    GenerationMode.NEW_APPLICATION,
-                    GenerationMode.QUICK_ANALYSIS,
-                    GenerationMode.IMPROVE -> {
-                        onNavigateToResult()
+    LaunchedEffect(Unit) {
+        viewModel.navEvent.collect { event ->
+            when (event) {
+                is CycleNavEvent.ToAnalysisResult -> {
+                    when (mode) {
+                        GenerationMode.QUICK_GENERATE -> onNavigateToDesign()
+                        else -> onNavigateToResult()
                     }
                 }
+                is CycleNavEvent.ToDesignPicker -> onNavigateToDesign()
+                is CycleNavEvent.GenerationPartial -> {
+                    snackbar.showSnackbar(event.reason)
+                    onNavigateToDesign()
+                }
+                is CycleNavEvent.GenerationFailed -> {
+                    snackbar.showSnackbar(event.reason)
+                }
+                else -> {}
             }
-            is CycleUiState.Success -> {
-                onNavigateToResult()
-            }
-            else -> Unit
         }
     }
 
     fun extractAndFill(rawText: String) {
         isExtracting = true
         scope.launch(Dispatchers.IO) {
-            GeneratorEngine().extractJobFields(rawText) { title, comp, desc ->
+            val result = JobExtractionEngine().extractJob(rawText, JobSourceType.USER_INPUT)
+            result.onSuccess { extraction ->
                 scope.launch(Dispatchers.Main) {
-                    if (title != null) jobTitle = title
-                    if (comp != null) company = comp
-                    jobDescription = desc ?: rawText.take(3000)
+                    if (extraction.jobTitle != null) jobTitle = extraction.jobTitle
+                    if (extraction.company != null) company = extraction.company
+                    jobDescription = extraction.description
+                    isExtracting = false
+                }
+            }.onFailure {
+                scope.launch(Dispatchers.Main) {
+                    jobDescription = rawText.take(3000)
                     isExtracting = false
                 }
             }

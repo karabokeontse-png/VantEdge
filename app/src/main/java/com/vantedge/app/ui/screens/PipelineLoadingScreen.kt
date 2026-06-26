@@ -21,7 +21,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.vantedge.app.domain.PipelineStep
+import com.vantedge.app.data.domain.PipelineStep
 import com.vantedge.app.ui.theme.AppColors
 import kotlinx.coroutines.delay
 

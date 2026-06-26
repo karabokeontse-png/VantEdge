@@ -3,7 +3,11 @@ package com.vantedge.app.data.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.vantedge.app.data.engine.CompatibilityEngine
+import com.vantedge.app.data.engine.CompatibilityResult
+import com.vantedge.app.data.engine.JobExtractionEngine
+import com.vantedge.app.data.network.AiGateway
 import com.vantedge.app.data.model.CompatibilityRecord
+import com.vantedge.app.data.model.JobSourceType
 import com.vantedge.app.data.model.UserProfile
 import com.vantedge.app.data.model.Certification
 import com.vantedge.app.data.storage.CompatibilityStore
@@ -23,10 +27,11 @@ sealed class CompatibilityUiState {
 
 class CompatibilityViewModel(
     private val store: CompatibilityStore,
-    private val userPreferences: UserPreferences
+    private val userPreferences: UserPreferences,
+    private val aiGateway: AiGateway
 ) : ViewModel() {
 
-    private val engine = CompatibilityEngine()
+    private val engine = CompatibilityEngine(aiGateway)
 
     private val _uiState = MutableStateFlow<CompatibilityUiState>(CompatibilityUiState.Idle)
     val uiState: StateFlow<CompatibilityUiState> = _uiState
@@ -60,23 +65,27 @@ class CompatibilityViewModel(
         _addedCerts.value = emptySet()
 
         viewModelScope.launch(Dispatchers.IO) {
-            engine.analyze(
+            when (val result = engine.analyze(
                 profile = profile,
                 jobTitle = jobTitle,
                 company = company,
                 jobDescription = jobDescription
-            ) { record ->
-                viewModelScope.launch(Dispatchers.Main) {
-                    if (record == null) {
+            )) {
+                is CompatibilityResult.Failure -> {
+                    viewModelScope.launch(Dispatchers.Main) {
                         _uiState.value =
                             CompatibilityUiState.Error("Analysis failed. Check your connection.")
-                    } else {
-                        lastRecord = record
+                    }
+                }
+                is CompatibilityResult.Success -> {
+                    val record = result.data
+                    lastRecord = record
 
-                        viewModelScope.launch(Dispatchers.IO) {
-                            store.addRecord(record)
-                        }
+                    viewModelScope.launch(Dispatchers.IO) {
+                        store.addRecord(record)
+                    }
 
+                    viewModelScope.launch(Dispatchers.Main) {
                         _uiState.value = CompatibilityUiState.Success(record)
                     }
                 }
@@ -151,12 +160,16 @@ class CompatibilityViewModel(
         onResult: (jobTitle: String?, company: String?, jobDescription: String?) -> Unit
     ) {
         viewModelScope.launch(Dispatchers.IO) {
-            com.vantedge.app.data.engine.GeneratorEngine()
-                .extractJobFields(rawText) { title, company, desc ->
-                    viewModelScope.launch(Dispatchers.Main) {
-                        onResult(title, company, desc)
-                    }
+            val result = JobExtractionEngine().extractJob(rawText, JobSourceType.USER_INPUT)
+            result.onSuccess { extraction ->
+                viewModelScope.launch(Dispatchers.Main) {
+                    onResult(extraction.jobTitle, extraction.company, extraction.description)
                 }
+            }.onFailure {
+                viewModelScope.launch(Dispatchers.Main) {
+                    onResult(null, null, rawText.take(3000))
+                }
+            }
         }
     }
 }

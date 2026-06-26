@@ -8,75 +8,45 @@ import com.vantedge.app.data.model.ProfileStats
 import com.vantedge.app.data.model.QualificationRatio
 import com.vantedge.app.data.model.RelevancyItem
 import com.vantedge.app.data.model.UserProfile
-import com.vantedge.app.data.network.GeminiService
+import com.vantedge.app.data.network.AiGateway
+import com.vantedge.app.data.network.AiRequest
 import org.json.JSONArray
 import org.json.JSONObject
 
-class CompatibilityEngine {
+sealed class CompatibilityResult {
+    data class Success(val data: CompatibilityRecord) : CompatibilityResult()
+    data class Failure(
+        val type: String,
+        val message: String?,
+        val throwable: Throwable? = null,
+        val rawResponse: String? = null
+    ) : CompatibilityResult()
+}
 
-    private val service = GeminiService()
+class CompatibilityEngine(
+    private val aiGateway: AiGateway
+) {
 
     suspend fun analyze(
         profile: UserProfile,
         jobTitle: String,
         company: String,
-        jobDescription: String,
-        onResult: (CompatibilityRecord?) -> Unit
-    ) {
-        val prompt = """
+        jobDescription: String
+    ): CompatibilityResult {
+        val systemPrompt = """
 You are an elite ATS analyst and career strategist. Perform a deep compatibility analysis.
 Return ONLY a valid JSON object. No markdown. No explanation. No code blocks.
 
-{
-  "score": 55,
-  "vacancyScore": 48,
-  "roleSummary": "3-4 sentence detailed summary of the role, what it demands technically and professionally, and the ideal candidate profile",
-  "eligibilitySummary": "3-4 sentence honest and detailed assessment of this candidate's fit, referencing their actual experience and certifications",
-  "dataIntegrityNote": "Only verified certifications and documented skills were evaluated. Self-reported experience was cross-referenced with work history dates.",
-  "profileStats": {
-    "yearsExperience": 5,
-    "certificationCount": 3,
-    "skillCount": 12,
-    "matchedCount": 6,
-    "gapCount": 4,
-    "dataIntegrityNote": "Only documented certifications and listed skills were evaluated"
-  },
-  "qualificationRatio": {
-    "matched": 6,
-    "total": 13,
-    "gaps": 4
-  },
-  "relevancyItems": [
-    {
-      "name": "CCNP Enterprise",
-      "type": "certification",
-      "matchPercent": 95,
-      "aiDescription": "Directly satisfies the routing and switching requirement listed in the job description",
-      "relevancyGroup": "HIGH"
-    }
-  ],
-  "gaps": [
-    {
-      "skill": "Cisco ASA Firewall",
-      "importance": "MANDATORY",
-      "description": "The job explicitly requires hands-on firewall configuration experience which is absent from the profile",
-      "experienceGap": false,
-      "platformGap": true,
-      "courses": [
-        {
-          "title": "Cisco ASA Firewall Fundamentals",
-          "provider": "Udemy",
-          "url": "https://www.udemy.com/course/cisco-asa/",
-          "category": "paid",
-          "hasCertificate": true,
-          "estimatedDuration": "12 hours",
-          "relevancyPercent": 94,
-          "priority": 1
-        }
-      ]
-    }
-  ]
-}
+Schema (every field required unless noted):
+- score: int 0-100 overall compatibility
+- vacancyScore: int 0-100 hard vacancy match
+- roleSummary: string 3-4 sentence role analysis
+- eligibilitySummary: string 3-4 sentence candidate fit assessment
+- dataIntegrityNote: string (optional)
+- profileStats: { yearsExperience:int, certificationCount:int, skillCount:int, matchedCount:int, gapCount:int, dataIntegrityNote:string }
+- qualificationRatio: { matched:int, total:int, gaps:int }
+- relevancyItems[]: { name:string, type:string("skill"|"certification"), matchPercent:int 0-100, aiDescription:string, relevancyGroup:string("HIGH"|"MEDIUM"|"LOW"|"PROFESSIONAL_MISMATCH") }
+- gaps[]: { skill:string, importance:string("MANDATORY"|"IMPORTANT"|"NICE_TO_HAVE"), description:string, experienceGap:bool, platformGap:bool, courses[]:{ title:string, provider:string, url:string, category:string, hasCertificate:bool, estimatedDuration:string, relevancyPercent:int 0-100, priority:int } }
 
 STRICT RULES:
 - score is 0-100 integer: overall compatibility
@@ -89,7 +59,9 @@ STRICT RULES:
 - platformGap = true if the gap is about a specific platform/vendor tool
 - For each gap provide 2-3 real course recommendations
 - ONLY use real URLs from: Coursera, Udemy, edX, Google, Microsoft, LinkedIn Learning, AWS, freeCodeCamp, Cisco, CompTIA
+        """.trimIndent()
 
+        val userPrompt = """
 CANDIDATE PROFILE:
 Name: ${profile.name}
 Summary: ${profile.summary}
@@ -103,164 +75,153 @@ JOB DESCRIPTION:
 $jobDescription
         """.trimIndent()
 
-        val result = service.generate(prompt)
+        val request = AiRequest(systemPrompt = systemPrompt, userPrompt = userPrompt)
+        val result = aiGateway.generate("compatibility", request)
 
         if (result == null) {
-            Log.e("CompatibilityEngine", "AI returned null")
-            onResult(null)
-            return
+            return CompatibilityResult.Failure("null_response", "AI returned null")
         }
 
+        val start = result.indexOf("{")
+        val end = result.lastIndexOf("}") + 1
+        if (start == -1 || end == 0) {
+            return CompatibilityResult.Failure("no_json", "No JSON found in AI response", rawResponse = result)
+        }
+
+        val extracted = result.substring(start, end)
+
         try {
-            val start = result.indexOf("{")
-            val end = result.lastIndexOf("}") + 1
-            if (start == -1 || end == 0) {
-                Log.e("CompatibilityEngine", "No JSON found")
-                onResult(null)
-                return
+            val json = JSONObject(extracted)
+            val record = parseCompatibilityRecord(json, jobTitle, company, jobDescription)
+            if (!validateCompatibilityRecord(record)) {
+                return CompatibilityResult.Failure("contract_violation", "CompatibilityRecord failed structural contract validation", rawResponse = result)
             }
-
-            val json = JSONObject(result.substring(start, end))
-
-            val statsJson = json.optJSONObject("profileStats") ?: JSONObject()
-            val stats = ProfileStats(
-                yearsExperience = statsJson.optInt("yearsExperience", 0),
-                certificationCount = statsJson.optInt("certificationCount", 0),
-                skillCount = statsJson.optInt("skillCount", 0),
-                matchedCount = statsJson.optInt("matchedCount", 0),
-                gapCount = statsJson.optInt("gapCount", 0),
-                dataIntegrityNote = statsJson.optString(
-                    "dataIntegrityNote",
-                    "Only verified profile data was evaluated"
-                )
-            )
-
-            val ratioJson = json.optJSONObject("qualificationRatio") ?: JSONObject()
-            val ratio = QualificationRatio(
-                matched = ratioJson.optInt("matched", 0),
-                total = ratioJson.optInt("total", 0),
-                gaps = ratioJson.optInt("gaps", 0)
-            )
-
-            val relevancyItems = mutableListOf<RelevancyItem>()
-            val relevancyArray = json.optJSONArray("relevancyItems") ?: JSONArray()
-            for (i in 0 until relevancyArray.length()) {
-                val item = relevancyArray.optJSONObject(i) ?: continue
-                relevancyItems.add(
-                    RelevancyItem(
-                        name = item.optString("name", ""),
-                        type = item.optString("type", "skill"),
-                        matchPercent = item.optInt("matchPercent", 0),
-                        aiDescription = item.optString("aiDescription", ""),
-                        relevancyGroup = item.optString("relevancyGroup", "LOW")
-                    )
-                )
-            }
-
-            val gaps = mutableListOf<GapItem>()
-            val gapsArray = json.optJSONArray("gaps") ?: JSONArray()
-            for (i in 0 until gapsArray.length()) {
-                val gapJson = gapsArray.optJSONObject(i) ?: continue
-                val courses = mutableListOf<CourseRecommendation>()
-                val coursesArray = gapJson.optJSONArray("courses") ?: JSONArray()
-                for (j in 0 until coursesArray.length()) {
-                    val c = coursesArray.optJSONObject(j) ?: continue
-                    courses.add(
-                        CourseRecommendation(
-                            title = c.optString("title", ""),
-                            provider = c.optString("provider", ""),
-                            url = c.optString("url", ""),
-                            category = c.optString("category", "paid"),
-                            hasCertificate = c.optBoolean("hasCertificate", false),
-                            estimatedDuration = c.optString("estimatedDuration", "Self-paced"),
-                            relevancyPercent = c.optInt("relevancyPercent", 0),
-                            priority = c.optInt("priority", 1)
-                        )
-                    )
-                }
-                gaps.add(
-                    GapItem(
-                        skill = gapJson.optString("skill", ""),
-                        importance = gapJson.optString("importance", "IMPORTANT"),
-                        description = gapJson.optString("description", ""),
-                        experienceGap = gapJson.optBoolean("experienceGap", false),
-                        platformGap = gapJson.optBoolean("platformGap", false),
-                        courses = courses
-                    )
-                )
-            }
-
-            val record = CompatibilityRecord(
-                jobTitle = jobTitle,
-                company = company,
-                jobDescription = jobDescription,
-                score = json.optInt("score", 0),
-                vacancyScore = json.optInt("vacancyScore", 0),
-                roleSummary = json.optString("roleSummary", ""),
-                eligibilitySummary = json.optString("eligibilitySummary", ""),
-                dataIntegrityNote = json.optString("dataIntegrityNote", ""),
-                profileStats = stats,
-                qualificationRatio = ratio,
-                relevancyItems = relevancyItems,
-                gaps = gaps,
-                criticalGapCount = json.optInt(
-                    "criticalGapCount",
-                    gaps.count { it.importance == "MANDATORY" }
-                )
-            )
-
-            onResult(record)
-
+            return CompatibilityResult.Success(record)
         } catch (e: Exception) {
-            Log.e("CompatibilityEngine", "Parse error: ${e.message}")
-            onResult(null)
+            Log.i("CompatibilityEngine", "Initial parse failed, attempting JSON repair | type=${e.javaClass.simpleName}")
+        }
+
+        val repairResult = JsonRepairUtil.repair(extracted)
+        if (!repairResult.isSafe) {
+            return CompatibilityResult.Failure("parse_error", "JSON repair unsafe: structure too damaged", rawResponse = result)
+        }
+
+        return try {
+            val json = JSONObject(repairResult.json)
+            val record = parseCompatibilityRecord(json, jobTitle, company, jobDescription)
+            if (!validateCompatibilityRecord(record)) {
+                return CompatibilityResult.Failure("contract_violation", "CompatibilityRecord failed structural contract validation after repair", rawResponse = result)
+            }
+            Log.i("CompatibilityEngine", "JSON repair succeeded | recovery=JSON_REPAIR")
+            CompatibilityResult.Success(record)
+        } catch (e: Exception) {
+            Log.i("CompatibilityEngine", "JSON repair failed | recovery=FAILED | type=${e.javaClass.simpleName}")
+            CompatibilityResult.Failure("parse_error", e.message, e, rawResponse = result)
         }
     }
 
-    suspend fun extractJobFields(
-        rawText: String,
-        onResult: (jobTitle: String?, company: String?, jobDescription: String?) -> Unit
-    ) {
-        val prompt = """
-Extract job posting details from this text.
-Return ONLY a JSON object with this exact structure. No markdown. No explanation. No code blocks.
-{
-  "jobTitle": "exact job title from the posting",
-  "company": "company name from the posting",
-  "jobDescription": "the full job description text cleaned up"
-}
+    private fun parseCompatibilityRecord(
+        json: JSONObject,
+        jobTitle: String,
+        company: String,
+        jobDescription: String
+    ): CompatibilityRecord {
+        val statsJson = json.getJSONObject("profileStats")
+        val stats = ProfileStats(
+            yearsExperience = statsJson.optInt("yearsExperience", 0),
+            certificationCount = statsJson.optInt("certificationCount", 0),
+            skillCount = statsJson.optInt("skillCount", 0),
+            matchedCount = statsJson.optInt("matchedCount", 0),
+            gapCount = statsJson.optInt("gapCount", 0),
+            dataIntegrityNote = statsJson.optString(
+                "dataIntegrityNote",
+                "Only verified profile data was evaluated"
+            )
+        )
 
-STRICT RULES:
-- Extract ONLY what is actually written in the text below
-- Do NOT invent, assume, or hallucinate any details
-- If a field cannot be found, use an empty string ""
-- jobDescription must be the actual description text, not a summary
+        val ratioJson = json.optJSONObject("qualificationRatio") ?: JSONObject()
+        val ratio = QualificationRatio(
+            matched = ratioJson.optInt("matched", 0),
+            total = ratioJson.optInt("total", 0),
+            gaps = ratioJson.optInt("gaps", 0)
+        )
 
-TEXT:
-${rawText.take(4000)}
-        """.trimIndent()
-
-        val result = service.generate(prompt)
-
-        if (result == null) {
-            onResult(null, null, rawText.take(3000))
-            return
+        val relevancyItems = mutableListOf<RelevancyItem>()
+        val relevancyArray = json.getJSONArray("relevancyItems")
+        for (i in 0 until relevancyArray.length()) {
+            val item = relevancyArray.optJSONObject(i) ?: continue
+            relevancyItems.add(
+                RelevancyItem(
+                    name = item.optString("name", ""),
+                    type = item.optString("type", "skill"),
+                    matchPercent = item.optInt("matchPercent", 0),
+                    aiDescription = item.optString("aiDescription", ""),
+                    relevancyGroup = item.optString("relevancyGroup", "LOW")
+                )
+            )
         }
 
-        try {
-            val start = result.indexOf("{")
-            val end = result.lastIndexOf("}") + 1
-            if (start == -1 || end == 0) {
-                onResult(null, null, rawText.take(3000))
-                return
+        val gaps = mutableListOf<GapItem>()
+        val gapsArray = json.getJSONArray("gaps")
+        for (i in 0 until gapsArray.length()) {
+            val gapJson = gapsArray.optJSONObject(i) ?: continue
+            val courses = mutableListOf<CourseRecommendation>()
+            val coursesArray = gapJson.optJSONArray("courses") ?: JSONArray()
+            for (j in 0 until coursesArray.length()) {
+                val c = coursesArray.optJSONObject(j) ?: continue
+                courses.add(
+                    CourseRecommendation(
+                        title = c.optString("title", ""),
+                        provider = c.optString("provider", ""),
+                        url = c.optString("url", ""),
+                        category = c.optString("category", "paid"),
+                        hasCertificate = c.optBoolean("hasCertificate", false),
+                        estimatedDuration = c.optString("estimatedDuration", "Self-paced"),
+                        relevancyPercent = c.optInt("relevancyPercent", 0),
+                        priority = c.optInt("priority", 1)
+                    )
+                )
             }
-            val json = JSONObject(result.substring(start, end))
-            val title = json.optString("jobTitle", "").ifBlank { null }
-            val company = json.optString("company", "").ifBlank { null }
-            val desc = json.optString("jobDescription", "").ifBlank { rawText.take(3000) }
-            onResult(title, company, desc)
-        } catch (e: Exception) {
-            onResult(null, null, rawText.take(3000))
+            gaps.add(
+                GapItem(
+                    skill = gapJson.optString("skill", ""),
+                    importance = gapJson.optString("importance", "IMPORTANT"),
+                    description = gapJson.optString("description", ""),
+                    experienceGap = gapJson.optBoolean("experienceGap", false),
+                    platformGap = gapJson.optBoolean("platformGap", false),
+                    courses = courses
+                )
+            )
         }
+
+        return CompatibilityRecord(
+            jobTitle = jobTitle,
+            company = company,
+            jobDescription = jobDescription,
+            score = json.getInt("score"),
+            vacancyScore = json.optInt("vacancyScore", 0),
+            roleSummary = json.getString("roleSummary"),
+            eligibilitySummary = json.getString("eligibilitySummary"),
+            dataIntegrityNote = json.optString("dataIntegrityNote", ""),
+            profileStats = stats,
+            qualificationRatio = ratio,
+            relevancyItems = relevancyItems,
+            gaps = gaps,
+            criticalGapCount = json.optInt(
+                "criticalGapCount",
+                gaps.count { it.importance == "MANDATORY" }
+            )
+        )
+    }
+
+    // Structural contract validator only. No semantic evaluation permitted. Missing field = failure. Empty field = valid. Derived fields never fail validation.
+    private fun validateCompatibilityRecord(record: CompatibilityRecord): Boolean {
+        if (record.score !in 0..100) return false
+        if (record.profileStats.yearsExperience < 0) return false
+        if (record.profileStats.certificationCount < 0) return false
+        if (record.profileStats.skillCount < 0) return false
+        if (record.profileStats.matchedCount < 0) return false
+        if (record.profileStats.gapCount < 0) return false
+        return true
     }
 }

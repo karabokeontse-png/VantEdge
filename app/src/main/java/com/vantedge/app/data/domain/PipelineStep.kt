@@ -1,4 +1,4 @@
-package com.vantedge.app.domain
+package com.vantedge.app.data.domain
 
 enum class PipelineStep(val label: String) {
     ANALYSING("Analysing job compatibility..."),

@@ -1,4 +1,4 @@
-package com.vantedge.model
+package com.vantedge.app.data.model
 
 data class ScoreInterpretation(
     val label: String,

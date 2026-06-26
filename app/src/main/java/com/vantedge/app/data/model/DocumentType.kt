@@ -1,4 +1,4 @@
-package com.vantedge.model
+package com.vantedge.app.data.model
 
 enum class DocumentType {
     CV,

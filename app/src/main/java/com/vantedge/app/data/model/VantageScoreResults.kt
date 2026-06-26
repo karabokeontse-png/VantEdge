@@ -1,4 +1,4 @@
-package com.vantedge.model
+package com.vantedge.app.data.model
 
 data class VantEdgeScoreResult(
     val overallScore: Int,

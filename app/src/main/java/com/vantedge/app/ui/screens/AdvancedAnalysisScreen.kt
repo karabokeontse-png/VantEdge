@@ -17,7 +17,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.vantedge.app.data.model.CompatibilityRecord
 import com.vantedge.app.data.model.CourseRecommendation
-import com.vantedge.app.data.model.CycleState
 import com.vantedge.app.data.model.GapItem
 import com.vantedge.app.data.model.GenerationCycle
 import com.vantedge.app.data.model.RelevancyItem
@@ -30,11 +29,7 @@ fun AdvancedAnalysisScreen(
     onGenerateCv: () -> Unit,
     onBack: () -> Unit
 ) {
-    val compatibility: CompatibilityRecord? = when (val s = cycle.state) {
-        is CycleState.FullCycle -> s.compatibility
-        is CycleState.AnalysisOnly -> s.compatibility
-        is CycleState.GenerationReady -> s.compatibility
-    }
+    val compatibility = cycle.compatibility
 
     var selectedTab by remember { mutableStateOf(0) }
     val tabs = listOf("Skills Match", "Gap Analysis")

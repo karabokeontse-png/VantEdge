@@ -1,11 +1,41 @@
-*.iml
-.gradle
+# Recovery archives and diagnostics
+/recovery_archive/
+_broken_sources/
+/all_kt.txt
+/bad_files.txt
+/classes.txt
+/decompiled_hits.txt
+/packages.txt
+/test_cv.txt
+
+# Build artifacts
+/app/build/
+/.gradle/
+/.gradle-isolated/
+*/build/
+build/
 /local.properties
-/.idea/caches/build_file_checksums.ser
-/.idea/libraries
-/.idea/modules.xml
-/.idea/workspace.xml
+*.log
+*.apk
+*.aab
+
+# Gradle distributions
+gradle-*.zip
+
+# JDK
+/jdk-*/
+/jdk.tar.gz
+
+# Misc generated artifacts
+*.class
+*.dex
+*.aar
+.externalNativeBuild/
+
+# IDE
+.idea/
+*.iml
+
+# OS
 .DS_Store
-/build
-/captures
-.externalNativeBuild
+Thumbs.db

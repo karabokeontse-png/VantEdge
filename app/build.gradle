@@ -31,9 +31,11 @@ android {
         debug {
             minifyEnabled false
             shrinkResources false
+            buildConfigField "boolean", "ML_KIT_ENABLED", "false"
         }
         release {
             minifyEnabled false
+            buildConfigField "boolean", "ML_KIT_ENABLED", "true"
         }
     }
 
@@ -58,6 +60,12 @@ android {
     kapt {
         correctErrorTypes true
         useBuildCache false
+    }
+
+    sourceSets {
+        main {
+            java.srcDirs = ['src/main/java']
+        }
     }
 }
 
@@ -96,4 +104,5 @@ dependencies {
 
     // WorkManager
     implementation "androidx.work:work-runtime-ktx:2.9.0"
+	testImplementation 'junit:junit:4.13.2'
 }

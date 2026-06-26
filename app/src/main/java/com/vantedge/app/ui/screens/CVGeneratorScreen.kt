@@ -25,7 +25,8 @@ import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.text.PDFTextStripper
-import com.vantedge.app.data.engine.GeneratorEngine
+import com.vantedge.app.data.engine.JobExtractionEngine
+import com.vantedge.app.data.model.JobSourceType
 import com.vantedge.app.data.model.UserProfile
 import com.vantedge.app.data.viewmodel.GeneratorUiState
 import com.vantedge.app.data.viewmodel.GeneratorViewModel
@@ -56,8 +57,6 @@ fun CVGeneratorScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
-    val engine = remember { GeneratorEngine() }
-
     var jobTitle by remember {
         mutableStateOf(
             if (viewModel.prefilledJobTitle.isNotBlank()) viewModel.prefilledJobTitle
@@ -201,11 +200,17 @@ fun CVGeneratorScreen(
     fun extractAndFill(rawText: String) {
         isExtracting = true
         scope.launch(Dispatchers.IO) {
-            engine.extractJobFields(rawText) { title, comp, desc ->
+            val result = JobExtractionEngine().extractJob(rawText, JobSourceType.USER_INPUT)
+            result.onSuccess { extraction ->
                 scope.launch(Dispatchers.Main) {
-                    if (title != null) jobTitle = title
-                    if (comp != null) company = comp
-                    jobDescription = desc ?: rawText.take(3000)
+                    if (extraction.jobTitle != null) jobTitle = extraction.jobTitle
+                    if (extraction.company != null) company = extraction.company
+                    jobDescription = extraction.description
+                    isExtracting = false
+                }
+            }.onFailure {
+                scope.launch(Dispatchers.Main) {
+                    jobDescription = rawText.take(3000)
                     isExtracting = false
                 }
             }
