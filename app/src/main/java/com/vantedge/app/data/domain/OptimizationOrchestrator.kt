@@ -1,10 +1,13 @@
 package com.vantedge.app.data.domain
 
 import com.vantedge.app.data.engine.CompatibilityEngine
+import com.vantedge.app.data.engine.CompatibilityResult
 import com.vantedge.app.data.engine.EngineResult
 import com.vantedge.app.data.engine.GeneratorEngine
 import com.vantedge.app.data.model.*
 import com.vantedge.app.data.storage.HistoryStore
+import com.vantedge.app.domain.PipelineTrace
+import java.util.UUID
 
 class OptimizationOrchestrator(
     private val compatibilityEngine: CompatibilityEngine,
@@ -19,91 +22,161 @@ class OptimizationOrchestrator(
         jobDescription: String,
         improvementContext: String? = null
     ): GenerationCycle {
+        val correlationId = UUID.randomUUID().toString().take(8)
+        val startMs = System.currentTimeMillis()
+        PipelineTrace.entry("analysis_only", mapOf(
+            "correlationId" to correlationId,
+            "jobTitle" to jobTitle,
+            "company" to company
+        ))
 
-        val compatibility = runAnalysisFresh(profile, jobTitle, company, jobDescription)
+        return try {
+            val compatibility = runAnalysisFresh(profile, jobTitle, company, jobDescription)
 
-        val cycle = GenerationCycle(
-            jobTitle = jobTitle,
-            company = company,
-            jobDescription = jobDescription,
-            profileSnapshot = profile,
-            state = CycleState.AnalysisOnly(compatibility),
-            title = improvementContext,
-            isVisibleInHistory = true
-        )
+            val cycle = GenerationCycle(
+                jobTitle = jobTitle,
+                company = company,
+                jobDescription = jobDescription,
+                profileSnapshot = profile,
+                compatibility = compatibility,
+                title = improvementContext,
+                isVisibleInHistory = true
+            )
 
-        historyStore.saveCycle(cycle)
-        return cycle
+            historyStore.saveCycle(cycle)
+
+            val durationMs = System.currentTimeMillis() - startMs
+            PipelineTrace.exit("analysis_only", durationMs, mapOf(
+                "correlationId" to correlationId,
+                "status" to "success",
+                "score" to compatibility.score
+            ))
+            cycle
+        } catch (e: Exception) {
+            val durationMs = System.currentTimeMillis() - startMs
+            PipelineTrace.error("analysis_only", e.message ?: "unknown", e, correlationId = correlationId)
+            PipelineTrace.exit("analysis_only", durationMs, mapOf(
+                "correlationId" to correlationId,
+                "status" to "failure",
+                "error" to (e.message ?: "unknown")
+            ))
+            throw e
+        }
     }
 
     suspend fun runGenerationFromCycle(
         cycle: GenerationCycle,
         improvementContext: String? = null
     ): GenerationCycle {
+        val correlationId = UUID.randomUUID().toString().take(8)
+        val startMs = System.currentTimeMillis()
+        PipelineTrace.entry("generation_from_cycle", mapOf(
+            "correlationId" to correlationId,
+            "jobTitle" to cycle.jobTitle,
+            "company" to cycle.company
+        ))
 
-        val compatibility = when (val s = cycle.state) {
-            is CycleState.AnalysisOnly -> s.compatibility
-            is CycleState.GenerationReady -> s.compatibility
-            is CycleState.FullCycle -> s.compatibility
-        }
+        return try {
+            val compatibility = cycle.compatibility
+                ?: throw Exception("Cannot generate: cycle has no compatibility analysis.")
 
-        val enrichedJobDescription =
-            if (!improvementContext.isNullOrBlank())
-                "${cycle.jobDescription}\n\n---\n$improvementContext"
-            else cycle.jobDescription
+            val enrichedJobDescription =
+                if (!improvementContext.isNullOrBlank())
+                    "${cycle.jobDescription}\n\n---\n$improvementContext"
+                else cycle.jobDescription
 
-        var cvJson: String = "{\"matchedKeywords\":[]}"
-        generatorEngine.generateCv(
-            profile = cycle.profileSnapshot,
-            jobDescription = enrichedJobDescription,
-            designId = "modern",
-            schemeId = "navy",
-            jobTitle = cycle.jobTitle,
-            company = cycle.company,
-            onResult = { result ->
-                cvJson = when (result) {
-                    is EngineResult.Success -> result.data
-                    else -> "{\"matchedKeywords\":[]}"
+            var cvError: String? = null
+            var cvJson: String? = null
+            generatorEngine.generateCv(
+                profile = cycle.profileSnapshot,
+                jobDescription = enrichedJobDescription,
+                designId = "modern",
+                schemeId = "navy",
+                jobTitle = cycle.jobTitle,
+                company = cycle.company,
+                onResult = { result ->
+                    when (result) {
+                        is EngineResult.Success -> {
+                            cvJson = result.data
+                            cvError = null
+                        }
+                        is EngineResult.Failure -> {
+                            cvJson = null
+                            cvError = result.detail ?: result.type
+                        }
+                    }
+                }
+            )
+
+            var coverLetterBody: String? = null
+            var coverLetterError: String? = null
+            generatorEngine.generateCoverLetter(
+                profile = cycle.profileSnapshot,
+                jobDescription = enrichedJobDescription,
+                designId = "modern",
+                schemeId = "navy",
+                jobTitle = cycle.jobTitle,
+                company = cycle.company,
+                onResult = { result ->
+                    when (result) {
+                        is EngineResult.Success -> {
+                            coverLetterBody = result.data
+                            coverLetterError = null
+                        }
+                        is EngineResult.Failure -> {
+                            coverLetterBody = null
+                            coverLetterError = result.detail ?: result.type
+                        }
+                    }
+                }
+            )
+
+            val matchedKeywords = if (cvJson == null) {
+                emptyList()
+            } else {
+                try {
+                    val json = org.json.JSONObject(cvJson)
+                    val arr = json.getJSONArray("matchedKeywords")
+                    (0 until arr.length()).map { arr.getString(it) }
+                } catch (e: Exception) {
+                    throw IllegalStateException(
+                        "Failed to parse matchedKeywords from cvJson",
+                        e
+                    )
                 }
             }
-        )
 
-        var coverLetterBody: String = ""
-        generatorEngine.generateCoverLetter(
-            profile = cycle.profileSnapshot,
-            jobDescription = enrichedJobDescription,
-            designId = "modern",
-            schemeId = "navy",
-            jobTitle = cycle.jobTitle,
-            company = cycle.company,
-            onResult = { result ->
-                coverLetterBody = when (result) {
-                    is EngineResult.Success -> result.data
-                    else -> ""
-                }
-            }
-        )
-
-        val matchedKeywords = try {
-            val json = org.json.JSONObject(cvJson)
-            val arr = json.getJSONArray("matchedKeywords")
-            (0 until arr.length()).map { arr.getString(it) }
-        } catch (e: Exception) {
-            emptyList()
-        }
-
-        val readyCycle = cycle.copy(
-            state = CycleState.GenerationReady(
+            val readyCycle = cycle.copy(
                 compatibility = compatibility,
                 matchedKeywords = matchedKeywords,
-                coverLetterBody = coverLetterBody
-            ),
-            title = improvementContext,
-            isVisibleInHistory = true
-        )
+                cvContent = cvJson,
+                coverLetterContent = coverLetterBody,
+                cvErrorMessage = cvError,
+                coverLetterErrorMessage = coverLetterError,
+                title = improvementContext,
+                isVisibleInHistory = true
+            )
 
-        historyStore.saveCycle(readyCycle)
-        return readyCycle
+            historyStore.saveCycle(readyCycle)
+
+            val durationMs = System.currentTimeMillis() - startMs
+            PipelineTrace.exit("generation_from_cycle", durationMs, mapOf(
+                "correlationId" to correlationId,
+                "status" to "success",
+                "cvError" to (cvError ?: "none"),
+                "coverLetterError" to (coverLetterError ?: "none")
+            ))
+            readyCycle
+        } catch (e: Exception) {
+            val durationMs = System.currentTimeMillis() - startMs
+            PipelineTrace.error("generation_from_cycle", e.message ?: "unknown", e, correlationId = correlationId)
+            PipelineTrace.exit("generation_from_cycle", durationMs, mapOf(
+                "correlationId" to correlationId,
+                "status" to "failure",
+                "error" to (e.message ?: "unknown")
+            ))
+            throw e
+        }
     }
 
     suspend fun runFullPipeline(
@@ -115,73 +188,123 @@ class OptimizationOrchestrator(
         improvementContext: String? = null,
         onProgress: (PipelineStep) -> Unit = {}
     ): GenerationCycle {
+        val correlationId = UUID.randomUUID().toString().take(8)
+        val startMs = System.currentTimeMillis()
+        PipelineTrace.entry("full_pipeline", mapOf(
+            "correlationId" to correlationId,
+            "jobTitle" to jobTitle,
+            "company" to company,
+            "mode" to mode.name
+        ))
 
-        onProgress(PipelineStep.ANALYSING)
-        val compatibility = runAnalysisFresh(profile, jobTitle, company, jobDescription)
+        return try {
+            onProgress(PipelineStep.ANALYSING)
+            val compatibility = runAnalysisFresh(profile, jobTitle, company, jobDescription)
 
-        val enrichedJobDescription =
-            if (!improvementContext.isNullOrBlank())
-                "$jobDescription\n\n---\n$improvementContext"
-            else jobDescription
+            val enrichedJobDescription =
+                if (!improvementContext.isNullOrBlank())
+                    "$jobDescription\n\n---\n$improvementContext"
+                else jobDescription
 
-        onProgress(PipelineStep.GENERATING_CV)
-        var cvJson: String = "{\"matchedKeywords\":[]}"
-        generatorEngine.generateCv(
-            profile = profile,
-            jobDescription = enrichedJobDescription,
-            designId = "modern",
-            schemeId = "navy",
-            jobTitle = jobTitle,
-            company = company,
-            onResult = { result ->
-                cvJson = when (result) {
-                    is EngineResult.Success -> result.data
-                    else -> "{\"matchedKeywords\":[]}"
+            onProgress(PipelineStep.GENERATING_CV)
+            var cvError: String? = null
+            var cvJson: String? = null
+            generatorEngine.generateCv(
+                profile = profile,
+                jobDescription = enrichedJobDescription,
+                designId = "modern",
+                schemeId = "navy",
+                jobTitle = jobTitle,
+                company = company,
+                onResult = { result ->
+                    when (result) {
+                        is EngineResult.Success -> {
+                            cvJson = result.data
+                            cvError = null
+                        }
+                        is EngineResult.Failure -> {
+                            cvJson = null
+                            cvError = result.detail ?: result.type
+                        }
+                    }
+                }
+            )
+
+            onProgress(PipelineStep.GENERATING_COVER_LETTER)
+            var coverLetterBody: String? = null
+            var coverLetterError: String? = null
+            generatorEngine.generateCoverLetter(
+                profile = profile,
+                jobDescription = enrichedJobDescription,
+                designId = "modern",
+                schemeId = "navy",
+                jobTitle = jobTitle,
+                company = company,
+                onResult = { result ->
+                    when (result) {
+                        is EngineResult.Success -> {
+                            coverLetterBody = result.data
+                            coverLetterError = null
+                        }
+                        is EngineResult.Failure -> {
+                            coverLetterBody = null
+                            coverLetterError = result.detail ?: result.type
+                        }
+                    }
+                }
+            )
+
+            val matchedKeywords = if (cvJson == null) {
+                emptyList()
+            } else {
+                try {
+                    val json = org.json.JSONObject(cvJson)
+                    val arr = json.getJSONArray("matchedKeywords")
+                    (0 until arr.length()).map { arr.getString(it) }
+                } catch (e: Exception) {
+                    throw IllegalStateException(
+                        "Failed to parse matchedKeywords from cvJson",
+                        e
+                    )
                 }
             }
-        )
 
-        onProgress(PipelineStep.GENERATING_COVER_LETTER)
-        var coverLetterBody: String = ""
-        generatorEngine.generateCoverLetter(
-            profile = profile,
-            jobDescription = enrichedJobDescription,
-            designId = "modern",
-            schemeId = "navy",
-            jobTitle = jobTitle,
-            company = company,
-            onResult = { result ->
-                coverLetterBody = when (result) {
-                    is EngineResult.Success -> result.data
-                    else -> ""
-                }
-            }
-        )
-
-        val matchedKeywords = try {
-            val json = org.json.JSONObject(cvJson)
-            val arr = json.getJSONArray("matchedKeywords")
-            (0 until arr.length()).map { arr.getString(it) }
-        } catch (e: Exception) {
-            emptyList()
-        }
-
-        val cycle = GenerationCycle(
-            jobTitle = jobTitle,
-            company = company,
-            jobDescription = jobDescription,
-            profileSnapshot = profile,
-            state = CycleState.GenerationReady(
+            val cycle = GenerationCycle(
+                jobTitle = jobTitle,
+                company = company,
+                jobDescription = jobDescription,
+                profileSnapshot = profile,
                 compatibility = compatibility,
                 matchedKeywords = matchedKeywords,
-                coverLetterBody = coverLetterBody
-            ),
-            title = improvementContext,
-            isVisibleInHistory = true
-        )
+                cvContent = cvJson,
+                coverLetterContent = coverLetterBody,
+                cvErrorMessage = cvError,
+                coverLetterErrorMessage = coverLetterError,
+                title = improvementContext,
+                isVisibleInHistory = true
+            )
 
-        historyStore.saveCycle(cycle)
-        return cycle
+            historyStore.saveCycle(cycle)
+
+            val durationMs = System.currentTimeMillis() - startMs
+            PipelineTrace.exit("full_pipeline", durationMs, mapOf(
+                "correlationId" to correlationId,
+                "status" to "success",
+                "score" to compatibility.score,
+                "cvError" to (cvError ?: "none"),
+                "coverLetterError" to (coverLetterError ?: "none")
+            ))
+            cycle
+        } catch (e: Exception) {
+            val durationMs = System.currentTimeMillis() - startMs
+            PipelineTrace.error("full_pipeline", e.message ?: "unknown", e, correlationId = correlationId)
+            PipelineTrace.exit("full_pipeline", durationMs, mapOf(
+                "correlationId" to correlationId,
+                "status" to "failure",
+                "error" to (e.message ?: "unknown")
+            ))
+            throw e
+        }
     }
 
     private suspend fun runAnalysisFresh(
@@ -190,60 +313,86 @@ class OptimizationOrchestrator(
         company: String,
         jobDescription: String
     ): CompatibilityRecord {
-        var result: CompatibilityRecord? = null
-        compatibilityEngine.analyze(
+        val result = compatibilityEngine.analyze(
             profile = profile,
             jobTitle = jobTitle,
             company = company,
-            jobDescription = jobDescription,
-            onResult = { result = it }
+            jobDescription = jobDescription
         )
-        return result ?: throw Exception("Analysis failed. Check your connection.")
+        return when (result) {
+            is CompatibilityResult.Success -> result.data
+            is CompatibilityResult.Failure -> throw IllegalStateException(
+                "Compatibility analysis failed: ${result.type} - ${result.message}"
+            )
+        }
     }
 
     suspend fun applyDesign(
         cycleId: String,
         design: DesignConfig
     ): GenerationCycle {
+        val correlationId = UUID.randomUUID().toString().take(8)
+        val startMs = System.currentTimeMillis()
+        PipelineTrace.entry("apply_design", mapOf(
+            "correlationId" to correlationId,
+            "cycleId" to cycleId,
+            "designId" to design.templateId
+        ))
 
-        val cycle = historyStore.getCycleByIdSuspend(cycleId)
-            ?: throw Exception("Cycle not found.")
+        return try {
+            val cycle = historyStore.getCycleByIdSuspend(cycleId)
+                ?: throw Exception("Cycle not found.")
 
-        val readyState = cycle.state as? CycleState.GenerationReady
-            ?: throw Exception("Cycle is not ready for design.")
+            val compatibility = cycle.compatibility
+                ?: throw Exception("Cycle is not ready for design.")
 
-        val previousCycles = historyStore.getCyclesForJob(cycle.jobTitle, cycle.company)
-        val version = previousCycles.count { it.state is CycleState.FullCycle } + 1
+            val previousCycles = historyStore.getCyclesForJob(cycle.jobTitle, cycle.company)
+            val version = previousCycles.count { it.design != null } + 1
 
-        val (cvHtml, coverLetterHtml) = generatorEngine.applyDesignToContent(
-            profile = cycle.profileSnapshot,
-            jobTitle = cycle.jobTitle,
-            company = cycle.company,
-            matchedKeywordsJson = "{\"matchedKeywords\":${
-                readyState.matchedKeywords.joinToString(
-                    prefix = "[",
-                    postfix = "]",
-                    separator = ","
-                ) { "\"$it\"" }
-            }}",
-            coverLetterBody = readyState.coverLetterBody,
-            designId = design.templateId,
-            schemeId = design.colorScheme
-        )
+            val (cvHtml, coverLetterHtml) = generatorEngine.applyDesignToContent(
+                profile = cycle.profileSnapshot,
+                jobTitle = cycle.jobTitle,
+                company = cycle.company,
+                matchedKeywordsJson = "{\"matchedKeywords\":${
+                    cycle.matchedKeywords.joinToString(
+                        prefix = "[",
+                        postfix = "]",
+                        separator = ","
+                    ) { "\"$it\"" }
+                }}",
+                coverLetterBody = cycle.coverLetterContent ?: "",
+                designId = design.templateId,
+                schemeId = design.colorScheme
+            )
 
-        val fullCycle = cycle.copy(
-            state = CycleState.FullCycle(
-                compatibility = readyState.compatibility,
+            val fullCycle = cycle.copy(
+                compatibility = compatibility,
                 cvContent = cvHtml,
                 coverLetterContent = coverLetterHtml,
-                design = design
-            ),
-            version = version,
-            title = null,
-            isVisibleInHistory = true
-        )
+                design = design,
+                version = version,
+                title = null,
+                isVisibleInHistory = true
+            )
 
-        historyStore.saveCycle(fullCycle)
-        return fullCycle
+            historyStore.saveCycle(fullCycle)
+
+            val durationMs = System.currentTimeMillis() - startMs
+            PipelineTrace.exit("apply_design", durationMs, mapOf(
+                "correlationId" to correlationId,
+                "status" to "success",
+                "version" to version
+            ))
+            fullCycle
+        } catch (e: Exception) {
+            val durationMs = System.currentTimeMillis() - startMs
+            PipelineTrace.error("apply_design", e.message ?: "unknown", e, correlationId = correlationId)
+            PipelineTrace.exit("apply_design", durationMs, mapOf(
+                "correlationId" to correlationId,
+                "status" to "failure",
+                "error" to (e.message ?: "unknown")
+            ))
+            throw e
+        }
     }
 }

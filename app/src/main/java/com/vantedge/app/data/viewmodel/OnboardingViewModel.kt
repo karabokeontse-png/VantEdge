@@ -222,7 +222,7 @@ class OnboardingViewModel(
             _extractionState.value = ExtractionState.Retrying("Retrying with safer parsing...")
             
             val retryResult = extractionEngine.structureProfile(
-                rawText = rawText.take(8000),
+                rawText = rawText,
                 extractionMode = extractionMode,
                 sessionId = sessionId,
                 onProgress = { status ->

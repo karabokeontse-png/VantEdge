@@ -13,16 +13,21 @@ import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import com.vantedge.app.data.model.*
 import com.vantedge.app.data.network.AiGateway
+import com.vantedge.app.data.network.AiRequest
 import com.vantedge.app.util.HashUtils
+import com.vantedge.app.domain.PipelineTrace
 import com.vantedge.app.util.TelemetryCollector
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.InputStream
-import java.util.Stack
 import java.util.zip.ZipInputStream
 
 // ==========================================
@@ -49,6 +54,32 @@ class ProfileExtractionEngine(
         // Calibration rule: Do not adjust until ≥50 real-world samples logged.
         // Evidence required: Signal distribution plots showing clear separation.
         private const val GATE_0_PASS_THRESHOLD = 3
+
+        // ==========================================
+        // SINGLE AUTHORITATIVE TRUNCATION BOUNDARY
+        // All pipeline stages (Gate 0, callAi, Gate 2, Gate 3)
+        // operate on the same truncated input. Retries also
+        // re-enter structureProfile() with identical input.
+        // ==========================================
+        private const val MAX_INPUT_LENGTH = 12000
+
+        // ==========================================
+        // TIMEOUT CONSTANTS (PROVISIONAL)
+        // Calibration rule: Do not adjust until ≥50 real-world
+        // samples logged showing timeout rate distribution.
+        // ==========================================
+        private const val PDF_TEXT_TIMEOUT_MS = 15_000L
+        private const val OCR_TIMEOUT_MS = 30_000L
+
+        // ==========================================
+        // DETERMINISTIC ERROR CODES
+        // All pipeline failures at extractRawText boundary
+        // must map to one of these.
+        // ==========================================
+        private const val ERROR_PDF_TEXT_TIMEOUT = "PDF_TEXT_TIMEOUT"
+        private const val ERROR_OCR_TIMEOUT = "OCR_TIMEOUT"
+        private const val ERROR_FILE_READ = "FILE_READ_ERROR"
+        private const val ERROR_EMPTY_DOCUMENT = "EMPTY_DOCUMENT"
 
         // Gate 1 — CV keyword vocabulary
         private val CV_KEYWORDS = listOf(
@@ -82,38 +113,77 @@ class ProfileExtractionEngine(
 
     suspend fun extractRawText(uri: Uri): Result<String> =
         withContext(Dispatchers.IO) {
+            val rawStartMs = System.currentTimeMillis()
+            PipelineTrace.entry("extractRawText", mapOf("uri" to uri.toString()))
+            var extractionRoute = "UNKNOWN"
+
             try {
                 val mime = context.contentResolver.getType(uri) ?: ""
                 val fileName = getFileName(uri)
 
                 val text = when {
                     mime.contains("pdf", true) || fileName.endsWith(".pdf", true) -> {
-                        val parsed = extractPdf(uri)
-                        if (parsed.isBlank()) {
-                            Log.w(TAG, "DEBUG: [extractRawText] PDF extraction blank → ML Kit OCR fallback")
-                            extractPdfOcr(uri)
-                        } else parsed
+                        extractionRoute = "PDF_TEXT"
+                        try {
+                            val parsed = extractPdf(uri)
+                            if (parsed.isBlank()) {
+                                extractionRoute = "PDF_OCR"
+                                Log.w(TAG, "DEBUG: [extractRawText] PDF extraction blank → ML Kit OCR fallback")
+                                extractPdfOcr(uri)
+                            } else parsed
+                        } catch (e: TimeoutCancellationException) {
+                            extractionRoute = "PDF_TEXT_TIMEOUT"
+                            PipelineTrace.error("extractRawText", ERROR_PDF_TEXT_TIMEOUT, e)
+                            return@withContext Result.failure(Exception(ERROR_PDF_TEXT_TIMEOUT))
+                        }
                     }
                     mime.contains("word", true) ||
                             mime.contains("officedocument", true) ||
                             fileName.endsWith(".docx", true) ||
-                            fileName.endsWith(".doc", true) -> extractDocx(uri)
+                            fileName.endsWith(".doc", true) -> {
+                        extractionRoute = "DOCX"
+                        extractDocx(uri)
+                    }
                     mime.startsWith("image/", true) ||
                             fileName.endsWith(".png", true) ||
                             fileName.endsWith(".jpg", true) ||
-                            fileName.endsWith(".jpeg", true) -> extractImageOcr(uri)
-                    else -> extractPlain(uri)
+                            fileName.endsWith(".jpeg", true) -> {
+                        extractionRoute = "IMAGE_OCR"
+                        extractImageOcr(uri)
+                    }
+                    else -> {
+                        extractionRoute = "PLAIN"
+                        extractPlain(uri)
+                    }
                 }
 
                 if (text.isBlank()) {
-                    return@withContext Result.failure(Exception("EMPTY_DOCUMENT"))
+                    PipelineTrace.exit("extractRawText", System.currentTimeMillis() - rawStartMs, mapOf(
+                        "status" to "FAILURE",
+                        "reason" to ERROR_EMPTY_DOCUMENT,
+                        "method" to extractionRoute
+                    ))
+                    return@withContext Result.failure(Exception(ERROR_EMPTY_DOCUMENT))
                 }
 
+                PipelineTrace.exit("extractRawText", System.currentTimeMillis() - rawStartMs, mapOf(
+                    "status" to "SUCCESS",
+                    "charCount" to text.length,
+                    "method" to extractionRoute
+                ))
                 Result.success(text)
 
+            } catch (e: TimeoutCancellationException) {
+                PipelineTrace.error("extractRawText", ERROR_PDF_TEXT_TIMEOUT, e)
+                Result.failure(Exception(ERROR_PDF_TEXT_TIMEOUT))
             } catch (e: Exception) {
-                Log.e(TAG, "extractRawText failed", e)
-                Result.failure(Exception("FILE_READ_ERROR"))
+                val errorCode = when (e.message) {
+                    ERROR_OCR_TIMEOUT -> ERROR_OCR_TIMEOUT
+                    else -> ERROR_FILE_READ
+                }
+                Log.e(TAG, "extractRawText failed: $errorCode", e)
+                PipelineTrace.error("extractRawText", errorCode, e)
+                Result.failure(Exception(errorCode))
             }
         }
 
@@ -135,11 +205,24 @@ class ProfileExtractionEngine(
         }
 
         // ==========================================
+        // SINGLE AUTHORITATIVE TRUNCATION BOUNDARY
+        // All downstream stages operate on inputText.
+        // ==========================================
+        val inputText = rawText.take(MAX_INPUT_LENGTH)
+        val pipelineStartMs = System.currentTimeMillis()
+        PipelineTrace.entry("structureProfile", mapOf(
+            "textLength" to rawText.length,
+            "inputLength" to inputText.length,
+            "mode" to extractionMode.name,
+            "sessionId" to sessionId
+        ))
+
+        // ==========================================
         // GATE 0: POSITIVE CV STRUCTURE CLASSIFICATION
         // Transparent, per-signal instrumentation.
         // Threshold: score >= 3 to proceed.
         // ==========================================
-        val gate0Result = runGate0(rawText, extractionMode)
+        val gate0Result = runGate0(inputText, extractionMode)
 
         // ==========================================
         // TELEMETRY: Emit at Gate 0 completion.
@@ -165,13 +248,23 @@ class ProfileExtractionEngine(
 
         if (!gate0Result.accepted) {
             Log.i(TAG, "[Gate0] REJECTED — reason=${gate0Result.reason}, score=${gate0Result.score}, threshold=${gate0Result.threshold}")
+            PipelineTrace.exit("gate0", System.currentTimeMillis() - pipelineStartMs, mapOf(
+                "accepted" to false,
+                "reason" to gate0Result.reason.name,
+                "score" to gate0Result.score
+            ))
             return Result.failure(Exception("NOT_A_CV"))
         }
+        PipelineTrace.exit("gate0", System.currentTimeMillis() - pipelineStartMs, mapOf(
+            "accepted" to true,
+            "reason" to gate0Result.reason.name,
+            "score" to gate0Result.score
+        ))
 
         // ==========================================
         // GATE 1: DOCUMENT CLASSIFICATION (keyword check)
         // ==========================================
-        val keywordScore = CV_KEYWORDS.count { rawText.lowercase().contains(it) }
+        val keywordScore = CV_KEYWORDS.count { inputText.lowercase().contains(it) }
         if (keywordScore < 2) {
             Log.e(TAG, "DEBUG: [Gate 1] Document rejected. Minimal CV keywords detected.")
             return Result.failure(Exception("NOT_A_CV"))
@@ -180,7 +273,7 @@ class ProfileExtractionEngine(
         return try {
             onProgress("Analyzing document...")
 
-            val result = callAi(rawText.take(12000), onProgress)
+            val result = callAi(inputText, onProgress)
 
             // ==========================================
             // GATE 3: STRICT PARSE VALIDATION
@@ -190,9 +283,19 @@ class ProfileExtractionEngine(
                 return Result.failure(Exception("INCOMPLETE_EXTRACTION"))
             }
 
+            val durationMs = System.currentTimeMillis() - pipelineStartMs
+            PipelineTrace.exit("structureProfile", durationMs, mapOf(
+                "status" to "SUCCESS",
+                "skills" to result.skills.size,
+                "workHistory" to result.workHistory.size,
+                "education" to result.education.size,
+                "overallConfidence" to result.overallConfidence
+            ))
             Result.success(result)
 
         } catch (e: Exception) {
+            val durationMs = System.currentTimeMillis() - pipelineStartMs
+            PipelineTrace.error("structureProfile", e.message ?: "AI_EXTRACTION_FAILED", e)
             Log.e(TAG, "structureProfile failed: ${e.message}", e)
             Result.failure(Exception(e.message ?: "AI_EXTRACTION_FAILED"))
         }
@@ -329,6 +432,15 @@ class ProfileExtractionEngine(
         val decision = if (accepted) "ACCEPT" else "REJECT"
         Log.i(TAG, "[Gate0] FINAL: total=$score, threshold=$GATE_0_PASS_THRESHOLD, decision=$decision, reason=$reason, mode=$extractionMode")
 
+        PipelineTrace.dataQuality("gate0", "score", mapOf(
+            "score" to score,
+            "rawScore" to rawScore,
+            "threshold" to GATE_0_PASS_THRESHOLD,
+            "accepted" to accepted,
+            "reason" to reason.name,
+            "extractionMode" to extractionMode.name
+        ))
+
         return Gate0Result(
             score = score,
             threshold = GATE_0_PASS_THRESHOLD,
@@ -371,8 +483,13 @@ class ProfileExtractionEngine(
 
         onProgress("Extracting structured data...")
 
-        val prompt = "Extract this CV into the STRICT JSON canonical schema provided.\n\nCV:\n$rawText"
-        val response = aiGateway.generate("profile_extraction", prompt, onProgress)
+        val systemPrompt = """
+Return ONLY raw JSON matching this exact schema: {"name":"","email":"","phone":"","summary":"","skills":[],"workHistory":[{"jobTitle":"","company":"","startDate":"","endDate":"","description":""}],"education":[],"certifications":[]}. No markdown, no explanations. Use "" or [] for missing fields. Never omit keys. Ensure all brackets and braces are properly closed.
+        """.trimIndent()
+
+        val userPrompt = "Extract this CV into the STRICT JSON canonical schema provided.\n\nCV:\n$rawText"
+        val request = AiRequest(systemPrompt = systemPrompt, userPrompt = userPrompt)
+        val response = aiGateway.generate("profile_extraction", request, onProgress)
 
         if (response.isNullOrBlank()) {
             throw Exception("EMPTY_AI_RESPONSE")
@@ -388,7 +505,7 @@ class ProfileExtractionEngine(
         // ==========================================
         // GATE 2: STRUCTURAL INTEGRITY & SAFE REPAIR
         // ==========================================
-        val repairResult = safeRepairJson(jsonStr)
+        val repairResult = JsonRepairUtil.repair(jsonStr)
         if (!repairResult.isSafe) {
             Log.e(TAG, "DEBUG: [Gate 2] Integrity failed. JSON heavily truncated (over-repair risk).")
             throw Exception("JSON_STRUCTURAL_CORRUPTION")
@@ -402,59 +519,6 @@ class ProfileExtractionEngine(
             Log.e(TAG, "JSON parse/mapping failed", e)
             throw Exception("PARSE_ERROR")
         }
-    }
-
-    // ==========================================
-    // GATE 2: STRUCTURAL INTEGRITY GATE
-    // ==========================================
-
-    private data class RepairResult(val json: String, val isSafe: Boolean)
-
-    private fun safeRepairJson(raw: String): RepairResult {
-        val sb = StringBuilder()
-        val stack = Stack<Char>()
-        var inString = false
-        var escaped = false
-
-        raw.forEach { c ->
-            sb.append(c)
-            if (inString) {
-                if (escaped) {
-                    escaped = false
-                } else if (c == '\\') {
-                    escaped = true
-                } else if (c == '"') {
-                    inString = false
-                }
-            } else {
-                when (c) {
-                    '"' -> inString = true
-                    '{' -> stack.push('{')
-                    '[' -> stack.push('[')
-                    '}' -> if (stack.isNotEmpty() && stack.peek() == '{') stack.pop()
-                    ']' -> if (stack.isNotEmpty() && stack.peek() == '[') stack.pop()
-                }
-            }
-        }
-
-        val missingBrackets = stack.size
-
-        if (inString || missingBrackets > 2) {
-            return RepairResult(raw, false)
-        }
-
-        while (stack.isNotEmpty()) {
-            when (stack.pop()) {
-                '{' -> sb.append("}")
-                '[' -> sb.append("]")
-            }
-        }
-
-        val finalString = sb.toString()
-            .replace(Regex(",\\s*\\}"), "}")
-            .replace(Regex(",\\s*\\]"), "]")
-
-        return RepairResult(finalString, true)
     }
 
     // ==========================================
@@ -642,11 +706,13 @@ class ProfileExtractionEngine(
     // FILE EXTRACTION UTILITIES
     // ==========================================
 
-    private fun extractPdf(uri: Uri): String {
+    private suspend fun extractPdf(uri: Uri): String {
         val input = context.contentResolver.openInputStream(uri) ?: return ""
         val doc = com.tom_roush.pdfbox.pdmodel.PDDocument.load(input)
         return try {
-            com.tom_roush.pdfbox.text.PDFTextStripper().getText(doc)
+            withTimeout(PDF_TEXT_TIMEOUT_MS) {
+                com.tom_roush.pdfbox.text.PDFTextStripper().getText(doc)
+            }
         } finally {
             doc.close()
             input.close()
@@ -662,16 +728,25 @@ class ProfileExtractionEngine(
         try {
             val pages = minOf(renderer.pageCount, 5)
             for (i in 0 until pages) {
-                val page = renderer.openPage(i)
-                val bmp = Bitmap.createBitmap(page.width, page.height, Bitmap.Config.ARGB_8888)
-                page.render(bmp, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                var page: PdfRenderer.Page? = null
+                var bmp: Bitmap? = null
+                try {
+                    page = renderer.openPage(i)
+                    bmp = Bitmap.createBitmap(page.width, page.height, Bitmap.Config.ARGB_8888)
+                    page.render(bmp, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
 
-                val img = InputImage.fromBitmap(bmp, 0)
-                val text = Tasks.await(recognizer.process(img))
-                sb.append(text.text).append("\n")
-
-                bmp.recycle()
-                page.close()
+                    val img = InputImage.fromBitmap(bmp, 0)
+                    val task = recognizer.process(img)
+                    val result = try {
+                        Tasks.await(task, OCR_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+                    } catch (e: TimeoutException) {
+                        throw Exception(ERROR_OCR_TIMEOUT)
+                    }
+                    sb.append(result.text).append("\n")
+                } finally {
+                    bmp?.recycle()
+                    page?.close()
+                }
             }
         } finally {
             renderer.close()
@@ -688,7 +763,12 @@ class ProfileExtractionEngine(
 
         return try {
             val img = InputImage.fromBitmap(bmp, 0)
-            Tasks.await(recognizer.process(img)).text
+            val task = recognizer.process(img)
+            try {
+                Tasks.await(task, OCR_TIMEOUT_MS, TimeUnit.MILLISECONDS).text
+            } catch (e: TimeoutException) {
+                throw Exception(ERROR_OCR_TIMEOUT)
+            }
         } finally {
             bmp.recycle()
             input.close()

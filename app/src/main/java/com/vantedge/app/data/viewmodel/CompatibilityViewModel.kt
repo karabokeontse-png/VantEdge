@@ -3,6 +3,7 @@ package com.vantedge.app.data.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.vantedge.app.data.engine.CompatibilityEngine
+import com.vantedge.app.data.engine.CompatibilityResult
 import com.vantedge.app.data.engine.JobExtractionEngine
 import com.vantedge.app.data.network.AiGateway
 import com.vantedge.app.data.model.CompatibilityRecord
@@ -64,23 +65,27 @@ class CompatibilityViewModel(
         _addedCerts.value = emptySet()
 
         viewModelScope.launch(Dispatchers.IO) {
-            engine.analyze(
+            when (val result = engine.analyze(
                 profile = profile,
                 jobTitle = jobTitle,
                 company = company,
                 jobDescription = jobDescription
-            ) { record ->
-                viewModelScope.launch(Dispatchers.Main) {
-                    if (record == null) {
+            )) {
+                is CompatibilityResult.Failure -> {
+                    viewModelScope.launch(Dispatchers.Main) {
                         _uiState.value =
                             CompatibilityUiState.Error("Analysis failed. Check your connection.")
-                    } else {
-                        lastRecord = record
+                    }
+                }
+                is CompatibilityResult.Success -> {
+                    val record = result.data
+                    lastRecord = record
 
-                        viewModelScope.launch(Dispatchers.IO) {
-                            store.addRecord(record)
-                        }
+                    viewModelScope.launch(Dispatchers.IO) {
+                        store.addRecord(record)
+                    }
 
+                    viewModelScope.launch(Dispatchers.Main) {
                         _uiState.value = CompatibilityUiState.Success(record)
                     }
                 }

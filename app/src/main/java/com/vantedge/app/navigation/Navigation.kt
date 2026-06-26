@@ -88,9 +88,9 @@ fun AppNavigation(userPreferences: UserPreferences) {
     val navController = rememberNavController()
     val context = LocalContext.current
 
-    val geminiService = remember { GeminiService() }
-    val aiGateway = remember { AiGateway(geminiService) }
     val db = remember { VantEdgeDatabase.getInstance(context) }
+    val geminiService = remember { GeminiService(artifactDao = db.aiRawResponseArtifactDao()) }
+    val aiGateway = remember { AiGateway(geminiService) }
 
     val historyStore = remember { HistoryStore(db.cycleDao()) }
     val compatibilityStore = remember { CompatibilityStore() }
@@ -428,6 +428,20 @@ fun AppNavigation(userPreferences: UserPreferences) {
                     navController.popBackStack()
                 }
             )
+        }
+
+        composable("cv_preview") {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color(0xFFF5F5F5)),
+                contentAlignment = androidx.compose.ui.Alignment.Center
+            ) {
+                androidx.compose.material3.Text(
+                    text = "Preview (stub)",
+                    style = androidx.compose.material3.MaterialTheme.typography.headlineMedium
+                )
+            }
         }
 
         composable("history") {

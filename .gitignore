@@ -1,15 +1,36 @@
-# Recovery archive
+# Recovery archives and diagnostics
 /recovery_archive/
+_broken_sources/
+/all_kt.txt
+/bad_files.txt
+/classes.txt
+/decompiled_hits.txt
+/packages.txt
+/test_cv.txt
 
 # Build artifacts
 /app/build/
 /.gradle/
+/.gradle-isolated/
 */build/
+build/
 /local.properties
+*.log
+*.apk
+*.aab
+
+# Gradle distributions
+gradle-*.zip
 
 # JDK
-/jdk-17.0.19+10/
+/jdk-*/
 /jdk.tar.gz
+
+# Misc generated artifacts
+*.class
+*.dex
+*.aar
+.externalNativeBuild/
 
 # IDE
 .idea/

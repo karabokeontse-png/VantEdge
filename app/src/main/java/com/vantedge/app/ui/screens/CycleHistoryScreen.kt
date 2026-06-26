@@ -16,7 +16,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.vantedge.app.data.model.CompatibilityRecord
-import com.vantedge.app.data.model.CycleState
 import com.vantedge.app.data.model.GenerationCycle
 import com.vantedge.app.data.viewmodel.CycleViewModel
 import java.text.SimpleDateFormat
@@ -71,11 +70,7 @@ fun CycleHistoryScreen(
             ) {
                 items(cycles, key = { it.id }) { cycle ->
 
-                    val compatibility: CompatibilityRecord? = when (val s = cycle.state) {
-    is CycleState.FullCycle -> s.compatibility
-    is CycleState.AnalysisOnly -> s.compatibility
-    is CycleState.GenerationReady -> s.compatibility
-}
+                    val compatibility = cycle.compatibility
 
                     val score = compatibility?.score ?: 0
                     val scoreColor = when {

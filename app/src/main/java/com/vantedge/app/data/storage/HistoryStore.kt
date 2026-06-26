@@ -4,7 +4,6 @@ import com.google.gson.Gson
 import com.google.gson.GsonBuilder
 import com.google.gson.reflect.TypeToken
 import com.vantedge.app.data.model.ApplicationRecord
-import com.vantedge.app.data.model.CycleState
 import com.vantedge.app.data.model.GenerationCycle
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -20,8 +19,6 @@ class HistoryStore(
     private val cycleDao: CycleDao
 ) {
     private val gson: Gson = GsonBuilder()
-        .registerTypeAdapter(CycleState::class.java, CycleStateSerializer())
-        .registerTypeAdapter(CycleState::class.java, CycleStateDeserializer())
         .create()
 
     // TypeToken gives Gson full generic type fidelity — fixes List<RelevancyItem> erasure

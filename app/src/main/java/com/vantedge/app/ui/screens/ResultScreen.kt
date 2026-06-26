@@ -42,7 +42,6 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.navigation.NavController
 import com.vantedge.app.data.model.CompatibilityRecord
-import com.vantedge.app.data.model.CycleState
 import com.vantedge.app.data.model.GapItem
 import com.vantedge.app.data.model.GenerationCycle
 import com.vantedge.app.data.viewmodel.CycleViewModel
@@ -72,17 +71,12 @@ fun ResultScreen(
         is ResultScreenMode.Historical -> mode.cycle
     }
     val isHistorical = mode is ResultScreenMode.Historical
-    val fullCycle = cycle.state as? CycleState.FullCycle
-    val compatibility: CompatibilityRecord? = when (val s = cycle.state) {
-        is CycleState.FullCycle -> s.compatibility
-        is CycleState.AnalysisOnly -> s.compatibility
-        is CycleState.GenerationReady -> s.compatibility
-    }
-    val cvContent = fullCycle?.cvContent ?: ""
-    val coverLetterContent = fullCycle?.coverLetterContent ?: ""
+    val compatibility = cycle.compatibility
+    val cvContent = cycle.cvContent ?: ""
+    val coverLetterContent = cycle.coverLetterContent ?: ""
+    val hasDocuments = cycle.cvContent != null || cycle.coverLetterContent != null
     
-    // Analysis-only cycles only show the Analysis tab
-    val tabs = if (fullCycle != null)
+    val tabs = if (hasDocuments)
         listOf("CV", "Cover Letter", "Analysis")
     else
         listOf("Analysis")
@@ -192,7 +186,7 @@ fun ResultScreen(
                     }
                 },
                 actions = {
-                    if (fullCycle != null && selectedTab < 2) {
+                    if (hasDocuments && selectedTab < 2) {
                         IconButton(onClick = {
                             clipboard.setText(AnnotatedString(currentDocContent))
                             scope.launch { snackbar.showSnackbar("Copied to clipboard") }
@@ -252,9 +246,9 @@ fun ResultScreen(
             }
             // ── Content ────────────────────────────────────────────────
             Box(modifier = Modifier.weight(1f)) {
-                when (selectedTab) {
-                    0, 1 -> {
-                        val content = if (selectedTab == 0) cvContent else coverLetterContent
+                when {
+                    hasDocuments && selectedTab == 0 -> {
+                        val content = cvContent
                         if (content.isBlank()) {
                             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                 Text("No content available.", color = Color.Gray)
@@ -285,7 +279,38 @@ fun ResultScreen(
                             )
                         }
                     }
-                    // Analysis tab — always last tab index
+                    hasDocuments && selectedTab == 1 -> {
+                        val content = coverLetterContent
+                        if (content.isBlank()) {
+                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                Text("No content available.", color = Color.Gray)
+                            }
+                        } else {
+                            AndroidView(
+                                factory = { ctx ->
+                                    WebView(ctx).also { wv ->
+                                        wv.webViewClient = object : WebViewClient() {
+                                            override fun onPageFinished(view: WebView?, url: String?) {
+                                                webViewRef = view
+                                            }
+                                        }
+                                        wv.settings.javaScriptEnabled = false
+                                        wv.settings.builtInZoomControls = true
+                                        wv.settings.displayZoomControls = false
+                                        wv.settings.useWideViewPort = true
+                                        wv.settings.loadWithOverviewMode = true
+                                        wv.setBackgroundColor(android.graphics.Color.WHITE)
+                                    }
+                                },
+                                update = { wv ->
+                                    wv.loadDataWithBaseURL(null, content, "text/html", "UTF-8", null)
+                                },
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                            )
+                        }
+                    }
                     else -> {
                         if (compatibility != null) {
                             AnalysisTab(

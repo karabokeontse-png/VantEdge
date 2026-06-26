@@ -2,7 +2,6 @@ package com.vantedge.app.data.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.vantedge.app.data.model.CycleState
 import com.vantedge.app.data.model.DesignConfig
 import com.vantedge.app.data.model.GenerationCycle
 import com.vantedge.app.data.model.GenerationMode
@@ -24,16 +23,24 @@ class CycleViewModel(
     private val historyStore: HistoryStore
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow<CycleUiState>(CycleUiState.Idle)
-    val uiState: StateFlow<CycleUiState> = _uiState
+    private val _uiState = MutableStateFlow<UiState>(UiState.Idle)
+    val uiState: StateFlow<UiState> = _uiState
 
     private val _navEvent = MutableSharedFlow<CycleNavEvent>(extraBufferCapacity = 1)
     val navEvent: SharedFlow<CycleNavEvent> = _navEvent.asSharedFlow()
 
     val cyclesFlow: StateFlow<List<GenerationCycle>> = historyStore.cyclesFlow
 
-    var currentCycle: GenerationCycle? = null
-        private set
+    private val _currentCycle = MutableStateFlow<GenerationCycle?>(null)
+    val currentCycleFlow: StateFlow<GenerationCycle?> = _currentCycle
+    val currentCycle: GenerationCycle?
+        get() = _currentCycle.value
+
+    init {
+        historyStore.cyclesFlow.value
+            .lastOrNull { it.isCommitted }
+            ?.let { _currentCycle.value = it }
+    }
 
     var currentMode: GenerationMode = GenerationMode.NEW_APPLICATION
         private set
@@ -48,17 +55,17 @@ class CycleViewModel(
     private var pipelineJob: Job? = null
 
     fun resetState() {
-        _uiState.value = CycleUiState.Idle
+        _uiState.value = UiState.Idle
     }
 
     fun cancelPipeline() {
         pipelineJob?.cancel()
         pipelineJob = null
-        _uiState.value = CycleUiState.Idle
+        _uiState.value = UiState.Idle
     }
 
     fun setCurrentCycle(cycle: GenerationCycle) {
-        currentCycle = cycle
+        _currentCycle.value = cycle
     }
 
     fun deleteCycle(id: String) {
@@ -66,11 +73,11 @@ class CycleViewModel(
     }
 
     fun restoreCycle(cycle: GenerationCycle) {
-        currentCycle = cycle
-        val stage = when (cycle.state) {
-            is CycleState.AnalysisOnly -> CycleStage.ANALYZED
-            is CycleState.GenerationReady -> CycleStage.READY_FOR_GENERATION
-            is CycleState.FullCycle -> CycleStage.DOCUMENTS_GENERATED
+        _currentCycle.value = cycle
+        val stage = when {
+            cycle.design != null -> CycleStage.DOCUMENTS_GENERATED
+            cycle.cvContent != null || cycle.coverLetterContent != null -> CycleStage.READY_FOR_GENERATION
+            else -> CycleStage.ANALYZED
         }
         viewModelScope.launch {
             _navEvent.emit(CycleNavEvent.ToCycleRestored(cycle.id, stage))
@@ -78,16 +85,12 @@ class CycleViewModel(
     }
 
     fun improveFromCycle(cycle: GenerationCycle) {
-        currentCycle = cycle
+        _currentCycle.value = cycle
         savedJobTitle = cycle.jobTitle
         savedCompany = cycle.company
         savedJobDescription = cycle.jobDescription
 
-        val gaps = when (val s = cycle.state) {
-            is CycleState.FullCycle -> s.compatibility.gaps.joinToString(", ") { it.skill }
-            is CycleState.AnalysisOnly -> s.compatibility.gaps.joinToString(", ") { it.skill }
-            is CycleState.GenerationReady -> s.compatibility.gaps.map { it.skill }.joinToString(", ")
-        }
+        val gaps = cycle.compatibility?.gaps?.map { it.skill }?.joinToString(", ") ?: ""
 
         improvementContext = if (gaps.isNotBlank())
             "Previous version skill gaps to address: $gaps"
@@ -99,7 +102,7 @@ class CycleViewModel(
 
     fun startImproveFromCycle(cycle: GenerationCycle) {
         improveFromCycle(cycle)
-        _uiState.value = CycleUiState.Loading(PipelineStep.GENERATING_CV)
+        _uiState.value = UiState.Loading(PipelineStep.GENERATING_CV)
 
         pipelineJob = viewModelScope.launch(Dispatchers.IO) {
             try {
@@ -107,12 +110,18 @@ class CycleViewModel(
                     cycle = cycle,
                     improvementContext = improvementContext
                 )
-                currentCycle = readyCycle
-                _uiState.value = CycleUiState.GenerationReady(readyCycle)
+                _currentCycle.value = readyCycle
+                val cycleUiState = deriveUiState(readyCycle)
+                _uiState.value = UiState.Content(cycleUiState)
+                emitGenerationEvents(cycleUiState, readyCycle)
                 _navEvent.emit(CycleNavEvent.ToDesignPicker)
             } catch (e: Exception) {
+                if (e is kotlinx.coroutines.TimeoutCancellationException) {
+                    _uiState.value = UiState.Error("Pipeline timed out")
+                    return@launch
+                }
                 if (e is kotlinx.coroutines.CancellationException) return@launch
-                _uiState.value = CycleUiState.Error(e.message ?: "Generation failed.")
+                _uiState.value = UiState.Error(e.message ?: "Generation failed.")
             }
         }
     }
@@ -127,31 +136,15 @@ class CycleViewModel(
                 other.company.equals(cycle.company, ignoreCase = true) &&
                 other.version == currentVersion - 1
             }
-            .mapNotNull { other ->
-                when (val s = other.state) {
-                    is CycleState.FullCycle -> s.compatibility.score
-                    is CycleState.AnalysisOnly -> s.compatibility.score
-                    is CycleState.GenerationReady -> s.compatibility.score
-                }
-            }
+            .mapNotNull { other -> other.compatibility?.score }
             .firstOrNull()
     }
 
-    fun getScoreForCycle(cycle: GenerationCycle): Int? {
-        return when (val s = cycle.state) {
-            is CycleState.FullCycle -> s.compatibility.score
-            is CycleState.AnalysisOnly -> s.compatibility.score
-            is CycleState.GenerationReady -> s.compatibility.score
-        }
-    }
+    fun getScoreForCycle(cycle: GenerationCycle): Int? =
+        cycle.compatibility?.score
 
-    fun getGapsForCycle(cycle: GenerationCycle): List<String> {
-        return when (val s = cycle.state) {
-            is CycleState.FullCycle -> s.compatibility.gaps.map { it.skill }
-            is CycleState.AnalysisOnly -> s.compatibility.gaps.map { it.skill }
-            is CycleState.GenerationReady -> s.compatibility.gaps.map { it.skill }
-        }
-    }
+    fun getGapsForCycle(cycle: GenerationCycle): List<String> =
+        cycle.compatibility?.gaps?.map { it.skill } ?: emptyList()
 
     fun totalSavedApplications(): Int =
         historyStore.cyclesFlow.value.count { it.isVisibleInHistory }
@@ -197,7 +190,7 @@ class CycleViewModel(
     ) {
         pipelineJob?.cancel()
         currentMode = mode
-        _uiState.value = CycleUiState.Loading(PipelineStep.ANALYSING)
+        _uiState.value = UiState.Loading(PipelineStep.ANALYSING)
 
         pipelineJob = viewModelScope.launch(Dispatchers.IO) {
             try {
@@ -211,8 +204,8 @@ class CycleViewModel(
                             jobDescription = jobDescription,
                             improvementContext = improvementContext
                         )
-                        currentCycle = cycle
-                        _uiState.value = CycleUiState.AnalysisDone(cycle)
+                        _currentCycle.value = cycle
+                        _uiState.value = UiState.Idle
                         _navEvent.emit(CycleNavEvent.ToAnalysisResult)
                     }
 
@@ -223,8 +216,10 @@ class CycleViewModel(
                             cycle = existingCycle,
                             improvementContext = improvementContext
                         )
-                        currentCycle = readyCycle
-                        _uiState.value = CycleUiState.GenerationReady(readyCycle)
+                        _currentCycle.value = readyCycle
+                        val cycleUiState = deriveUiState(readyCycle)
+                        _uiState.value = UiState.Content(cycleUiState)
+                        emitGenerationEvents(cycleUiState, readyCycle)
                         _navEvent.emit(CycleNavEvent.ToDesignPicker)
                     }
 
@@ -237,17 +232,23 @@ class CycleViewModel(
                             mode = mode,
                             improvementContext = improvementContext,
                             onProgress = { step ->
-                                _uiState.value = CycleUiState.Loading(step)
+                                _uiState.value = UiState.Loading(step)
                             }
                         )
-                        currentCycle = cycle
-                        _uiState.value = CycleUiState.GenerationReady(cycle)
+                        _currentCycle.value = cycle
+                        val cycleUiState = deriveUiState(cycle)
+                        _uiState.value = UiState.Content(cycleUiState)
+                        emitGenerationEvents(cycleUiState, cycle)
                         _navEvent.emit(CycleNavEvent.ToDesignPicker)
                     }
                 }
             } catch (e: Exception) {
+                if (e is kotlinx.coroutines.TimeoutCancellationException) {
+                    _uiState.value = UiState.Error("Pipeline timed out")
+                    return@launch
+                }
                 if (e is kotlinx.coroutines.CancellationException) return@launch
-                _uiState.value = CycleUiState.Error(e.message ?: "Something went wrong.")
+                _uiState.value = UiState.Error(e.message ?: "Something went wrong.")
             }
         }
     }
@@ -272,7 +273,7 @@ class CycleViewModel(
 
     fun applyDesign(design: DesignConfig) {
         val cycle = currentCycle ?: return
-        _uiState.value = CycleUiState.Loading(PipelineStep.APPLYING_DESIGN)
+        _uiState.value = UiState.Loading(PipelineStep.APPLYING_DESIGN)
 
         pipelineJob = viewModelScope.launch(Dispatchers.IO) {
             try {
@@ -280,18 +281,19 @@ class CycleViewModel(
                     cycleId = cycle.id,
                     design = design
                 )
-                currentCycle = fullCycle
-                _uiState.value = CycleUiState.Success(fullCycle)
+                _currentCycle.value = fullCycle
+                val cycleUiState = deriveUiState(fullCycle)
+                _uiState.value = UiState.Content(cycleUiState)
                 _navEvent.emit(CycleNavEvent.ToFinalResult)
             } catch (e: Exception) {
-                _uiState.value = CycleUiState.Error(e.message ?: "Failed to apply design.")
+                _uiState.value = UiState.Error(e.message ?: "Failed to apply design.")
             }
         }
     }
 
     fun continueToGeneration(improvementContext: String? = null) {
         val cycle = currentCycle ?: return
-        _uiState.value = CycleUiState.Loading(PipelineStep.GENERATING_CV)
+        _uiState.value = UiState.Loading(PipelineStep.GENERATING_CV)
 
         pipelineJob = viewModelScope.launch(Dispatchers.IO) {
             try {
@@ -299,12 +301,18 @@ class CycleViewModel(
                     cycle = cycle,
                     improvementContext = improvementContext
                 )
-                currentCycle = readyCycle
-                _uiState.value = CycleUiState.GenerationReady(readyCycle)
+                _currentCycle.value = readyCycle
+                val cycleUiState = deriveUiState(readyCycle)
+                _uiState.value = UiState.Content(cycleUiState)
+                emitGenerationEvents(cycleUiState, readyCycle)
                 _navEvent.emit(CycleNavEvent.ToDesignPicker)
             } catch (e: Exception) {
+                if (e is kotlinx.coroutines.TimeoutCancellationException) {
+                    _uiState.value = UiState.Error("Pipeline timed out")
+                    return@launch
+                }
                 if (e is kotlinx.coroutines.CancellationException) return@launch
-                _uiState.value = CycleUiState.Error(e.message ?: "Generation failed.")
+                _uiState.value = UiState.Error(e.message ?: "Generation failed.")
             }
         }
     }
@@ -313,7 +321,7 @@ class CycleViewModel(
         val cycle = currentCycle ?: return
         viewModelScope.launch(Dispatchers.IO) {
             val updated = cycle.copy(isVisibleInHistory = false)
-            currentCycle = updated
+            _currentCycle.value = updated
             historyStore.saveCycle(updated)
         }
     }
@@ -322,7 +330,7 @@ class CycleViewModel(
         val cycle = currentCycle ?: return
         viewModelScope.launch(Dispatchers.IO) {
             val updated = cycle.copy(isVisibleInHistory = true)
-            currentCycle = updated
+            _currentCycle.value = updated
             historyStore.saveCycle(updated)
         }
     }
@@ -330,7 +338,53 @@ class CycleViewModel(
     suspend fun commitCurrentCycleAndWait() {
         val cycle = currentCycle ?: return
         val updated = cycle.copy(isVisibleInHistory = true)
-        currentCycle = updated
+        _currentCycle.value = updated
         historyStore.saveCycle(updated)
+    }
+
+    // ── Truth Matrix ─────────────────────────────────────────────────────
+
+    private fun deriveUiState(cycle: GenerationCycle): CycleUiState {
+        val isCvSuccess = cycle.cvContent != null && cycle.cvErrorMessage == null
+        val isCvFailure = cycle.cvContent == null && cycle.cvErrorMessage != null
+
+        val isClSuccess = cycle.coverLetterContent != null && cycle.coverLetterErrorMessage == null
+        val isClFailure = cycle.coverLetterContent == null && cycle.coverLetterErrorMessage != null
+
+        val status = when {
+            isCvSuccess && isClSuccess -> GenerationStatus.SUCCESS
+            isCvSuccess && isClFailure -> GenerationStatus.PARTIAL
+            isCvFailure && isClSuccess -> GenerationStatus.PARTIAL
+            isCvFailure && isClFailure -> GenerationStatus.FAILURE
+            else -> GenerationStatus.FAILURE
+        }
+
+        return CycleUiState(
+            cvContent = cycle.cvContent,
+            coverLetterContent = cycle.coverLetterContent,
+            status = status
+        )
+    }
+
+    private suspend fun emitGenerationEvents(uiState: CycleUiState, cycle: GenerationCycle) {
+        when (uiState.status) {
+            GenerationStatus.SUCCESS -> { }
+            GenerationStatus.PARTIAL -> {
+                val reason = if (cycle.cvErrorMessage != null && cycle.coverLetterErrorMessage == null)
+                    "CV generation encountered issues"
+                else if (cycle.cvErrorMessage == null && cycle.coverLetterErrorMessage != null)
+                    "Cover letter generation encountered issues"
+                else
+                    "Some documents could not be generated"
+                _navEvent.emit(CycleNavEvent.GenerationPartial(reason))
+            }
+            GenerationStatus.FAILURE -> {
+                val reasons = listOfNotNull(
+                    cycle.cvErrorMessage?.let { "CV: $it" },
+                    cycle.coverLetterErrorMessage?.let { "Cover letter: $it" }
+                )
+                _navEvent.emit(CycleNavEvent.GenerationFailed(reasons.joinToString("; ")))
+            }
+        }
     }
 }

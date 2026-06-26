@@ -2,18 +2,17 @@ package com.vantedge.app.data.domain
 
 import com.vantedge.app.data.engine.DocxBuilder
 import com.vantedge.app.data.infrastructure.MediaStoreExporter
-import com.vantedge.app.data.model.CycleState
 import com.vantedge.app.data.model.GenerationCycle
 
 class DocumentExportUseCase(private val exporter: MediaStoreExporter) {
 
     suspend fun export(cycle: GenerationCycle): Result<ExportReceipt> {
-        val fullState = cycle.state as? CycleState.FullCycle
+        val cvContent = cycle.cvContent
             ?: return Result.failure(
-                Exception("Export requires FullCycle state, but cycle is ${cycle.state::class.simpleName}")
+                Exception("Export requires generated CV content, but cvContent is null")
             )
 
-        val plainText = stripHtmlToPlainText(fullState.cvContent)
+        val plainText = stripHtmlToPlainText(cvContent)
         if (plainText.isBlank()) {
             return Result.failure(Exception("CV content is empty — nothing to export"))
         }

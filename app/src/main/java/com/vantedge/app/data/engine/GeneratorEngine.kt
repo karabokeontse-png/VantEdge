@@ -3,6 +3,7 @@ package com.vantedge.app.data.engine
 import android.util.Log
 import com.vantedge.app.data.model.UserProfile
 import com.vantedge.app.data.network.AiGateway
+import com.vantedge.app.data.network.AiRequest
 import org.json.JSONObject
 
 sealed class EngineResult {
@@ -23,27 +24,30 @@ class GeneratorEngine(
         company: String,
         onResult: (EngineResult) -> Unit
     ) {
-        val prompt = """
-            Analyse this job description and return ONLY a JSON object with this exact structure, nothing else:
-            {
-              "matchedKeywords": ["keyword1", "keyword2"],
-              "relevantSummary": "rewritten summary tailored to this role in 2-3 sentences",
-              "relevantExperience": ["rewritten bullet point 1", "rewritten bullet point 2"]
-            }
+        val systemPrompt = """
+Analyse this job description and return ONLY a JSON object with this exact structure, nothing else:
+{
+  "matchedKeywords": ["keyword1", "keyword2"],
+  "relevantSummary": "rewritten summary tailored to this role in 2-3 sentences",
+  "relevantExperience": ["rewritten bullet point 1", "rewritten bullet point 2"]
+}
 
-            Return ONLY the JSON. No explanation. No markdown. No code blocks.
-
-            JOB DESCRIPTION:
-            $jobDescription
-
-            PROFILE SUMMARY:
-            ${profile.summary}
-
-            PROFILE EXPERIENCE:
-            ${profile.workHistory.joinToString("\n") { "${it.role} at ${it.company}: ${it.description}" }}
+Return ONLY the JSON. No explanation. No markdown. No code blocks.
         """.trimIndent()
 
-        val result = aiGateway.generate("cv", prompt)
+        val userPrompt = """
+JOB DESCRIPTION:
+$jobDescription
+
+PROFILE SUMMARY:
+${profile.summary}
+
+PROFILE EXPERIENCE:
+${profile.workHistory.joinToString("\n") { "${it.role} at ${it.company}: ${it.description}" }}
+        """.trimIndent()
+
+        val request = AiRequest(systemPrompt = systemPrompt, userPrompt = userPrompt)
+        val result = aiGateway.generate("cv", request)
 
         if (result == null) {
             Log.e("GeneratorEngine", "CV: aiGateway returned null | EXIT Failure(provider)")
@@ -78,13 +82,20 @@ class GeneratorEngine(
                 return
             }
 
-            val json = JSONObject(clean)
+            val repairResult = JsonRepairUtil.repair(clean)
+            if (!repairResult.isSafe) {
+                Log.e("GeneratorEngine", "CV: JSON repair deemed unsafe | cleanLength=${clean.length} | EXIT Failure(schema)")
+                onResult(EngineResult.Failure("schema", "JSON structure too damaged to repair"))
+                return
+            }
+
+            val json = JSONObject(repairResult.json)
             json.getJSONArray("matchedKeywords")
-            Log.d("GeneratorEngine", "CV: JSON parse OK | extractedLength=${clean.length} | matchedKeywords=${json.getJSONArray("matchedKeywords").length()} | EXIT Success")
-            onResult(EngineResult.Success(clean))
+            Log.d("GeneratorEngine", "CV: JSON parse OK | extractedLength=${repairResult.json.length} | matchedKeywords=${json.getJSONArray("matchedKeywords").length()} | EXIT Success")
+            onResult(EngineResult.Success(repairResult.json))
 
         } catch (e: Exception) {
-            Log.e("GeneratorEngine", "CV: parse failed | error=${e.message} | extractedLength=${try { result.substring(firstOpenBrace, lastCloseBrace + 1).length } catch (_: Exception) { -1 }} | EXIT Failure(parse)")
+            Log.e("GeneratorEngine", "CV: parse failed | error=${e.message} | EXIT Failure(parse)")
             onResult(EngineResult.Failure("parse", e.message))
         }
     }
@@ -98,27 +109,30 @@ class GeneratorEngine(
         company: String,
         onResult: (EngineResult) -> Unit
     ) {
-        val prompt = """
-            Write a professional cover letter body for this role.
-            Output ONLY plain HTML paragraph tags like this: <p>paragraph text here</p>
-            No greetings line. No sign-off. No subject line. Just the body paragraphs.
-            Under 350 words. Bold any keywords from the job description like this: <b>keyword</b>
-            Tailor content specifically to prove competency for this role using the profile below.
-            Do NOT invent information not in the profile.
-            Do NOT output any HTML document structure, head tags, or body tags.
-            ONLY output <p> tags with the letter content.
-
-            PROFILE:
-            Name: ${profile.name}
-            Summary: ${profile.summary}
-            Skills: ${profile.skills.joinToString(", ")}
-            Experience: ${profile.workHistory.joinToString("\n") { "${it.role} at ${it.company}: ${it.description}" }}
-
-            JOB DESCRIPTION:
-            $jobDescription
+        val systemPrompt = """
+Write a professional cover letter body for this role.
+Output ONLY plain HTML paragraph tags like this: <p>paragraph text here</p>
+No greetings line. No sign-off. No subject line. Just the body paragraphs.
+Under 350 words. Bold any keywords from the job description like this: <b>keyword</b>
+Tailor content specifically to prove competency for this role using the profile below.
+Do NOT invent information not in the profile.
+Do NOT output any HTML document structure, head tags, or body tags.
+ONLY output <p> tags with the letter content.
         """.trimIndent()
 
-        val result = aiGateway.generate("cover_letter", prompt)
+        val userPrompt = """
+PROFILE:
+Name: ${profile.name}
+Summary: ${profile.summary}
+Skills: ${profile.skills.joinToString(", ")}
+Experience: ${profile.workHistory.joinToString("\n") { "${it.role} at ${it.company}: ${it.description}" }}
+
+JOB DESCRIPTION:
+$jobDescription
+        """.trimIndent()
+
+        val request = AiRequest(systemPrompt = systemPrompt, userPrompt = userPrompt)
+        val result = aiGateway.generate("cover_letter", request)
 
         if (result == null) {
             Log.e("GeneratorEngine", "Cover letter: aiGateway returned null | EXIT Failure(provider)")
@@ -175,35 +189,38 @@ class GeneratorEngine(
         jobDescription: String,
         onResult: (EngineResult) -> Unit
     ) {
-        val prompt = """
-            Generate an ATS-optimized CV as plain text formatted for Microsoft Word.
-            Use clear section headers in ALL CAPS.
-            Use simple bullet points with dashes (-).
-            No HTML. No markdown. Plain text only.
-            Bold keywords from the job description by wrapping them in **double asterisks**.
-            Keep it under one page worth of content.
-            Do NOT invent information not in the profile.
-
-            PROFILE:
-            Name: ${profile.name}
-            Email: ${profile.email}
-            Phone: ${profile.phone}
-            Location: ${profile.location}
-            LinkedIn: ${profile.linkedIn}
-            Summary: ${profile.summary}
-            Skills: ${profile.skills.joinToString(", ")}
-            Work History: ${profile.workHistory.joinToString("\n") {
-                "${it.role} at ${it.company} (${it.startDate} - ${it.endDate}): ${it.description}"
-            }}
-            Education: ${profile.education.joinToString(", ")}
-            Certifications: ${profile.certifications.joinToString(", ")}
-            Languages: ${profile.languages.joinToString(", ")}
-
-            JOB DESCRIPTION:
-            $jobDescription
+        val systemPrompt = """
+Generate an ATS-optimized CV as plain text formatted for Microsoft Word.
+Use clear section headers in ALL CAPS.
+Use simple bullet points with dashes (-).
+No HTML. No markdown. Plain text only.
+Bold keywords from the job description by wrapping them in **double asterisks**.
+Keep it under one page worth of content.
+Do NOT invent information not in the profile.
         """.trimIndent()
 
-        val result = aiGateway.generate("cv_docx", prompt)
+        val userPrompt = """
+PROFILE:
+Name: ${profile.name}
+Email: ${profile.email}
+Phone: ${profile.phone}
+Location: ${profile.location}
+LinkedIn: ${profile.linkedIn}
+Summary: ${profile.summary}
+Skills: ${profile.skills.joinToString(", ")}
+Work History: ${profile.workHistory.joinToString("\n") {
+    "${it.role} at ${it.company} (${it.startDate} - ${it.endDate}): ${it.description}"
+}}
+Education: ${profile.education.joinToString(", ")}
+Certifications: ${profile.certifications.joinToString(", ")}
+Languages: ${profile.languages.joinToString(", ")}
+
+JOB DESCRIPTION:
+$jobDescription
+        """.trimIndent()
+
+        val request = AiRequest(systemPrompt = systemPrompt, userPrompt = userPrompt)
+        val result = aiGateway.generate("cv_docx", request)
         if (result == null) {
             Log.e("GeneratorEngine", "CV docx: aiGateway returned null | EXIT Failure(provider)")
             onResult(EngineResult.Failure("provider", "AiGateway returned null"))

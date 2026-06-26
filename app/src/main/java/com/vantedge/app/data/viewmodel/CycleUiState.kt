@@ -1,19 +1,22 @@
 package com.vantedge.app.data.viewmodel
 
 import com.vantedge.app.data.domain.PipelineStep
-import com.vantedge.app.data.model.GenerationCycle
 
-sealed class CycleUiState {
+data class CycleUiState(
+    val cvContent: String? = null,
+    val coverLetterContent: String? = null,
+    val status: GenerationStatus = GenerationStatus.SUCCESS
+)
 
-    data object Idle : CycleUiState()
+enum class GenerationStatus {
+    SUCCESS,
+    PARTIAL,
+    FAILURE
+}
 
-    data class Loading(val step: PipelineStep = PipelineStep.ANALYSING) : CycleUiState()
-
-    data class AnalysisDone(val cycle: GenerationCycle) : CycleUiState()
-
-    data class GenerationReady(val cycle: GenerationCycle) : CycleUiState()
-
-    data class Success(val cycle: GenerationCycle) : CycleUiState()
-
-    data class Error(val message: String) : CycleUiState()
+sealed class UiState {
+    data object Idle : UiState()
+    data class Loading(val step: PipelineStep = PipelineStep.ANALYSING) : UiState()
+    data class Content(val data: CycleUiState) : UiState()
+    data class Error(val message: String) : UiState()
 }
