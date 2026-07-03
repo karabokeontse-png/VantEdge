@@ -1,0 +1,36 @@
+{
+  "categories": [
+    {
+      "category": "programming_languages",
+      "skills": ["kotlin", "java", "python", "javascript", "typescript", "c++", "c#", "go", "rust", "swift", "ruby", "php", "scala", "perl", "sql"]
+    },
+    {
+      "category": "mobile_development",
+      "skills": ["android", "ios", "react native", "flutter", "kotlin multiplatform", "jetpack compose", "swiftui", "xamarin"]
+    },
+    {
+      "category": "web_development",
+      "skills": ["html", "css", "react", "angular", "vue", "node.js", "express", "spring", "django", "rails", "asp.net"]
+    },
+    {
+      "category": "cloud_platforms",
+      "skills": ["aws", "azure", "gcp", "google cloud", "cloud", "kubernetes", "docker", "terraform"]
+    },
+    {
+      "category": "data_science",
+      "skills": ["machine learning", "deep learning", "nlp", "tensorflow", "pytorch", "data analysis", "statistics", "r", "pandas"]
+    },
+    {
+      "category": "devops",
+      "skills": ["ci/cd", "jenkins", "gitlab ci", "github actions", "ansible", "chef", "puppet", "monitoring", "prometheus", "grafana"]
+    },
+    {
+      "category": "databases",
+      "skills": ["postgresql", "mysql", "mongodb", "redis", "elasticsearch", "cassandra", "dynamodb", "oracle", "sql server"]
+    },
+    {
+      "category": "project_management",
+      "skills": ["agile", "scrum", "kanban", "jira", "confluence", "project management", "product management"]
+    }
+  ]
+}

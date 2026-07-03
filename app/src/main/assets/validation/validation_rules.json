@@ -1,0 +1,111 @@
+{
+  "compatibility": {
+    "rules": [
+      {
+        "name": "score_range",
+        "field": "score",
+        "type": "int_range",
+        "params": { "min": 0, "max": 100 },
+        "severity": "BLOCKER"
+      },
+      {
+        "name": "vacancy_score_range",
+        "field": "vacancyScore",
+        "type": "int_range",
+        "params": { "min": 0, "max": 100 },
+        "severity": "BLOCKER"
+      },
+      {
+        "name": "role_summary_required",
+        "field": "roleSummary",
+        "type": "non_blank_string",
+        "severity": "BLOCKER"
+      },
+      {
+        "name": "eligibility_summary_required",
+        "field": "eligibilitySummary",
+        "type": "non_blank_string",
+        "severity": "BLOCKER"
+      },
+      {
+        "name": "relevancy_items_array",
+        "field": "relevancyItems",
+        "type": "non_empty_array",
+        "severity": "WARNING"
+      },
+      {
+        "name": "match_percent_range",
+        "field": "relevancyItems[].matchPercent",
+        "type": "int_range",
+        "params": { "min": 0, "max": 100 },
+        "severity": "WARNING"
+      }
+    ]
+  },
+  "job_extraction": {
+    "rules": [
+      {
+        "name": "description_min_length",
+        "field": "description",
+        "type": "min_length",
+        "params": { "min_chars": 100, "min_words": 20 },
+        "severity": "BLOCKER",
+        "failure_code": "INSUFFICIENT_DESCRIPTION"
+      },
+      {
+        "name": "title_non_empty",
+        "field": "jobTitle",
+        "type": "non_blank_string",
+        "severity": "WARNING"
+      },
+      {
+        "name": "company_non_empty",
+        "field": "company",
+        "type": "non_blank_string",
+        "severity": "WARNING"
+      }
+    ]
+  },
+  "generator": {
+    "rules": [
+      {
+        "name": "matched_keywords_present",
+        "field": "matchedKeywords",
+        "type": "non_empty_array",
+        "severity": "WARNING"
+      },
+      {
+        "name": "relevant_summary_required",
+        "field": "relevantSummary",
+        "type": "non_blank_string",
+        "severity": "WARNING"
+      }
+    ]
+  },
+  "url_validation": {
+    "rules": [
+      {
+        "name": "url_provider_whitelist",
+        "field": "url",
+        "type": "domain_check",
+        "severity": "WARNING",
+        "failure_code": "UNKNOWN_PROVIDER"
+      },
+      {
+        "name": "url_has_scheme",
+        "field": "url",
+        "type": "url_scheme_check",
+        "severity": "WARNING"
+      }
+    ],
+    "verification_policy": {
+      "verified": "separately_governed_external_module",
+      "deterministic_emits": ["UNVERIFIED", "HALLUCINATED"],
+      "unknown_provider_handling": "DEGRADED"
+    }
+  },
+  "taxonomy_resolution": {
+    "unknown_entry_policy": "DEGRADED",
+    "trace_code": "UNKNOWN_TAXONOMY_ENTRY"
+  }
+}

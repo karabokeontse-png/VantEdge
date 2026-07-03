@@ -1,0 +1,28 @@
+{
+  "domains": [
+    "coursera.org",
+    "coursera.com",
+    "udemy.com",
+    "edx.org",
+    "google.com",
+    "microsoft.com",
+    "linkedin.com",
+    "aws.com",
+    "aws.amazon.com",
+    "freecodecamp.org",
+    "cisco.com",
+    "comptia.org"
+  ],
+  "providers": [
+    "Coursera",
+    "Udemy",
+    "edX",
+    "Google",
+    "Microsoft",
+    "LinkedIn Learning",
+    "AWS",
+    "freeCodeCamp",
+    "Cisco",
+    "CompTIA"
+  ]
+}
