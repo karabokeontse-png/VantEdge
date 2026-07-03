@@ -2,10 +2,9 @@ package com.vantedge.app.data.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.vantedge.app.data.engine.CompatibilityEngine
+import com.vantedge.app.data.domain.CompatibilityOrchestrator
 import com.vantedge.app.data.engine.CompatibilityResult
-import com.vantedge.app.data.engine.JobExtractionEngine
-import com.vantedge.app.data.network.AiGateway
+import com.vantedge.app.domain.extraction.JobExtractionOrchestrator
 import com.vantedge.app.data.model.CompatibilityRecord
 import com.vantedge.app.data.model.JobSourceType
 import com.vantedge.app.data.model.UserProfile
@@ -28,10 +27,9 @@ sealed class CompatibilityUiState {
 class CompatibilityViewModel(
     private val store: CompatibilityStore,
     private val userPreferences: UserPreferences,
-    private val aiGateway: AiGateway
+    private val optimizationOrchestrator: CompatibilityOrchestrator,
+    private val extractionOrchestrator: JobExtractionOrchestrator
 ) : ViewModel() {
-
-    private val engine = CompatibilityEngine(aiGateway)
 
     private val _uiState = MutableStateFlow<CompatibilityUiState>(CompatibilityUiState.Idle)
     val uiState: StateFlow<CompatibilityUiState> = _uiState
@@ -65,7 +63,7 @@ class CompatibilityViewModel(
         _addedCerts.value = emptySet()
 
         viewModelScope.launch(Dispatchers.IO) {
-            when (val result = engine.analyze(
+            when (val result = optimizationOrchestrator.runAnalysisFresh(
                 profile = profile,
                 jobTitle = jobTitle,
                 company = company,
@@ -160,7 +158,7 @@ class CompatibilityViewModel(
         onResult: (jobTitle: String?, company: String?, jobDescription: String?) -> Unit
     ) {
         viewModelScope.launch(Dispatchers.IO) {
-            val result = JobExtractionEngine().extractJob(rawText, JobSourceType.USER_INPUT)
+            val result = extractionOrchestrator.extractJob(rawText, JobSourceType.USER_INPUT)
             result.onSuccess { extraction ->
                 viewModelScope.launch(Dispatchers.Main) {
                     onResult(extraction.jobTitle, extraction.company, extraction.description)

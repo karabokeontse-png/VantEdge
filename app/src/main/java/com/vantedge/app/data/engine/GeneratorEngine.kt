@@ -2,8 +2,11 @@ package com.vantedge.app.data.engine
 
 import android.util.Log
 import com.vantedge.app.data.model.UserProfile
+import com.vantedge.app.data.engine.extraction.JsonExtractionEngine
 import com.vantedge.app.data.network.AiGateway
 import com.vantedge.app.data.network.AiRequest
+import com.vantedge.app.domain.PipelineTrace
+import com.vantedge.pipeline.validation.P2ValidationEngine
 import org.json.JSONObject
 
 sealed class EngineResult {
@@ -22,6 +25,7 @@ class GeneratorEngine(
         schemeId: String,
         jobTitle: String,
         company: String,
+        correlationId: String,
         onResult: (EngineResult) -> Unit
     ) {
         val systemPrompt = """
@@ -47,7 +51,7 @@ ${profile.workHistory.joinToString("\n") { "${it.role} at ${it.company}: ${it.de
         """.trimIndent()
 
         val request = AiRequest(systemPrompt = systemPrompt, userPrompt = userPrompt)
-        val result = aiGateway.generate("cv", request)
+        val result = aiGateway.generate("cv", request, 120_000L)
 
         if (result == null) {
             Log.e("GeneratorEngine", "CV: aiGateway returned null | EXIT Failure(provider)")
@@ -57,30 +61,17 @@ ${profile.workHistory.joinToString("\n") { "${it.role} at ${it.company}: ${it.de
 
         Log.d("GeneratorEngine", "CV: aiGateway returned non-null | rawLength=${result.length}")
 
-        val respLength = result.length
-        val respPreview = result.take(500)
-        val hasFenceClose = result.contains("```") && result.indexOf("```") != result.lastIndexOf("```")
-        val firstOpenBrace = result.indexOf("{")
-        val lastCloseBrace = result.lastIndexOf("}")
-
-        Log.d("GeneratorEngine", "CV | length=$respLength | hasFence=$hasFenceClose | braceOpen=$firstOpenBrace | braceClose=$lastCloseBrace")
-        Log.d("GeneratorEngine", "CV preview: $respPreview")
+        Log.d("GeneratorEngine", "CV preview: ${result.take(500)}")
 
         try {
-            val clean: String
-            if (hasFenceClose) {
-                val start = result.indexOf("{", result.indexOf("```"))
-                val end = result.lastIndexOf("}") + 1
-                clean = if (start != -1 && end > start) result.substring(start, end) else result
-                Log.d("GeneratorEngine", "CV: fence extraction | start=$start end=$end cleanLength=${clean.length}")
-            } else if (firstOpenBrace != -1 && lastCloseBrace > firstOpenBrace) {
-                clean = result.substring(firstOpenBrace, lastCloseBrace + 1)
-                Log.d("GeneratorEngine", "CV: brace extraction | cleanLength=${clean.length}")
-            } else {
-                Log.e("GeneratorEngine", "CV: No JSON found in response | firstBrace=$firstOpenBrace lastBrace=$lastCloseBrace fences=$hasFenceClose | EXIT Failure(schema)")
-                onResult(EngineResult.Failure("schema", "No JSON found in AI response"))
+            val extractionResult = JsonExtractionEngine.extract(result)
+            if (!extractionResult.success) {
+                Log.e("GeneratorEngine", "CV: JSON extraction failed | strategy=${extractionResult.strategy} reason=${extractionResult.failureReason} | EXIT Failure(schema)")
+                onResult(EngineResult.Failure("schema", extractionResult.failureReason ?: "No JSON found in AI response"))
                 return
             }
+
+            val clean = extractionResult.content
 
             val repairResult = JsonRepairUtil.repair(clean)
             if (!repairResult.isSafe) {
@@ -91,8 +82,20 @@ ${profile.workHistory.joinToString("\n") { "${it.role} at ${it.company}: ${it.de
 
             val json = JSONObject(repairResult.json)
             json.getJSONArray("matchedKeywords")
+            val p2OutputResult = P2ValidationEngine.validateGeneratorOutput(repairResult.json, correlationId)
+            PipelineTrace.dataQuality("P2Validation", "P2_DECISION", mapOf(
+                "correlationId" to correlationId,
+                "orchestrator" to "GeneratorEngine",
+                "decision" to p2OutputResult.decision.javaClass.simpleName
+            ), correlationId)
+            when (p2OutputResult.decision) {
+                is com.vantedge.pipeline.validation.ValidationDecision.Degraded -> {
+                    Log.w("GeneratorEngine", "[P2] Output degraded: ${p2OutputResult.decision.warnings}")
+                }
+                else -> {}
+            }
             Log.d("GeneratorEngine", "CV: JSON parse OK | extractedLength=${repairResult.json.length} | matchedKeywords=${json.getJSONArray("matchedKeywords").length()} | EXIT Success")
-            onResult(EngineResult.Success(repairResult.json))
+            onResult(EngineResult.Success(p2OutputResult.validated))
 
         } catch (e: Exception) {
             Log.e("GeneratorEngine", "CV: parse failed | error=${e.message} | EXIT Failure(parse)")
@@ -107,6 +110,7 @@ ${profile.workHistory.joinToString("\n") { "${it.role} at ${it.company}: ${it.de
         schemeId: String,
         jobTitle: String,
         company: String,
+        correlationId: String,
         onResult: (EngineResult) -> Unit
     ) {
         val systemPrompt = """
@@ -132,7 +136,7 @@ $jobDescription
         """.trimIndent()
 
         val request = AiRequest(systemPrompt = systemPrompt, userPrompt = userPrompt)
-        val result = aiGateway.generate("cover_letter", request)
+        val result = aiGateway.generate("cover_letter", request, 120_000L)
 
         if (result == null) {
             Log.e("GeneratorEngine", "Cover letter: aiGateway returned null | EXIT Failure(provider)")
@@ -187,6 +191,7 @@ $jobDescription
     suspend fun generateCvDocx(
         profile: UserProfile,
         jobDescription: String,
+        correlationId: String,
         onResult: (EngineResult) -> Unit
     ) {
         val systemPrompt = """
@@ -220,7 +225,7 @@ $jobDescription
         """.trimIndent()
 
         val request = AiRequest(systemPrompt = systemPrompt, userPrompt = userPrompt)
-        val result = aiGateway.generate("cv_docx", request)
+        val result = aiGateway.generate("cv_docx", request, 120_000L)
         if (result == null) {
             Log.e("GeneratorEngine", "CV docx: aiGateway returned null | EXIT Failure(provider)")
             onResult(EngineResult.Failure("provider", "AiGateway returned null"))

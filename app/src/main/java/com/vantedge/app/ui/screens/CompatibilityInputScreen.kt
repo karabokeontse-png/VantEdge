@@ -53,6 +53,8 @@ import com.vantedge.app.data.viewmodel.CompatibilityUiState
 import com.vantedge.app.data.viewmodel.CompatibilityViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -168,17 +170,21 @@ fun CompatibilityInputScreen(
         scope.launch {
             val result = withContext(Dispatchers.IO) {
                 try {
-                    val client = OkHttpClient.Builder()
-                        .connectTimeout(15, TimeUnit.SECONDS)
-                        .readTimeout(15, TimeUnit.SECONDS)
-                        .build()
-                    val request = Request.Builder()
-                        .url(url)
-                        .header("User-Agent", "Mozilla/5.0")
-                        .build()
-                    val response = client.newCall(request).execute()
-                    val html = response.body?.string() ?: ""
-                    Jsoup.parse(html).text()
+                    withTimeout(30_000L) {
+                        val client = OkHttpClient.Builder()
+                            .connectTimeout(15, TimeUnit.SECONDS)
+                            .readTimeout(15, TimeUnit.SECONDS)
+                            .build()
+                        val request = Request.Builder()
+                            .url(url)
+                            .header("User-Agent", "Mozilla/5.0")
+                            .build()
+                        val response = client.newCall(request).execute()
+                        val html = response.body?.string() ?: ""
+                        Jsoup.parse(html).text()
+                    }
+                } catch (e: TimeoutCancellationException) {
+                    null
                 } catch (e: Exception) {
                     null
                 }

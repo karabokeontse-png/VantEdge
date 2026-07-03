@@ -4,13 +4,17 @@ import android.os.SystemClock
 import android.util.Base64
 import android.util.Log
 import com.vantedge.app.BuildConfig
+import com.vantedge.app.data.engine.extraction.ExtractionResult
+import com.vantedge.app.data.engine.extraction.JsonExtractionEngine
 import com.vantedge.app.data.model.AiRawResponseArtifact
 import com.vantedge.app.data.storage.AiRawResponseArtifactDao
 import com.vantedge.app.domain.PipelineEvents
 import com.vantedge.app.domain.PipelineTrace
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.suspendCancellableCoroutine
 import okhttp3.Call
 import okhttp3.Callback
@@ -34,6 +38,23 @@ enum class FailureType {
     OTHER
 }
 
+enum class RequestFailureType {
+    TIMEOUT,
+    NETWORK,
+    CANCELLED,
+    TRANSPORT_FAILURE,
+    EMPTY_BODY,
+    MALFORMED_SHORT,
+    NO_JSON_STRUCTURE,
+    INVALID_JSON,
+    PROVIDER_ERROR,
+    MODEL_CONTRACT_VIOLATION,
+    HTTP_404,
+    HTTP_429,
+    HTTP_ERROR,
+    UNKNOWN
+}
+
 class AttemptMetrics {
     var firstCallbackMs: Long = 0L
     var httpCode: Int = 0
@@ -49,6 +70,8 @@ class GeminiService(
     private val artifactDao: AiRawResponseArtifactDao
 ) {
 
+    private val bridgePersistenceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
     private val client = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(90, TimeUnit.SECONDS)
@@ -61,14 +84,11 @@ class GeminiService(
     private val baseUrl = "https://openrouter.ai/api/v1/chat/completions"
 
     companion object {
+        private const val MAX_RETRY_ATTEMPTS = 3
         private const val RAW_ARTIFACT_MAX_BYTES = 100 * 1024
+        private const val RAW_BODY_LOG_LIMIT = 8192
         private const val DEGRADE_THRESHOLD = 3
         private const val DEGRADE_DURATION_MS = 15 * 60 * 1000L
-
-        private data class ExtractionResult(
-            val content: String,
-            val strategy: String
-        )
 
         private fun computePromptHash(systemPrompt: String, userPrompt: String): String {
             val digest = MessageDigest.getInstance("SHA-256")
@@ -77,53 +97,7 @@ class GeminiService(
         }
 
         private fun extractContent(raw: String): ExtractionResult {
-            try {
-                JSONObject(raw)
-                return ExtractionResult(raw, "direct_parse")
-            } catch (_: Exception) {}
-
-            val firstBrace = raw.indexOf('{')
-            val lastBrace = raw.lastIndexOf('}')
-            if (firstBrace != -1 && lastBrace != -1 && lastBrace > firstBrace) {
-                val candidate = raw.substring(firstBrace, lastBrace + 1)
-                try {
-                    JSONObject(candidate)
-                    return ExtractionResult(candidate, "balanced_brace")
-                } catch (_: Exception) {}
-            }
-
-            val noFence = raw
-                .replace("```json", "")
-                .replace("```", "")
-                .replace(Regex("""\*\*(.+?)\*\*"""), "$1")
-                .replace(Regex("""\*(.+?)\*"""), "$1")
-                .trim()
-            if (noFence != raw) {
-                try {
-                    JSONObject(noFence)
-                    return ExtractionResult(noFence, "markdown_strip")
-                } catch (_: Exception) {}
-            }
-
-            val candidates = mutableListOf<String>()
-            var idx = 0
-            while (true) {
-                val start = raw.indexOf('{', idx)
-                if (start == -1) break
-                val end = raw.indexOf('}', start)
-                if (end == -1) break
-                val segment = raw.substring(start, end + 1)
-                if (segment.length > 50) candidates.add(segment)
-                idx = end + 1
-            }
-            for (candidate in candidates.sortedByDescending { it.length }) {
-                try {
-                    JSONObject(candidate)
-                    return ExtractionResult(candidate, "substring_scan")
-                } catch (_: Exception) {}
-            }
-
-            return ExtractionResult(raw, "failed")
+            return JsonExtractionEngine.extract(raw)
         }
     }
 
@@ -149,13 +123,26 @@ class GeminiService(
         else -> "Almost done..."
     }
 
-    private fun classifyError(errorType: String?): FailureType = when (errorType) {
-        "404", "http_400", "http_401", "http_403", "http_404" -> FailureType.CONFIG_ERROR
-        "timeout", "network" -> FailureType.TIMEOUT
-        "429" -> FailureType.RATE_LIMIT
-        "cancelled" -> FailureType.TRANSIENT_TRANSPORT_FAILURE
-        "EMPTY_BODY", "MALFORMED_SHORT", "NO_JSON_STRUCTURE", "empty" -> FailureType.OTHER
-        else -> FailureType.OTHER
+    private fun classifyError(errorType: String?, stage: String = "gemini_service", correlationId: String? = null): FailureType = when (errorType) {
+        RequestFailureType.TIMEOUT.name, "timeout", "network" -> FailureType.TIMEOUT
+        RequestFailureType.NETWORK.name -> FailureType.TIMEOUT
+        RequestFailureType.CANCELLED.name, "cancelled" -> FailureType.TRANSIENT_TRANSPORT_FAILURE
+        RequestFailureType.TRANSPORT_FAILURE.name -> FailureType.OTHER
+        RequestFailureType.EMPTY_BODY.name -> FailureType.OTHER
+        RequestFailureType.MALFORMED_SHORT.name -> FailureType.OTHER
+        RequestFailureType.NO_JSON_STRUCTURE.name -> FailureType.OTHER
+        RequestFailureType.INVALID_JSON.name -> FailureType.OTHER
+        RequestFailureType.PROVIDER_ERROR.name -> FailureType.OTHER
+        RequestFailureType.MODEL_CONTRACT_VIOLATION.name -> FailureType.OTHER
+        RequestFailureType.HTTP_404.name, "404" -> FailureType.CONFIG_ERROR
+        RequestFailureType.HTTP_429.name, "429" -> FailureType.RATE_LIMIT
+        RequestFailureType.HTTP_ERROR.name -> FailureType.OTHER
+        RequestFailureType.UNKNOWN.name, "unknown" -> FailureType.OTHER
+        "empty", "http_400", "http_401", "http_403", "http_404" -> FailureType.CONFIG_ERROR
+        else -> {
+            PipelineTrace.warn(stage, "Unrecognized failure type: ${errorType ?: "null"}", correlationId)
+            FailureType.OTHER
+        }
     }
 
     suspend fun generate(
@@ -167,37 +154,7 @@ class GeminiService(
     ): String? {
         val requestStartElapsed = SystemClock.elapsedRealtime()
         val blacklistedModels = mutableSetOf<String>()
-        val result = tryChain(requestId, request, onProgress, onModelResult, isRetry = false, blacklistedModels, requestStartElapsed, budgetDeadlineMs)
-        if (result != null) return result
-
-        onProgress("Final retry in progress...")
-
-        PipelineTrace.dataQuality(
-            stage = "gemini_service",
-            issue = PipelineEvents.FINAL_RETRY_BEGIN,
-            details = mapOf(
-                "requestId" to requestId,
-                "elapsedMs" to (SystemClock.elapsedRealtime() - requestStartElapsed)
-            ),
-            correlationId = requestId
-        )
-
-        delay(2_000L)
-
-        val finalResult = tryChain(requestId, request, onProgress, onModelResult, isRetry = true, blacklistedModels, requestStartElapsed, budgetDeadlineMs)
-
-        PipelineTrace.dataQuality(
-            stage = "gemini_service",
-            issue = PipelineEvents.FINAL_RETRY_END,
-            details = mapOf(
-                "requestId" to requestId,
-                "resultIsNull" to (finalResult == null),
-                "elapsedMs" to (SystemClock.elapsedRealtime() - requestStartElapsed)
-            ),
-            correlationId = requestId
-        )
-
-        return finalResult
+        return tryChain(requestId, request, onProgress, onModelResult, blacklistedModels, requestStartElapsed, budgetDeadlineMs)
     }
 
     private suspend fun tryChain(
@@ -205,7 +162,6 @@ class GeminiService(
         request: AiRequest,
         onProgress: (String) -> Unit,
         onModelResult: (ModelAttemptResult) -> Unit,
-        isRetry: Boolean,
         blacklistedModels: MutableSet<String>,
         requestStartElapsed: Long,
         budgetDeadlineMs: Long
@@ -221,26 +177,32 @@ class GeminiService(
             issue = PipelineEvents.TRYCHAIN_START,
             details = mapOf(
                 "requestId" to requestId,
-                "isRetry" to isRetry,
                 "blacklistedCount" to blacklistedModels.size,
                 "elapsedMs" to (SystemClock.elapsedRealtime() - requestStartElapsed)
             ),
             correlationId = requestId
         )
 
-        for (index in models.indices) {
+        var capturedErrorType: String? = null
+
+        for (attempt in 1..MAX_RETRY_ATTEMPTS) {
+            if (attempt > MAX_RETRY_ATTEMPTS) break
+            val index = attempt - 1
             val model = models[index]
 
             // Budget check at iteration start (includes retry delays)
             if (SystemClock.elapsedRealtime() > budgetDeadlineMs) {
-                Log.w("GeminiService", "[$requestId] BUDGET_EXCEEDED at iteration start")
+                val remainingMs = budgetDeadlineMs - SystemClock.elapsedRealtime()
+                Log.w("GeminiService", "[$requestId] BUDGET_EXCEEDED at iteration start remainingMs=$remainingMs")
                 PipelineTrace.dataQuality(
                     stage = "gemini_service",
                     issue = PipelineEvents.TRYCHAIN_END,
                     details = mapOf(
                         "requestId" to requestId,
                         "reason" to "BUDGET_EXCEEDED",
+                        "canonicalFailureType" to "BUDGET_EXCEEDED",
                         "elapsedMs" to (SystemClock.elapsedRealtime() - requestStartElapsed),
+                        "remainingBudgetMs" to remainingMs,
                         "timeoutSource" to "BUDGET"
                     ),
                     correlationId = requestId
@@ -273,25 +235,11 @@ class GeminiService(
             onProgress(statusForAttempt(index))
 
             val modelAttempted = java.util.concurrent.atomic.AtomicBoolean(false)
-            var capturedErrorType: String? = null
 
             val metrics = AttemptMetrics()
             val attemptStart = SystemClock.elapsedRealtime()
             httpAttemptCounter++
             val transportAttempt = "HTTP-$httpAttemptCounter"
-
-            PipelineTrace.dataQuality(
-                stage = "gemini_service",
-                issue = PipelineEvents.ATTEMPT_START,
-                details = mapOf(
-                    "requestId" to requestId,
-                    "model" to model,
-                    "index" to index,
-                    "chainAttempt" to (index + 1),
-                    "elapsedMs" to (SystemClock.elapsedRealtime() - requestStartElapsed)
-                ),
-                correlationId = requestId
-            )
 
             val result = tryModel(requestId, model, index, request, metrics, transportAttempt, requestStartElapsed) { result ->
                 modelAttempted.set(true)
@@ -306,8 +254,8 @@ class GeminiService(
             val outcome = if (result != null) {
                 "SUCCESS"
             } else {
-                val errorType = if (!modelAttempted.get()) "timeout" else capturedErrorType
-                when (classifyError(errorType)) {
+                val errorType = if (!modelAttempted.get()) RequestFailureType.TIMEOUT.name else capturedErrorType
+                when (classifyError(errorType, "gemini_service", requestId)) {
                     FailureType.CONFIG_ERROR -> "CONFIG_ERROR"
                     FailureType.TIMEOUT -> "TIMEOUT"
                     FailureType.RATE_LIMIT -> "RATE_LIMIT"
@@ -356,8 +304,8 @@ class GeminiService(
                 return result
             }
 
-            val errorType = if (!modelAttempted.get()) "timeout" else capturedErrorType
-            val failureType = classifyError(errorType)
+            val errorType = if (!modelAttempted.get()) RequestFailureType.TIMEOUT.name else capturedErrorType
+            val failureType = classifyError(errorType, "gemini_service", requestId)
 
             when (failureType) {
                 FailureType.CONFIG_ERROR -> {
@@ -409,6 +357,8 @@ class GeminiService(
                 }
             }
 
+            val canonicalFailure = capturedErrorType ?: RequestFailureType.TIMEOUT.name
+
             PipelineTrace.dataQuality(
                 stage = "gemini_service",
                 issue = PipelineEvents.ATTEMPT_END,
@@ -416,6 +366,7 @@ class GeminiService(
                     "requestId" to requestId,
                     "model" to model,
                     "outcome" to outcome,
+                    "canonicalFailureType" to canonicalFailure,
                     "attemptElapsedMs" to (attemptEnd - attemptStart),
                     "elapsedMs" to (SystemClock.elapsedRealtime() - requestStartElapsed),
                     "timeoutSource" to "NONE"
@@ -426,8 +377,29 @@ class GeminiService(
             if (shouldStop) break
 
             delay(delayForAttempt(index))
+
+            // Budget check after delay to prevent sleeping past budget expiry
+            if (SystemClock.elapsedRealtime() > budgetDeadlineMs) {
+                val remainingMs = budgetDeadlineMs - SystemClock.elapsedRealtime()
+                Log.w("GeminiService", "[$requestId] BUDGET_EXCEEDED after delay remainingMs=$remainingMs")
+                PipelineTrace.dataQuality(
+                    stage = "gemini_service",
+                    issue = PipelineEvents.TRYCHAIN_END,
+                    details = mapOf(
+                        "requestId" to requestId,
+                        "reason" to "BUDGET_EXCEEDED",
+                        "canonicalFailureType" to "BUDGET_EXCEEDED",
+                        "elapsedMs" to (SystemClock.elapsedRealtime() - requestStartElapsed),
+                        "remainingBudgetMs" to remainingMs,
+                        "timeoutSource" to "BUDGET"
+                    ),
+                    correlationId = requestId
+                )
+                shouldStop = true
+            }
         }
 
+        val lastCanonicalFailure = capturedErrorType ?: RequestFailureType.TIMEOUT.name
         PipelineTrace.dataQuality(
             stage = "gemini_service",
             issue = PipelineEvents.TRYCHAIN_END,
@@ -435,6 +407,7 @@ class GeminiService(
                 "requestId" to requestId,
                 "shouldStop" to shouldStop,
                 "blacklistedCount" to blacklistedModels.size,
+                "canonicalFailureType" to lastCanonicalFailure,
                 "elapsedMs" to (SystemClock.elapsedRealtime() - requestStartElapsed),
                 "timeoutSource" to if (SystemClock.elapsedRealtime() > budgetDeadlineMs) "BUDGET" else "NONE"
             ),
@@ -454,6 +427,8 @@ class GeminiService(
         requestStartElapsed: Long,
         onModelResult: (ModelAttemptResult) -> Unit = {}
     ): String? {
+        val completionGuard = java.util.concurrent.atomic.AtomicBoolean(false)
+        var artifactPayload: AiRawResponseArtifact? = null
 
         val attemptStart = SystemClock.elapsedRealtime()
         val requestStartMs = System.currentTimeMillis()
@@ -484,7 +459,7 @@ class GeminiService(
             .post(json.toString().toRequestBody(mediaType))
             .build()
 
-        return suspendCancellableCoroutine { cont ->
+        val result: String? = suspendCancellableCoroutine { cont ->
 
             val call = client.newCall(request)
 
@@ -518,9 +493,9 @@ class GeminiService(
                             msg.contains("Socket closed", ignoreCase = true) ||
                             msg.contains("Canceled", ignoreCase = true)
                     val errorType = when {
-                        isReadTimeout -> "timeout"
-                        isTransportCancellation -> "cancelled"
-                        else -> "network"
+                        isReadTimeout -> RequestFailureType.TIMEOUT.name
+                        isTransportCancellation -> RequestFailureType.CANCELLED.name
+                        else -> RequestFailureType.NETWORK.name
                     }
 
                     PipelineTrace.dataQuality(
@@ -531,6 +506,7 @@ class GeminiService(
                             "transportAttempt" to transportAttempt,
                             "model" to model,
                             "errorType" to errorType,
+                            "canonicalFailureType" to errorType,
                             "httpElapsedMs" to (if (metrics.firstCallbackMs != 0L) metrics.firstCallbackMs - attemptStart else 0),
                             "elapsedMs" to (SystemClock.elapsedRealtime() - requestStartElapsed)
                         ),
@@ -553,35 +529,33 @@ class GeminiService(
                         cancelReason = if (isTransportCancellation) metrics.cancelReason else null
                     ))
 
-                    // Path B: transport failure — insert forensic artifact
+                    // Path B: transport failure — construct immutable forensic payload
                     val transportFailureType = when {
-                        isReadTimeout -> "TIMEOUT"
-                        isTransportCancellation -> "CANCELLED"
-                        else -> "TRANSPORT_FAILURE"
+                        isReadTimeout -> RequestFailureType.TIMEOUT.name
+                        isTransportCancellation -> RequestFailureType.CANCELLED.name
+                        else -> RequestFailureType.TRANSPORT_FAILURE.name
                     }
                     val artifactTimestamp = System.currentTimeMillis()
-                    runBlocking(Dispatchers.IO) {
-                        artifactDao.insertWithRetention(
-                            AiRawResponseArtifact(
-                                correlationId = requestId,
-                                attemptNumber = attemptIndex + 1,
-                                model = model,
-                                provider = "openrouter",
-                                timestamp = artifactTimestamp,
-                                requestStartMs = requestStartMs,
-                                requestDurationMs = artifactTimestamp - requestStartMs,
-                                httpCode = metrics.httpCode,
-                                finishReason = "TRANSPORT_FAILURE",
-                                promptHash = promptHash,
-                                bodyLength = 0,
-                                rawResponse = "",
-                                failureType = transportFailureType,
-                                failureStage = "TRANSPORT"
-                            )
-                        )
-                    }
+                    artifactPayload = AiRawResponseArtifact(
+                        correlationId = requestId,
+                        attemptNumber = attemptIndex + 1,
+                        model = model,
+                        provider = "openrouter",
+                        timestamp = artifactTimestamp,
+                        requestStartMs = requestStartMs,
+                        requestDurationMs = artifactTimestamp - requestStartMs,
+                        httpCode = metrics.httpCode,
+                        finishReason = "TRANSPORT_FAILURE",
+                        promptHash = promptHash,
+                        bodyLength = 0,
+                        rawResponse = "",
+                        failureType = transportFailureType,
+                        failureStage = "TRANSPORT"
+                    )
 
-                    if (cont.isActive) cont.resume(null)
+                    if (completionGuard.compareAndSet(false, true)) {
+                        cont.resume(null)
+                    }
                 }
 
                 override fun onResponse(call: Call, response: Response) {
@@ -607,50 +581,51 @@ class GeminiService(
                     val body = response.body?.string()
                     val code = response.code
 
-                    // Path A: HTTP response received — insert forensic artifact before any processing
+                    // Path A: HTTP response received — construct immutable forensic payload
                     val artifactTimestamp = System.currentTimeMillis()
                     val bodyStr = body ?: ""
-                    runBlocking(Dispatchers.IO) {
-                        artifactDao.insertWithRetention(
-                            AiRawResponseArtifact(
-                                correlationId = requestId,
-                                attemptNumber = attemptIndex + 1,
-                                model = model,
-                                provider = "openrouter",
-                                timestamp = artifactTimestamp,
-                                requestStartMs = requestStartMs,
-                                requestDurationMs = artifactTimestamp - requestStartMs,
-                                httpCode = code,
-                                finishReason = if (code == 200) "STOP" else "TRANSPORT_FAILURE",
-                                promptHash = promptHash,
-                                bodyLength = body?.length ?: 0,
-                                rawResponse = bodyStr,
-                                failureType = "UNKNOWN",
-                                failureStage = "NONE"
-                            )
-                        )
-                    }
+                    artifactPayload = AiRawResponseArtifact(
+                        correlationId = requestId,
+                        attemptNumber = attemptIndex + 1,
+                        model = model,
+                        provider = "openrouter",
+                        timestamp = artifactTimestamp,
+                        requestStartMs = requestStartMs,
+                        requestDurationMs = artifactTimestamp - requestStartMs,
+                        httpCode = code,
+                        finishReason = if (code == 200) "STOP" else "TRANSPORT_FAILURE",
+                        promptHash = promptHash,
+                        bodyLength = body?.length ?: 0,
+                        rawResponse = bodyStr,
+                        failureType = RequestFailureType.UNKNOWN.name,
+                        failureStage = "NONE"
+                    )
 
                     if (!cont.isActive) return
 
-                    // RAW_RESPONSE_ARTIFACT: capture full body before any downstream processing
-                    if (body != null) {
-                        val truncated = body.length > RAW_ARTIFACT_MAX_BYTES
-                        PipelineTrace.dataQuality(
-                            stage = "gemini_service",
-                            issue = PipelineEvents.RAW_RESPONSE_ARTIFACT,
-                            details = mapOf(
-                                "requestId" to requestId,
-                                "model" to model,
-                                "transportAttempt" to transportAttempt,
-                                "httpCode" to code,
-                                "rawBody" to (if (truncated) body.take(RAW_ARTIFACT_MAX_BYTES) else body),
-                                "originalLength" to body.length,
-                                "truncated" to truncated
-                            ),
-                            correlationId = requestId
-                        )
-                    }
+                    // RAW_RESPONSE_ARTIFACT: single-line log-safe emission
+                    val safeBody = body ?: ""
+                    val leadingWhitespace = safeBody.length - safeBody.trimStart().length
+                    val preview = safeBody.trimStart()
+                        .replace("\r", "\\r")
+                        .replace("\n", "\\n")
+                        .replace("\t", "\\t")
+                        .take(RAW_BODY_LOG_LIMIT)
+                    val rawPreview = if (preview.isBlank()) "<EMPTY_OR_WHITESPACE_ONLY>" else preview
+                    PipelineTrace.dataQuality(
+                        stage = "gemini_service",
+                        issue = PipelineEvents.RAW_RESPONSE_ARTIFACT,
+                        details = mapOf(
+                            "requestId" to requestId,
+                            "model" to model,
+                            "transportAttempt" to transportAttempt,
+                            "httpCode" to code,
+                            "rawLength" to safeBody.length,
+                            "leadingWhitespaceChars" to leadingWhitespace,
+                            "rawPreview" to rawPreview
+                        ),
+                        correlationId = requestId
+                    )
 
                     if (code == 200) {
                         val bodyPreview = bodyStr.take(500)
@@ -662,7 +637,7 @@ class GeminiService(
                                 requestId = requestId,
                                 model = model,
                                 attempt = attemptIndex + 1,
-                                failureType = "EMPTY_BODY",
+                                failureType = RequestFailureType.EMPTY_BODY.name,
                                 httpCode = code,
                                 durationMs = durationMs,
                                 latencyMs = latencyMs,
@@ -670,7 +645,9 @@ class GeminiService(
                                 detail = "HTTP 200 with empty body",
                                 cancelReason = null
                             ))
-                            cont.resume(null)
+                            if (completionGuard.compareAndSet(false, true)) {
+                                cont.resume(null)
+                            }
                             return
                         }
 
@@ -680,7 +657,7 @@ class GeminiService(
                                 requestId = requestId,
                                 model = model,
                                 attempt = attemptIndex + 1,
-                                failureType = "MALFORMED_SHORT",
+                                failureType = RequestFailureType.MALFORMED_SHORT.name,
                                 httpCode = code,
                                 durationMs = durationMs,
                                 latencyMs = latencyMs,
@@ -688,7 +665,9 @@ class GeminiService(
                                 detail = "HTTP 200 body too short: ${bodyStr.length} chars",
                                 cancelReason = null
                             ))
-                            cont.resume(null)
+                            if (completionGuard.compareAndSet(false, true)) {
+                                cont.resume(null)
+                            }
                             return
                         }
 
@@ -698,7 +677,7 @@ class GeminiService(
                                 requestId = requestId,
                                 model = model,
                                 attempt = attemptIndex + 1,
-                                failureType = "NO_JSON_STRUCTURE",
+                                failureType = RequestFailureType.NO_JSON_STRUCTURE.name,
                                 httpCode = code,
                                 durationMs = durationMs,
                                 latencyMs = latencyMs,
@@ -706,7 +685,9 @@ class GeminiService(
                                 detail = "HTTP 200 body contains no JSON object start",
                                 cancelReason = null
                             ))
-                            cont.resume(null)
+                            if (completionGuard.compareAndSet(false, true)) {
+                                cont.resume(null)
+                            }
                             return
                         }
 
@@ -718,7 +699,7 @@ class GeminiService(
                                 requestId = requestId,
                                 model = model,
                                 attempt = attemptIndex + 1,
-                                failureType = "invalid_json",
+                                failureType = RequestFailureType.INVALID_JSON.name,
                                 httpCode = code,
                                 durationMs = durationMs,
                                 latencyMs = latencyMs,
@@ -726,7 +707,9 @@ class GeminiService(
                                 detail = e.message,
                                 cancelReason = null
                             ))
-                            cont.resume(null)
+                            if (completionGuard.compareAndSet(false, true)) {
+                                cont.resume(null)
+                            }
                             return
                         }
 
@@ -738,7 +721,7 @@ class GeminiService(
                                 requestId = requestId,
                                 model = model,
                                 attempt = attemptIndex + 1,
-                                failureType = "provider_error",
+                                failureType = RequestFailureType.PROVIDER_ERROR.name,
                                 httpCode = code,
                                 durationMs = durationMs,
                                 latencyMs = latencyMs,
@@ -746,7 +729,9 @@ class GeminiService(
                                 detail = errorMsg,
                                 cancelReason = null
                             ))
-                            cont.resume(null)
+                            if (completionGuard.compareAndSet(false, true)) {
+                                cont.resume(null)
+                            }
                             return
                         }
 
@@ -760,7 +745,7 @@ class GeminiService(
                                 requestId = requestId,
                                 model = model,
                                 attempt = attemptIndex + 1,
-                                failureType = "MODEL_CONTRACT_VIOLATION",
+                                failureType = RequestFailureType.MODEL_CONTRACT_VIOLATION.name,
                                 failureStage = "VALIDATION",
                                 httpCode = code,
                                 durationMs = durationMs,
@@ -769,7 +754,9 @@ class GeminiService(
                                 detail = "No value for choices",
                                 cancelReason = null
                             ))
-                            cont.resume(null)
+                            if (completionGuard.compareAndSet(false, true)) {
+                                cont.resume(null)
+                            }
                             return
                         }
 
@@ -824,7 +811,9 @@ class GeminiService(
                             }
 
                             Log.d("GeminiService", "[$requestId] [$model] SUCCESS strategy=${extracted.strategy} contentLength=${extracted.content.length}")
-                            cont.resume(extracted.content)
+                            if (completionGuard.compareAndSet(false, true)) {
+                                cont.resume(extracted.content)
+                            }
 
                         } catch (e: Exception) {
                             val msg = e.message ?: ""
@@ -842,7 +831,7 @@ class GeminiService(
                                 requestId = requestId,
                                 model = model,
                                 attempt = attemptIndex + 1,
-                                failureType = "MODEL_CONTRACT_VIOLATION",
+                                failureType = RequestFailureType.MODEL_CONTRACT_VIOLATION.name,
                                 failureStage = contractStage,
                                 httpCode = code,
                                 durationMs = durationMs,
@@ -851,7 +840,9 @@ class GeminiService(
                                 detail = e.message,
                                 cancelReason = null
                             ))
-                            cont.resume(null)
+                            if (completionGuard.compareAndSet(false, true)) {
+                                cont.resume(null)
+                            }
                         }
                         return
                     }
@@ -864,7 +855,7 @@ class GeminiService(
                                 requestId = requestId,
                                 model = model,
                                 attempt = attemptIndex + 1,
-                                failureType = "404",
+                                failureType = RequestFailureType.HTTP_404.name,
                                 httpCode = code,
                                 durationMs = durationMs,
                                 latencyMs = latencyMs,
@@ -879,7 +870,7 @@ class GeminiService(
                                 requestId = requestId,
                                 model = model,
                                 attempt = attemptIndex + 1,
-                                failureType = "429",
+                                failureType = RequestFailureType.HTTP_429.name,
                                 httpCode = code,
                                 durationMs = durationMs,
                                 latencyMs = latencyMs,
@@ -894,7 +885,7 @@ class GeminiService(
                                 requestId = requestId,
                                 model = model,
                                 attempt = attemptIndex + 1,
-                                failureType = "http_$code",
+                                failureType = RequestFailureType.HTTP_ERROR.name,
                                 httpCode = code,
                                 durationMs = durationMs,
                                 latencyMs = latencyMs,
@@ -904,9 +895,20 @@ class GeminiService(
                             ))
                         }
                     }
-                    cont.resume(null)
+                    if (completionGuard.compareAndSet(false, true)) {
+                        cont.resume(null)
+                    }
                 }
             })
         }
+
+        val payload = artifactPayload
+        if (payload != null) {
+            bridgePersistenceScope.launch {
+                artifactDao.insertWithRetention(payload)
+            }
+        }
+
+        return result
     }
 }

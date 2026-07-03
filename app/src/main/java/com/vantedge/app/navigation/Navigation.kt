@@ -21,6 +21,7 @@ import com.vantedge.app.data.engine.CompatibilityEngine
 import com.vantedge.app.data.engine.GeneratorEngine
 import com.vantedge.app.data.engine.ProfileExtractionEngine
 import com.vantedge.app.data.model.AcquisitionMode
+import com.vantedge.app.data.model.AiRawResponseArtifact
 import com.vantedge.app.data.model.GenerationMode
 import com.vantedge.app.data.model.OnboardingDraft
 import com.vantedge.app.data.model.OnboardingStage
@@ -37,7 +38,10 @@ import com.vantedge.app.data.viewmodel.GeneratorViewModel
 import com.vantedge.app.data.viewmodel.OnboardingViewModel
 import com.vantedge.app.data.viewmodel.OnboardingViewModelFactory
 import com.vantedge.app.data.domain.OnboardingCommitService
+import com.vantedge.app.data.domain.CompatibilityOrchestrator
 import com.vantedge.app.data.domain.OptimizationOrchestrator
+import com.vantedge.pipeline.contract.ContractValidator
+import com.vantedge.app.domain.extraction.JobExtractionOrchestrator
 import com.vantedge.app.ui.screens.ChoosePathScreen
 import com.vantedge.app.ui.screens.CompatibilityInputScreen
 import com.vantedge.app.ui.screens.CVDesignScreen
@@ -45,6 +49,7 @@ import com.vantedge.app.ui.screens.CVGeneratorScreen
 import com.vantedge.app.ui.screens.CycleHistoryScreen
 import com.vantedge.app.ui.screens.DashboardScreen
 import com.vantedge.app.ui.screens.EditProfileScreen
+import com.vantedge.app.ui.screens.ForensicDebugScreen
 import com.vantedge.app.ui.screens.ExtractingScreen
 import com.vantedge.app.ui.screens.FinalReviewScreen
 import com.vantedge.app.ui.screens.JobInputScreen
@@ -96,11 +101,14 @@ fun AppNavigation(userPreferences: UserPreferences) {
     val compatibilityStore = remember { CompatibilityStore() }
     val onboardingDraftStore = remember { OnboardingDraftStore(context) }
 
-    val compatibilityEngine = remember { CompatibilityEngine(aiGateway) }
+    val compatibilityEngine = remember { CompatibilityEngine() }
+    val contractValidator = remember { ContractValidator() }
     val generatorEngine = remember { GeneratorEngine(aiGateway) }
 
     val orchestrator = remember {
         OptimizationOrchestrator(
+            aiGateway = aiGateway,
+            contractValidator = contractValidator,
             compatibilityEngine = compatibilityEngine,
             generatorEngine = generatorEngine,
             historyStore = historyStore
@@ -113,6 +121,10 @@ fun AppNavigation(userPreferences: UserPreferences) {
 
     val extractionEngine = remember {
         ProfileExtractionEngine(context, aiGateway, telemetryCollector)
+    }
+
+    val jobExtractionOrchestrator = remember {
+        JobExtractionOrchestrator(aiGateway)
     }
 
     val onboardingCommitService = remember {
@@ -155,7 +167,8 @@ fun AppNavigation(userPreferences: UserPreferences) {
                     return CompatibilityViewModel(
                         store = compatibilityStore,
                         userPreferences = userPreferences,
-                        aiGateway = aiGateway
+                        optimizationOrchestrator = orchestrator as CompatibilityOrchestrator,
+                        extractionOrchestrator = jobExtractionOrchestrator
                     ) as T
                 }
             }
@@ -346,6 +359,9 @@ fun AppNavigation(userPreferences: UserPreferences) {
                 },
                 onNavigateToQuickGenerate = {
                     navController.navigate("quick_generate")
+                },
+                onNavigateToForensicDebug = {
+                    navController.navigate("forensic_debug")
                 }
             )
         }
@@ -382,7 +398,7 @@ fun AppNavigation(userPreferences: UserPreferences) {
                             @Suppress("UNCHECKED_CAST")
                             return GeneratorViewModel(
                                 historyStore = historyStore,
-                                aiGateway = aiGateway
+                                orchestrator = orchestrator
                             ) as T
                         }
                     }
@@ -393,6 +409,7 @@ fun AppNavigation(userPreferences: UserPreferences) {
                 profile = profile!!,
                 designId = "modern",
                 schemeId = "navy",
+                extractionOrchestrator = jobExtractionOrchestrator,
                 onNavigateBack = {
                     navController.popBackStack()
                 },
@@ -483,6 +500,7 @@ fun AppNavigation(userPreferences: UserPreferences) {
                 viewModel = cycleViewModel,
                 profile = profile!!,
                 mode = GenerationMode.NEW_APPLICATION,
+                extractionOrchestrator = jobExtractionOrchestrator,
                 onNavigateBack = {
                     navController.popBackStack()
                 },
@@ -500,6 +518,7 @@ fun AppNavigation(userPreferences: UserPreferences) {
                 viewModel = cycleViewModel,
                 profile = profile!!,
                 mode = GenerationMode.QUICK_ANALYSIS,
+                extractionOrchestrator = jobExtractionOrchestrator,
                 onNavigateBack = {
                     navController.popBackStack()
                 },
@@ -517,6 +536,7 @@ fun AppNavigation(userPreferences: UserPreferences) {
                 viewModel = cycleViewModel,
                 profile = profile!!,
                 mode = GenerationMode.QUICK_GENERATE,
+                extractionOrchestrator = jobExtractionOrchestrator,
                 onNavigateBack = {
                     navController.popBackStack()
                 },
@@ -554,6 +574,18 @@ fun AppNavigation(userPreferences: UserPreferences) {
                     mode = ResultScreenMode.Historical(cycle)
                 )
             }
+        }
+
+        composable("forensic_debug") {
+            val dao = remember { db.aiRawResponseArtifactDao() }
+            val artifacts = remember { mutableStateOf<List<AiRawResponseArtifact>>(emptyList()) }
+            LaunchedEffect(Unit) {
+                artifacts.value = dao.getAll()
+            }
+            ForensicDebugScreen(
+                artifacts = artifacts.value,
+                onNavigateBack = { navController.popBackStack() }
+            )
         }
     }
 }

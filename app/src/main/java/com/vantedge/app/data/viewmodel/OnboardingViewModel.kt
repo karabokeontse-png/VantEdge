@@ -217,27 +217,9 @@ class OnboardingViewModel(
 
         if (result.isFailure) {
             val errorMsg = result.exceptionOrNull()?.message ?: "AI_FAILED"
-            Log.i(TAG, "[Extraction] structureProfile failed — $errorMsg")
-
-            _extractionState.value = ExtractionState.Retrying("Retrying with safer parsing...")
-            
-            val retryResult = extractionEngine.structureProfile(
-                rawText = rawText,
-                extractionMode = extractionMode,
-                sessionId = sessionId,
-                onProgress = { status ->
-                    _extractionState.value = ExtractionState.Retrying(status)
-                }
-            )
-
-            if (retryResult.isFailure) {
-                Log.i(TAG, "[Extraction] EXIT: retry failed — $errorMsg")
-                _error.value = "Extraction failed after retry"
-                _extractionState.value = ExtractionState.Failure("Unable to extract profile")
-                return
-            }
-
-            handleSuccess(token, retryResult.getOrThrow())
+            Log.i(TAG, "[Extraction] EXIT: structureProfile failed — $errorMsg")
+            _error.value = errorMsg
+            _extractionState.value = ExtractionState.Failure(errorMsg)
             return
         }
 

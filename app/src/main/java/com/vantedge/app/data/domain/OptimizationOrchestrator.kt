@@ -1,19 +1,36 @@
 package com.vantedge.app.data.domain
 
+import com.fasterxml.jackson.databind.json.JsonMapper
 import com.vantedge.app.data.engine.CompatibilityEngine
 import com.vantedge.app.data.engine.CompatibilityResult
 import com.vantedge.app.data.engine.EngineResult
 import com.vantedge.app.data.engine.GeneratorEngine
-import com.vantedge.app.data.model.*
+import com.vantedge.app.data.engine.extraction.JsonExtractionEngine
+import com.vantedge.app.data.model.DesignConfig
+import com.vantedge.app.data.model.GenerationCycle
+import com.vantedge.app.data.model.GenerationMode
+import com.vantedge.app.data.domain.PipelineStep
+import com.vantedge.app.data.model.UserProfile
+import com.vantedge.app.data.network.AiGateway
+import com.vantedge.app.data.network.AiRequest
 import com.vantedge.app.data.storage.HistoryStore
 import com.vantedge.app.domain.PipelineTrace
+import com.vantedge.pipeline.contract.ContractValidationResult
+import com.vantedge.pipeline.contract.ContractValidator
+import com.vantedge.pipeline.contract.ExtractedAiPayload
+import com.vantedge.pipeline.contract.ExtractionMetadata
+import com.vantedge.pipeline.contract.JobType
+import com.vantedge.pipeline.validation.P2ValidationEngine
+import com.vantedge.pipeline.validation.ValidationDecision
 import java.util.UUID
 
 class OptimizationOrchestrator(
+    private val aiGateway: AiGateway,
+    private val contractValidator: ContractValidator,
     private val compatibilityEngine: CompatibilityEngine,
     private val generatorEngine: GeneratorEngine,
     private val historyStore: HistoryStore
-) {
+) : CompatibilityOrchestrator {
 
     suspend fun runAnalysisOnly(
         profile: UserProfile,
@@ -31,7 +48,13 @@ class OptimizationOrchestrator(
         ))
 
         return try {
-            val compatibility = runAnalysisFresh(profile, jobTitle, company, jobDescription)
+            val analysisResult = runAnalysisFresh(profile, jobTitle, company, jobDescription)
+            val compatibility = when (analysisResult) {
+                is CompatibilityResult.Success -> analysisResult.data
+                is CompatibilityResult.Failure -> throw IllegalStateException(
+                    "Compatibility analysis failed: ${analysisResult.type} - ${analysisResult.message}"
+                )
+            }
 
             val cycle = GenerationCycle(
                 jobTitle = jobTitle,
@@ -54,7 +77,7 @@ class OptimizationOrchestrator(
             cycle
         } catch (e: Exception) {
             val durationMs = System.currentTimeMillis() - startMs
-            PipelineTrace.error("analysis_only", e.message ?: "unknown", e, correlationId = correlationId)
+            PipelineTrace.error("analysis_only", e.message ?: "unknown", e, correlationId)
             PipelineTrace.exit("analysis_only", durationMs, mapOf(
                 "correlationId" to correlationId,
                 "status" to "failure",
@@ -94,6 +117,7 @@ class OptimizationOrchestrator(
                 schemeId = "navy",
                 jobTitle = cycle.jobTitle,
                 company = cycle.company,
+                correlationId = correlationId,
                 onResult = { result ->
                     when (result) {
                         is EngineResult.Success -> {
@@ -117,6 +141,7 @@ class OptimizationOrchestrator(
                 schemeId = "navy",
                 jobTitle = cycle.jobTitle,
                 company = cycle.company,
+                correlationId = correlationId,
                 onResult = { result ->
                     when (result) {
                         is EngineResult.Success -> {
@@ -169,7 +194,7 @@ class OptimizationOrchestrator(
             readyCycle
         } catch (e: Exception) {
             val durationMs = System.currentTimeMillis() - startMs
-            PipelineTrace.error("generation_from_cycle", e.message ?: "unknown", e, correlationId = correlationId)
+            PipelineTrace.error("generation_from_cycle", e.message ?: "unknown", e, correlationId)
             PipelineTrace.exit("generation_from_cycle", durationMs, mapOf(
                 "correlationId" to correlationId,
                 "status" to "failure",
@@ -199,7 +224,13 @@ class OptimizationOrchestrator(
 
         return try {
             onProgress(PipelineStep.ANALYSING)
-            val compatibility = runAnalysisFresh(profile, jobTitle, company, jobDescription)
+            val analysisResult = runAnalysisFresh(profile, jobTitle, company, jobDescription)
+            val compatibility = when (analysisResult) {
+                is CompatibilityResult.Success -> analysisResult.data
+                is CompatibilityResult.Failure -> throw IllegalStateException(
+                    "Compatibility analysis failed: ${analysisResult.type} - ${analysisResult.message}"
+                )
+            }
 
             val enrichedJobDescription =
                 if (!improvementContext.isNullOrBlank())
@@ -216,6 +247,7 @@ class OptimizationOrchestrator(
                 schemeId = "navy",
                 jobTitle = jobTitle,
                 company = company,
+                correlationId = correlationId,
                 onResult = { result ->
                     when (result) {
                         is EngineResult.Success -> {
@@ -240,6 +272,7 @@ class OptimizationOrchestrator(
                 schemeId = "navy",
                 jobTitle = jobTitle,
                 company = company,
+                correlationId = correlationId,
                 onResult = { result ->
                     when (result) {
                         is EngineResult.Success -> {
@@ -297,7 +330,7 @@ class OptimizationOrchestrator(
             cycle
         } catch (e: Exception) {
             val durationMs = System.currentTimeMillis() - startMs
-            PipelineTrace.error("full_pipeline", e.message ?: "unknown", e, correlationId = correlationId)
+            PipelineTrace.error("full_pipeline", e.message ?: "unknown", e, correlationId)
             PipelineTrace.exit("full_pipeline", durationMs, mapOf(
                 "correlationId" to correlationId,
                 "status" to "failure",
@@ -307,23 +340,125 @@ class OptimizationOrchestrator(
         }
     }
 
-    private suspend fun runAnalysisFresh(
+    override suspend fun runAnalysisFresh(
         profile: UserProfile,
         jobTitle: String,
         company: String,
         jobDescription: String
-    ): CompatibilityRecord {
-        val result = compatibilityEngine.analyze(
-            profile = profile,
-            jobTitle = jobTitle,
-            company = company,
-            jobDescription = jobDescription
-        )
-        return when (result) {
-            is CompatibilityResult.Success -> result.data
-            is CompatibilityResult.Failure -> throw IllegalStateException(
-                "Compatibility analysis failed: ${result.type} - ${result.message}"
+    ): CompatibilityResult {
+        val correlationId = UUID.randomUUID().toString().take(8)
+        val systemPrompt = """
+You are an elite ATS analyst and career strategist. Perform a deep compatibility analysis.
+Return ONLY a valid JSON object. No markdown. No explanation. No code blocks.
+
+Schema (every field required unless noted):
+- score: int 0-100 overall compatibility
+- vacancyScore: int 0-100 hard vacancy match
+- roleSummary: string 3-4 sentence role analysis
+- eligibilitySummary: string 3-4 sentence candidate fit assessment
+- dataIntegrityNote: string (optional)
+- profileStats: { yearsExperience:int, certificationCount:int, skillCount:int, matchedCount:int, gapCount:int, dataIntegrityNote:string }
+- qualificationRatio: { matched:int, total:int, gaps:int }
+- relevancyItems[]: { name:string, type:string("skill"|"certification"), matchPercent:int 0-100, aiDescription:string, relevancyGroup:string("HIGH"|"MEDIUM"|"LOW"|"PROFESSIONAL_MISMATCH") }
+- gaps[]: { skill:string, importance:string("MANDATORY"|"IMPORTANT"|"NICE_TO_HAVE"), description:string, experienceGap:bool, platformGap:bool, courses[]:{ title:string, provider:string, url:string, category:string, hasCertificate:bool, estimatedDuration:string, relevancyPercent:int 0-100, priority:int } }
+
+STRICT RULES:
+- score is 0-100 integer: overall compatibility
+- vacancyScore is 0-100 integer: how well candidate meets the hard vacancy requirements only
+- relevancyItems must include ALL certifications and skills from the candidate profile
+- relevancyGroup must be exactly one of: "HIGH", "MEDIUM", "LOW", "PROFESSIONAL_MISMATCH"
+- gaps must only list skills/certs the candidate does NOT have but the job needs
+- importance must be exactly "MANDATORY", "IMPORTANT", or "NICE_TO_HAVE"
+- experienceGap = true if the candidate has the skill but lacks sufficient years
+- platformGap = true if the gap is about a specific platform/vendor tool
+- For each gap provide 2-3 real course recommendations
+- ONLY use real URLs from: Coursera, Udemy, edX, Google, Microsoft, LinkedIn Learning, AWS, freeCodeCamp, Cisco, CompTIA
+        """.trimIndent()
+
+        val userPrompt = """
+CANDIDATE PROFILE:
+Name: ${profile.name}
+Summary: ${profile.summary}
+Skills: ${profile.skills.joinToString(", ")}
+Certifications: ${profile.certifications.joinToString(", ")}
+Experience: ${profile.workHistory.joinToString("\n") { "${it.role} at ${it.company} (${it.startDate}-${it.endDate}): ${it.description}" }}
+Education: ${profile.education.joinToString(", ")}
+Languages: ${profile.languages.joinToString(", ")}
+
+JOB DESCRIPTION:
+$jobDescription
+        """.trimIndent()
+
+        val request = AiRequest(systemPrompt = systemPrompt, userPrompt = userPrompt)
+        val aiResponse = aiGateway.generate("compatibility", request, 120_000L)
+
+        if (aiResponse == null) {
+            return CompatibilityResult.Failure("null_response", "AI returned null")
+        }
+
+        val extractionResult = JsonExtractionEngine.extract(aiResponse)
+        if (!extractionResult.success) {
+            return CompatibilityResult.Failure(
+                "no_json",
+                extractionResult.failureReason ?: "No JSON found",
+                rawResponse = aiResponse
             )
+        }
+
+        val jsonNode = try {
+            JsonMapper.builder().build().readTree(extractionResult.content)
+        } catch (e: Exception) {
+            return CompatibilityResult.Failure("parse_error", e.message, rawResponse = aiResponse)
+        }
+
+        val metadata = ExtractionMetadata(
+            requestId = "",
+            correlationId = "",
+            modelName = "",
+            extractionStrategy = extractionResult.strategy,
+            rawLength = aiResponse.length,
+            normalizedLength = extractionResult.content.length
+        )
+        val payload = ExtractedAiPayload(
+            rawJson = aiResponse,
+            parsedObject = jsonNode,
+            metadata = metadata
+        )
+
+        return when (val validation = contractValidator.validate(JobType.VACANCY_SCORING, payload)) {
+            is ContractValidationResult.Success -> {
+                val validatedNode = validation.validatedObject.node
+                val record = compatibilityEngine.analyze(
+                    node = validatedNode,
+                    jobTitle = jobTitle,
+                    company = company,
+                    jobDescription = jobDescription
+                )
+                val p2Result = P2ValidationEngine.validateContractResult(validatedNode, correlationId)
+                PipelineTrace.dataQuality("P2Validation", "P2_DECISION", mapOf(
+                    "correlationId" to correlationId,
+                    "orchestrator" to "OptimizationOrchestrator",
+                    "decision" to p2Result.decision.javaClass.simpleName
+                ), correlationId)
+                when (p2Result.decision) {
+                    is ValidationDecision.Reject -> {
+                        CompatibilityResult.Failure("p2_rejection", p2Result.decision.reason, rawResponse = aiResponse)
+                    }
+                    else -> {
+                        if (p2Result.decision is ValidationDecision.Degraded) {
+                            PipelineTrace.warn("OptimizationOrchestrator", "P2 degraded: ${p2Result.decision.warnings}")
+                        }
+                        CompatibilityResult.Success(record)
+                    }
+                }
+            }
+            is ContractValidationResult.Failure -> {
+                CompatibilityResult.Failure(
+                    type = "contract_violation",
+                    message = validation.details,
+                    rawResponse = aiResponse
+                )
+            }
         }
     }
 
@@ -386,7 +521,7 @@ class OptimizationOrchestrator(
             fullCycle
         } catch (e: Exception) {
             val durationMs = System.currentTimeMillis() - startMs
-            PipelineTrace.error("apply_design", e.message ?: "unknown", e, correlationId = correlationId)
+            PipelineTrace.error("apply_design", e.message ?: "unknown", e, correlationId)
             PipelineTrace.exit("apply_design", durationMs, mapOf(
                 "correlationId" to correlationId,
                 "status" to "failure",
@@ -394,5 +529,63 @@ class OptimizationOrchestrator(
             ))
             throw e
         }
+    }
+
+    suspend fun generateCv(
+        profile: UserProfile,
+        jobDescription: String,
+        designId: String,
+        schemeId: String,
+        jobTitle: String,
+        company: String,
+        onResult: (EngineResult) -> Unit
+    ) {
+        val correlationId = UUID.randomUUID().toString().take(8)
+        generatorEngine.generateCv(
+            profile = profile,
+            jobDescription = jobDescription,
+            designId = designId,
+            schemeId = schemeId,
+            jobTitle = jobTitle,
+            company = company,
+            correlationId = correlationId,
+            onResult = onResult
+        )
+    }
+
+    suspend fun generateCoverLetter(
+        profile: UserProfile,
+        jobDescription: String,
+        designId: String,
+        schemeId: String,
+        jobTitle: String,
+        company: String,
+        onResult: (EngineResult) -> Unit
+    ) {
+        val correlationId = UUID.randomUUID().toString().take(8)
+        generatorEngine.generateCoverLetter(
+            profile = profile,
+            jobDescription = jobDescription,
+            designId = designId,
+            schemeId = schemeId,
+            jobTitle = jobTitle,
+            company = company,
+            correlationId = correlationId,
+            onResult = onResult
+        )
+    }
+
+    suspend fun generateCvDocx(
+        profile: UserProfile,
+        jobDescription: String,
+        onResult: (EngineResult) -> Unit
+    ) {
+        val correlationId = UUID.randomUUID().toString().take(8)
+        generatorEngine.generateCvDocx(
+            profile = profile,
+            jobDescription = jobDescription,
+            correlationId = correlationId,
+            onResult = onResult
+        )
     }
 }

@@ -10,8 +10,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.vantedge.app.data.engine.DocxBuilder
 import com.vantedge.app.data.engine.EngineResult
-import com.vantedge.app.data.engine.GeneratorEngine
-import com.vantedge.app.data.network.AiGateway
+import com.vantedge.app.data.domain.OptimizationOrchestrator
 import com.vantedge.app.data.model.ApplicationRecord
 import com.vantedge.app.data.model.UserProfile
 import com.vantedge.app.data.storage.HistoryStore
@@ -21,13 +20,12 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.util.concurrent.TimeUnit
 
 class GeneratorViewModel(
     private val historyStore: HistoryStore,
-    private val aiGateway: AiGateway
+    private val orchestrator: OptimizationOrchestrator
 ) : ViewModel() {
-
-    private val engine = GeneratorEngine(aiGateway)
 
     private val _uiState = MutableStateFlow<GeneratorUiState>(GeneratorUiState.Idle)
     val uiState: StateFlow<GeneratorUiState> = _uiState
@@ -69,12 +67,12 @@ class GeneratorViewModel(
             val cvLatch = java.util.concurrent.CountDownLatch(1)
 
             if (mode == "docx") {
-                engine.generateCvDocx(profile, jobDescription) { result ->
+                orchestrator.generateCvDocx(profile, jobDescription) { result ->
                     cvResult = result
                     cvLatch.countDown()
                 }
             } else {
-                engine.generateCv(
+                orchestrator.generateCv(
                     profile = profile,
                     jobDescription = jobDescription,
                     designId = designId,
@@ -87,7 +85,11 @@ class GeneratorViewModel(
                 }
             }
 
-            cvLatch.await()
+            val completed = cvLatch.await(30, TimeUnit.SECONDS)
+            if (!completed) {
+                _uiState.value = GeneratorUiState.Error("Generation timed out after 30 seconds")
+                return@launch
+            }
 
             val cvSuccess = when (val r = cvResult) {
                 is EngineResult.Success -> {
@@ -135,7 +137,7 @@ class GeneratorViewModel(
 
             val coverLatch = java.util.concurrent.CountDownLatch(1)
 
-            engine.generateCoverLetter(
+            orchestrator.generateCoverLetter(
                 profile = profile,
                 jobDescription = jobDescription,
                 designId = designId,
@@ -147,7 +149,11 @@ class GeneratorViewModel(
                 coverLatch.countDown()
             }
 
-            coverLatch.await()
+            val coverCompleted = coverLatch.await(30, TimeUnit.SECONDS)
+            if (!coverCompleted) {
+                _uiState.value = GeneratorUiState.Error("Generation timed out after 30 seconds")
+                return@launch
+            }
 
             val coverSuccess = when (val r = coverResult) {
                 is EngineResult.Success -> {

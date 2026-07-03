@@ -29,7 +29,8 @@ fun DashboardScreen(
     onNavigateToEditProfile: () -> Unit,
     onNavigateToNewApplication: () -> Unit,
     onNavigateToQuickAnalysis: () -> Unit,
-    onNavigateToQuickGenerate: () -> Unit
+    onNavigateToQuickGenerate: () -> Unit,
+    onNavigateToForensicDebug: () -> Unit
 ) {
 
     val context = LocalContext.current
@@ -227,6 +228,12 @@ fun DashboardScreen(
                         }
                     ) {
                         Text("Export Trace Log")
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Button(onClick = onNavigateToForensicDebug) {
+                        Text("View Forensic Logs")
                     }
                 }
             }

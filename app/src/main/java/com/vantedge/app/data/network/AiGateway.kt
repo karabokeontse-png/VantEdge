@@ -3,6 +3,7 @@ package com.vantedge.app.data.network
 import android.os.SystemClock
 import android.util.Log
 import com.vantedge.app.domain.PipelineTrace
+import kotlin.math.min
 import java.util.concurrent.atomic.AtomicInteger
 
 class AiGateway(
@@ -13,15 +14,19 @@ class AiGateway(
     }
 
     suspend fun generate(
-        tag: String,
+        pipeline: String,
         request: AiRequest,
-        onProgress: (String) -> Unit = {}
+        budgetMs: Long
     ): String? {
+        require(budgetMs > 0) {
+            "budgetMs must be explicitly provided. Infinite budgets are forbidden."
+        }
+        val effectiveBudget = min(budgetMs, 120_000L)
         val requestId = String.format("REQ-%06d", requestCounter.incrementAndGet())
         val correlationId = requestId
-        Log.i("AiGateway", "[$tag] [$requestId] ENTRY promptLength=${request.userPrompt.length}")
+        Log.i("AiGateway", "[$pipeline] [$requestId] ENTRY promptLength=${request.userPrompt.length}")
 
-        PipelineTrace.entry(tag, mapOf(
+        PipelineTrace.entry(pipeline, mapOf(
             "correlationId" to correlationId,
             "requestId" to requestId,
             "promptLength" to request.userPrompt.length,
@@ -47,7 +52,7 @@ class AiGateway(
             }
             transports += result
             PipelineTrace.dataQuality(
-                stage = tag,
+                stage = pipeline,
                 issue = "model_attempt",
                 details = mapOf(
                     "requestId" to requestId,
@@ -62,11 +67,10 @@ class AiGateway(
             )
         }
 
-        val budgetDeadlineMs = SystemClock.elapsedRealtime() + 120_000L
+        val budgetDeadlineMs = SystemClock.elapsedRealtime() + effectiveBudget
         val result = geminiService.generate(
             requestId = requestId,
             request = request,
-            onProgress = onProgress,
             onModelResult = onModelResult,
             budgetDeadlineMs = budgetDeadlineMs
         )
@@ -75,10 +79,10 @@ class AiGateway(
 
         // Build AiResult internally for Phase 3A validation
         val aiResult = if (result != null) {
-            Log.i("AiGateway", "[$tag] [$requestId] EXIT duration=${totalElapsed}ms success=true resultLength=${result.length}")
+            Log.i("AiGateway", "[$pipeline] [$requestId] EXIT duration=${totalElapsed}ms success=true resultLength=${result.length}")
 
             PipelineTrace.exit(
-                stage = tag,
+                stage = pipeline,
                 durationMs = totalElapsed,
                 summary = mapOf(
                     "correlationId" to correlationId,
@@ -94,16 +98,16 @@ class AiGateway(
 
             AiResult.Success(result)
         } else {
-            Log.i("AiGateway", "[$tag] [$requestId] EXIT duration=${totalElapsed}ms success=false")
+            Log.i("AiGateway", "[$pipeline] [$requestId] EXIT duration=${totalElapsed}ms success=false")
 
             PipelineTrace.error(
-                stage = tag,
+                stage = pipeline,
                 reason = "All model attempts exhausted without success",
                 correlationId = correlationId
             )
 
             PipelineTrace.exit(
-                stage = tag,
+                stage = pipeline,
                 durationMs = totalElapsed,
                 summary = mapOf(
                     "correlationId" to correlationId,
@@ -136,16 +140,9 @@ class AiGateway(
             )
         }
 
-        Log.d("AiGateway", "[$tag] [$requestId] AiResult=$aiResult")
+        Log.d("AiGateway", "[$pipeline] [$requestId] AiResult=$aiResult")
 
         return result
-    }
-
-    suspend fun generate(
-        request: AiRequest,
-        onProgress: (String) -> Unit = {}
-    ): String? {
-        return generate("default", request, onProgress)
     }
 
     // PRIVATE MAPPER

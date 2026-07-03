@@ -1,5 +1,7 @@
 package com.vantedge.app.data.engine
 
+import org.json.JSONArray
+import org.json.JSONObject
 import java.util.Stack
 
 object JsonRepairUtil {
@@ -33,9 +35,7 @@ object JsonRepairUtil {
             }
         }
 
-        val missingBrackets = stack.size
-
-        if (inString || missingBrackets > 2) {
+        if (inString) {
             return RepairResult(raw, false)
         }
 
@@ -48,7 +48,25 @@ object JsonRepairUtil {
 
         val finalString = removeTrailingCommas(sb.toString())
 
-        return RepairResult(finalString, true)
+        return validate(finalString, raw)
+    }
+
+    private fun validate(result: String, original: String): RepairResult {
+        try {
+            val obj = JSONObject(result)
+            if (obj.length() > 0) {
+                return RepairResult(result, true)
+            }
+        } catch (_: Exception) {}
+
+        try {
+            val arr = JSONArray(result)
+            if (arr.length() > 0) {
+                return RepairResult(result, true)
+            }
+        } catch (_: Exception) {}
+
+        return RepairResult(original, false)
     }
 
     private fun removeTrailingCommas(json: String): String {

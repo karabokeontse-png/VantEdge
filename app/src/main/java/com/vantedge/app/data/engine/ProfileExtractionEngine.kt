@@ -12,11 +12,13 @@ import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import com.vantedge.app.data.model.*
+import com.vantedge.app.data.engine.extraction.JsonExtractionEngine
 import com.vantedge.app.data.network.AiGateway
 import com.vantedge.app.data.network.AiRequest
 import com.vantedge.app.util.HashUtils
 import com.vantedge.app.domain.PipelineTrace
 import com.vantedge.app.util.TelemetryCollector
+import com.vantedge.pipeline.validation.P2ValidationEngine
 import kotlinx.collections.immutable.persistentListOf
 import kotlinx.collections.immutable.toImmutableList
 import kotlinx.coroutines.Dispatchers
@@ -278,10 +280,32 @@ class ProfileExtractionEngine(
             // ==========================================
             // GATE 3: STRICT PARSE VALIDATION
             // ==========================================
-            if (!isValidExtraction(result)) {
-                Log.e(TAG, "DEBUG: [Gate 3] Validation failed. Missing critical semantic arrays.")
-                return Result.failure(Exception("INCOMPLETE_EXTRACTION"))
+            val validationResult = ExtractionValidator.validateProfile(result)
+            if (!validationResult.passed) {
+                val blockerFields = validationResult.errors
+                    .filter { it.severity == ValidationSeverity.BLOCKER }
+                    .joinToString(", ") { it.field }
+                Log.e(TAG, "DEBUG: [Gate 3] Validation failed. Blockers: $blockerFields")
+                return Result.failure(Exception("VALIDATION_FAILED: $blockerFields"))
             }
+
+            val p2ProfileResult = P2ValidationEngine.validateProfileExtraction(result, sessionId)
+            PipelineTrace.dataQuality("P2Validation", "P2_DECISION", mapOf(
+                "correlationId" to sessionId,
+                "orchestrator" to "ProfileExtractionEngine",
+                "decision" to p2ProfileResult.decision.javaClass.simpleName
+            ), sessionId)
+            when (p2ProfileResult.decision) {
+                is com.vantedge.pipeline.validation.ValidationDecision.Degraded -> {
+                    Log.w(TAG, "[P2] Profile degraded: ${p2ProfileResult.decision.warnings}")
+                }
+                else -> {}
+            }
+
+            val enrichedResult = if (validationResult.warnings.isNotEmpty()) {
+                val warningMessages = validationResult.warnings.map { it.message }
+                result.copy(warnings = (result.warnings + warningMessages).toImmutableList())
+            } else result
 
             val durationMs = System.currentTimeMillis() - pipelineStartMs
             PipelineTrace.exit("structureProfile", durationMs, mapOf(
@@ -291,7 +315,7 @@ class ProfileExtractionEngine(
                 "education" to result.education.size,
                 "overallConfidence" to result.overallConfidence
             ))
-            Result.success(result)
+            Result.success(enrichedResult)
 
         } catch (e: Exception) {
             val durationMs = System.currentTimeMillis() - pipelineStartMs
@@ -472,9 +496,9 @@ class ProfileExtractionEngine(
             .joinToString("\n")
     }
 
-    // ==========================================
-    // AI CALL + STRUCTURAL INTEGRITY GATE
-    // ==========================================
+// ==========================================
+// AI CALL + STRUCTURAL INTEGRITY GATE
+// ==========================================
 
     private suspend fun callAi(
         rawText: String,
@@ -484,23 +508,64 @@ class ProfileExtractionEngine(
         onProgress("Extracting structured data...")
 
         val systemPrompt = """
-Return ONLY raw JSON matching this exact schema: {"name":"","email":"","phone":"","summary":"","skills":[],"workHistory":[{"jobTitle":"","company":"","startDate":"","endDate":"","description":""}],"education":[],"certifications":[]}. No markdown, no explanations. Use "" or [] for missing fields. Never omit keys. Ensure all brackets and braces are properly closed.
+You are a precise CV extraction engine. Return ONLY valid JSON — no markdown, no explanations, no code fences.
+
+Schema (extract ONLY verbatim — never invent, infer, or expand):
+{
+  "name": "Full name exactly as written",
+  "email": "Email address if present",
+  "phone": "Phone number if present",
+  "summary": "Professional summary (max 500 chars)",
+  "skills": ["Only skills explicitly listed — never invent or infer"],
+  "workHistory": [
+    {
+      "jobTitle": "Title exactly as written",
+      "company": "Company exactly as written",
+      "startDate": "Start exactly as written (month/year)",
+      "endDate": "End exactly as written, or empty if current",
+      "description": "Description exactly as written"
+    }
+  ],
+  "education": [
+    {
+      "institution": "School exactly as written",
+      "qualification": "Degree exactly as written",
+      "fieldOfStudy": "Field exactly as written",
+      "graduationYear": "Year exactly as written"
+    }
+  ],
+  "certifications": [
+    {
+      "name": "Name exactly as written",
+      "issuer": "Issuer exactly as written"
+    }
+  ]
+}
+
+STRICT RULES:
+- Extract ONLY values explicitly present in the input text
+- NEVER invent, infer, or expand abbreviations or generic terms
+- If a skill says "cloud platforms" record ONLY "cloud platforms" — do NOT list AWS, GCP, Azure
+- NEVER guess company size, seniority level, or industry
+- NEVER add phrases like "I assume", "likely", "probably", "presumably"
+- Use "" for missing strings, [] for missing arrays
+- Never omit any key
         """.trimIndent()
 
-        val userPrompt = "Extract this CV into the STRICT JSON canonical schema provided.\n\nCV:\n$rawText"
+        val userPrompt = "Extract this CV following the schema and rules above. Never invent content.\n\nCV:\n$rawText"
         val request = AiRequest(systemPrompt = systemPrompt, userPrompt = userPrompt)
-        val response = aiGateway.generate("profile_extraction", request, onProgress)
+        val response = aiGateway.generate("profile_extraction", request, 120_000L)
 
         if (response.isNullOrBlank()) {
             throw Exception("EMPTY_AI_RESPONSE")
         }
 
-        val start = response.indexOf("{")
-        if (start == -1) {
-            throw Exception("NO_JSON_FOUND")
+        val extractionResult = JsonExtractionEngine.extract(response)
+        if (!extractionResult.success) {
+            throw Exception(extractionResult.failureReason ?: "NO_JSON_FOUND")
         }
 
-        val jsonStr = response.substring(start)
+        val jsonStr = extractionResult.content
 
         // ==========================================
         // GATE 2: STRUCTURAL INTEGRITY & SAFE REPAIR
@@ -588,6 +653,19 @@ Return ONLY raw JSON matching this exact schema: {"name":"","email":"","phone":"
     // PARSER
     // ==========================================
 
+    private fun computeFieldConfidence(value: String, fieldName: String): Float {
+        if (value.isBlank()) return 0.0f
+        var conf = 0.5f
+        val normalizedLen = (value.length.coerceAtMost(100)).toFloat() / 100f
+        conf += normalizedLen * 0.2f
+        when (fieldName) {
+            "email" -> if (value.contains("@") && value.contains(".")) conf += 0.3f
+            "phone" -> if (value.any { it.isDigit() }) conf += 0.2f
+            "startDate", "endDate", "graduationYear" -> if (value.any { it.isDigit() }) conf += 0.1f
+        }
+        return conf.coerceIn(0.0f, 1.0f)
+    }
+
     private fun parse(json: JSONObject): StructuredProfileExtraction {
         val skillsArray = json.optJSONArray("skills")
         val workArray = json.optJSONArray("workHistory")
@@ -598,7 +676,7 @@ Return ONLY raw JSON matching this exact schema: {"name":"","email":"","phone":"
         for (i in 0 until (skillsArray?.length() ?: 0)) {
             val skill = skillsArray!!.optString(i)
             if (skill.isNotBlank()) {
-                skills.add(ExtractedField(skill, 0.8f, ExtractionSourceType.INFERRED))
+                skills.add(ExtractedField(skill, computeFieldConfidence(skill, "skill"), ExtractionSourceType.INFERRED))
             }
         }
 
@@ -608,17 +686,26 @@ Return ONLY raw JSON matching this exact schema: {"name":"","email":"","phone":"
             val title = o.optString("jobTitle")
             val company = o.optString("company")
             if (title.isNotBlank() || company.isNotBlank()) {
+                val titleField = ExtractedField(title, computeFieldConfidence(title, "jobTitle"), ExtractionSourceType.INFERRED)
+                val companyField = ExtractedField(company, computeFieldConfidence(company, "company"), ExtractionSourceType.INFERRED)
+                val startDateStr = o.optString("startDate")
+                val endDateStr = o.optString("endDate")
+                val descStr = o.optString("description")
+                val fieldConfidences = listOf(titleField.confidence, companyField.confidence,
+                    if (startDateStr.isNotBlank()) computeFieldConfidence(startDateStr, "startDate") else 0f,
+                    if (endDateStr.isNotBlank()) computeFieldConfidence(endDateStr, "endDate") else 0f,
+                    if (descStr.isNotBlank()) computeFieldConfidence(descStr, "description") else 0f)
                 work.add(
                     ExtractedExperience(
-                        jobTitle = ExtractedField(title, 0.8f, ExtractionSourceType.INFERRED),
-                        company = ExtractedField(company, 0.8f, ExtractionSourceType.INFERRED),
-                        startDate = ExtractedField(o.optString("startDate"), 0.8f, ExtractionSourceType.INFERRED)
+                        jobTitle = titleField,
+                        company = companyField,
+                        startDate = ExtractedField(startDateStr, computeFieldConfidence(startDateStr, "startDate"), ExtractionSourceType.INFERRED)
                             .takeIf { it.value.isNotBlank() },
-                        endDate = ExtractedField(o.optString("endDate"), 0.8f, ExtractionSourceType.INFERRED)
+                        endDate = ExtractedField(endDateStr, computeFieldConfidence(endDateStr, "endDate"), ExtractionSourceType.INFERRED)
                             .takeIf { it.value.isNotBlank() },
-                        description = ExtractedField(o.optString("description"), 0.8f, ExtractionSourceType.INFERRED)
+                        description = ExtractedField(descStr, computeFieldConfidence(descStr, "description"), ExtractionSourceType.INFERRED)
                             .takeIf { it.value.isNotBlank() },
-                        confidence = 0.8f
+                        confidence = if (fieldConfidences.any { it > 0f }) fieldConfidences.average().toFloat() else 0.0f
                     )
                 )
             }
@@ -630,15 +717,22 @@ Return ONLY raw JSON matching this exact schema: {"name":"","email":"","phone":"
             val inst = o.optString("institution")
             val qual = o.optString("qualification")
             if (inst.isNotBlank() || qual.isNotBlank()) {
+                val instField = ExtractedField(inst, computeFieldConfidence(inst, "institution"), ExtractionSourceType.INFERRED)
+                val qualField = ExtractedField(qual, computeFieldConfidence(qual, "qualification"), ExtractionSourceType.INFERRED)
+                val fieldOfStudyStr = o.optString("fieldOfStudy")
+                val gradYearStr = o.optString("graduationYear")
+                val fieldConfidences = listOf(instField.confidence, qualField.confidence,
+                    if (fieldOfStudyStr.isNotBlank()) computeFieldConfidence(fieldOfStudyStr, "fieldOfStudy") else 0f,
+                    if (gradYearStr.isNotBlank()) computeFieldConfidence(gradYearStr, "graduationYear") else 0f)
                 edu.add(
                     ExtractedEducation(
-                        institution = ExtractedField(inst, 0.8f, ExtractionSourceType.INFERRED),
-                        qualification = ExtractedField(qual, 0.8f, ExtractionSourceType.INFERRED),
-                        fieldOfStudy = ExtractedField(o.optString("fieldOfStudy"), 0.8f, ExtractionSourceType.INFERRED)
+                        institution = instField,
+                        qualification = qualField,
+                        fieldOfStudy = ExtractedField(fieldOfStudyStr, computeFieldConfidence(fieldOfStudyStr, "fieldOfStudy"), ExtractionSourceType.INFERRED)
                             .takeIf { it.value.isNotBlank() },
-                        graduationYear = ExtractedField(o.optString("graduationYear"), 0.8f, ExtractionSourceType.INFERRED)
+                        graduationYear = ExtractedField(gradYearStr, computeFieldConfidence(gradYearStr, "graduationYear"), ExtractionSourceType.INFERRED)
                             .takeIf { it.value.isNotBlank() },
-                        confidence = 0.8f
+                        confidence = if (fieldConfidences.any { it > 0f }) fieldConfidences.average().toFloat() else 0.0f
                     )
                 )
             }
@@ -649,12 +743,16 @@ Return ONLY raw JSON matching this exact schema: {"name":"","email":"","phone":"
             val o = certArray!!.optJSONObject(i) ?: continue
             val name = o.optString("name")
             if (name.isNotBlank()) {
+                val nameField = ExtractedField(name, computeFieldConfidence(name, "name"), ExtractionSourceType.INFERRED)
+                val issuerStr = o.optString("issuer")
+                val fieldConfidences = listOf(nameField.confidence,
+                    if (issuerStr.isNotBlank()) computeFieldConfidence(issuerStr, "issuer") else 0f)
                 certs.add(
                     ExtractedCertification(
-                        name = ExtractedField(name, 0.8f, ExtractionSourceType.INFERRED),
-                        issuer = ExtractedField(o.optString("issuer"), 0.8f, ExtractionSourceType.INFERRED)
+                        name = nameField,
+                        issuer = ExtractedField(issuerStr, computeFieldConfidence(issuerStr, "issuer"), ExtractionSourceType.INFERRED)
                             .takeIf { it.value.isNotBlank() },
-                        confidence = 0.8f
+                        confidence = if (fieldConfidences.any { it > 0f }) fieldConfidences.average().toFloat() else 0.0f
                     )
                 )
             }
@@ -666,20 +764,25 @@ Return ONLY raw JSON matching this exact schema: {"name":"","email":"","phone":"
             else -> 0.2f
         }
 
+        val nameVal = json.optString("name")
+        val emailVal = json.optString("email")
+        val phoneVal = json.optString("phone")
+        val summaryVal = json.optString("summary")
+
         return StructuredProfileExtraction(
             personalInfo = ExtractedPersonalInfo(
-                name = ExtractedField(json.optString("name"), 0.8f, ExtractionSourceType.INFERRED)
+                name = ExtractedField(nameVal, computeFieldConfidence(nameVal, "name"), ExtractionSourceType.INFERRED)
                     .takeIf { it.value.isNotBlank() },
-                email = ExtractedField(json.optString("email"), 0.8f, ExtractionSourceType.INFERRED)
+                email = ExtractedField(emailVal, computeFieldConfidence(emailVal, "email"), ExtractionSourceType.INFERRED)
                     .takeIf { it.value.isNotBlank() },
-                phone = ExtractedField(json.optString("phone"), 0.8f, ExtractionSourceType.INFERRED)
+                phone = ExtractedField(phoneVal, computeFieldConfidence(phoneVal, "phone"), ExtractionSourceType.INFERRED)
                     .takeIf { it.value.isNotBlank() },
                 location = null,
                 linkedIn = null,
-                headline = ExtractedField(json.optString("summary"), 0.8f, ExtractionSourceType.INFERRED)
+                headline = ExtractedField(summaryVal, computeFieldConfidence(summaryVal, "summary"), ExtractionSourceType.INFERRED)
                     .takeIf { it.value.isNotBlank() }
             ),
-            summary = ExtractedField(json.optString("summary"), 0.8f, ExtractionSourceType.INFERRED)
+            summary = ExtractedField(summaryVal, computeFieldConfidence(summaryVal, "summary"), ExtractionSourceType.INFERRED)
                 .takeIf { it.value.isNotBlank() },
             skills = skills.toImmutableList(),
             languages = persistentListOf(),
@@ -693,14 +796,8 @@ Return ONLY raw JSON matching this exact schema: {"name":"","email":"","phone":"
     }
 
     // ==========================================
-    // GATE 3: VALIDATION
+    // GATE 3: VALIDATION (delegated to ExtractionValidator)
     // ==========================================
-
-    private fun isValidExtraction(extraction: StructuredProfileExtraction): Boolean {
-        val hasIdentity = extraction.personalInfo.name != null || extraction.personalInfo.email != null
-        val hasSemanticData = extraction.skills.isNotEmpty() || extraction.workHistory.isNotEmpty()
-        return hasIdentity && hasSemanticData
-    }
 
     // ==========================================
     // FILE EXTRACTION UTILITIES
@@ -708,13 +805,20 @@ Return ONLY raw JSON matching this exact schema: {"name":"","email":"","phone":"
 
     private suspend fun extractPdf(uri: Uri): String {
         val input = context.contentResolver.openInputStream(uri) ?: return ""
-        val doc = com.tom_roush.pdfbox.pdmodel.PDDocument.load(input)
+
         return try {
-            withTimeout(PDF_TEXT_TIMEOUT_MS) {
-                com.tom_roush.pdfbox.text.PDFTextStripper().getText(doc)
+            val doc = com.tom_roush.pdfbox.pdmodel.PDDocument.load(input)
+
+            try {
+                withTimeout(PDF_TEXT_TIMEOUT_MS) {
+                    val stripper = com.tom_roush.pdfbox.text.PDFTextStripper()
+                    stripper.getText(doc)
+                }
+            } finally {
+                doc.close()
             }
+
         } finally {
-            doc.close()
             input.close()
         }
     }
@@ -777,23 +881,37 @@ Return ONLY raw JSON matching this exact schema: {"name":"","email":"","phone":"
     }
 
     private fun extractDocx(uri: Uri): String {
-        val input = context.contentResolver.openInputStream(uri)!!
-        val zip = ZipInputStream(input)
-        val sb = StringBuilder()
-        var entry = zip.nextEntry
+        val input = context.contentResolver.openInputStream(uri) ?: return ""
 
-        while (entry != null) {
-            if (entry.name == "word/document.xml") {
-                val xml = zip.readBytes().toString(Charsets.UTF_8)
-                sb.append(xml.replace(Regex("<[^>]+>"), " ").replace(Regex("\\s+"), " "))
-                break
+        try {
+            val zip = ZipInputStream(input)
+
+            try {
+                var entry = zip.nextEntry
+                var docText = ""
+
+                while (entry != null) {
+                    if (entry.name == "word/document.xml") {
+                        val xml = zip.readBytes().toString(Charsets.UTF_8)
+
+                        docText = xml.replace(Regex("<[^>]+>"), " ")
+                            .replace(Regex("\\s+"), " ")
+                            .trim()
+
+                        break
+                    }
+                    entry = zip.nextEntry
+                }
+
+                return docText
+
+            } finally {
+                zip.close()
             }
-            entry = zip.nextEntry
-        }
 
-        zip.close()
-        input.close()
-        return sb.toString()
+        } finally {
+            input.close()
+        }
     }
 
     private fun extractPlain(uri: Uri): String {

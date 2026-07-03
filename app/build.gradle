@@ -15,6 +15,10 @@ android {
     namespace 'com.vantedge.app'
     compileSdk 34
 
+    testOptions {
+        unitTests.returnDefaultValues = true
+    }
+
     defaultConfig {
         applicationId "com.vantedge.app"
         minSdk 24
@@ -96,6 +100,8 @@ dependencies {
 
     implementation "androidx.core:core-splashscreen:1.0.1"
     implementation "com.google.code.gson:gson:2.10.1"
+    implementation "com.fasterxml.jackson.core:jackson-core:2.15.2"
+    implementation "com.fasterxml.jackson.core:jackson-databind:2.15.2"
 
     // Room
     implementation "androidx.room:room-runtime:2.6.1"
@@ -105,4 +111,6 @@ dependencies {
     // WorkManager
     implementation "androidx.work:work-runtime-ktx:2.9.0"
 	testImplementation 'junit:junit:4.13.2'
+    // Override android.jar's broken org.json implementation in unit tests
+    testImplementation 'org.json:json:20231013'
 }
