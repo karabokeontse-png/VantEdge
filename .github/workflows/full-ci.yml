@@ -1,0 +1,54 @@
+name: Full CI + W5 Validation
+
+on:
+  push:
+    branches: [ main, develop, recovery/reconstructed ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  w5-determinism-check:
+    name: W5 100-Run Determinism Validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
+
+      - name: Fix gradle.properties for CI
+        run: |
+          sed -i '/org.gradle.java.home/d' gradle.properties
+          sed -i '/android.aapt2FromMavenOverride/d' gradle.properties
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Compile W5 Sources
+        run: ./gradlew compileDebugUnitTestKotlin --no-daemon
+
+      - name: Run W5 Full Test Suite
+        run: ./gradlew testDebugUnitTest --tests "com.vantedge.app.w5.scoring.*" --no-daemon
+
+      - name: Verify test artifacts exist
+        run: |
+          echo "=== Test Results ==="
+          find app/build/test-results -name "*.xml" | head -5
+          echo "=== Test Report ==="
+          ls -la app/build/reports/tests/testDebugUnitTest/ 2>/dev/null || echo "Report directory not found"
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: w5-determinism-results
+          path: |
+            app/build/test-results/
+            app/build/reports/
