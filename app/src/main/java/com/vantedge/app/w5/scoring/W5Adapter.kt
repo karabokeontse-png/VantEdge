@@ -64,7 +64,7 @@ object W5Adapter {
 
     private fun deriveCurrentTitle(profile: StructuredProfileExtraction): String? {
         val latest = profile.workHistory.maxByOrNull { experience ->
-            extractYear(experience.endDate.value) ?: 0
+            extractYear(experience.endDate?.value) ?: 0
         }
         val latestTitle = latest?.jobTitle?.value
         if (latestTitle != null && latestTitle.isNotEmpty()) return latestTitle
@@ -75,8 +75,8 @@ object W5Adapter {
     private fun deriveExperienceYears(profile: StructuredProfileExtraction): Int {
         var totalYears = 0
         for (experience in profile.workHistory) {
-            val startYear = extractYear(experience.startDate.value)
-            val endYear = extractYear(experience.endDate.value) ?: java.time.Year.now().value
+            val startYear = extractYear(experience.startDate?.value)
+            val endYear = extractYear(experience.endDate?.value) ?: java.time.Year.now().value
             if (startYear != null) {
                 totalYears += (endYear - startYear).coerceAtLeast(0)
             }
