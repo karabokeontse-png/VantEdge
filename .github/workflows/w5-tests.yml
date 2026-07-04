@@ -1,0 +1,51 @@
+name: W5 Deterministic Scoring Tests
+
+on:
+  push:
+    branches: [ main, develop, feature/w5-scoring ]
+    paths:
+      - 'app/src/main/java/com/vantedge/app/w5/scoring/**'
+      - 'app/src/test/java/com/vantedge/app/w5/scoring/**'
+      - '.github/workflows/w5-tests.yml'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'app/src/main/java/com/vantedge/app/w5/scoring/**'
+      - 'app/src/test/java/com/vantedge/app/w5/scoring/**'
+
+jobs:
+  w5-unit-tests:
+    name: W5 Unit Tests (JVM)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Run W5 Scoring Tests
+        run: ./gradlew testDebugUnitTest --tests "com.vantedge.app.w5.scoring.*" --no-daemon
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: w5-test-results
+          path: app/build/test-results/testDebugUnitTest/
+
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: w5-test-report
+          path: app/build/reports/tests/testDebugUnitTest/
