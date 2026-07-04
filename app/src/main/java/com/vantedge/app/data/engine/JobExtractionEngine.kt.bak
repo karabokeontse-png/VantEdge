@@ -1,0 +1,346 @@
+package com.vantedge.app.data.engine
+
+import android.util.Log
+import com.vantedge.app.data.model.ConfidenceBreakdown
+import com.vantedge.app.data.model.Gate0JobResult
+import com.vantedge.app.data.model.Gate0JobReason
+import com.vantedge.app.data.model.JobExtractionMetrics
+import com.vantedge.app.data.model.JobExtractionResult
+import com.vantedge.app.data.model.JobSourceType
+import java.util.Locale
+import java.util.UUID
+import kotlin.math.max
+
+class JobExtractionEngine {
+
+    private companion object {
+        const val GATE_0_PASS_THRESHOLD = 2
+        const val TAG = "JobExtractionEngine"
+        val GATE_0_SIGNALS = listOf(
+            "responsibilities", "requirements", "qualifications", "vacancy",
+            "closing date", "job description", "about the role", "key duties",
+            "experience required", "apply now", "position", "employment type", "salary"
+        )
+
+        // AI prompt template reserved for future structured extraction.
+        // Anti-hallucination rules are baked into the instruction set.
+        val AI_SYSTEM_PROMPT = """
+You are a precise job posting extraction engine. Return ONLY valid JSON — no markdown, no explanations, no code fences.
+
+Schema (extract ONLY verbatim — never invent, infer, or expand):
+{
+  "jobTitle": "Title exactly as written",
+  "company": "Company name exactly as written",
+  "requiredSkills": ["Only skills explicitly listed as required — never infer"],
+  "preferredSkills": ["Only skills explicitly listed as preferred/nice-to-have"],
+  "yearsOfExperience": "Exactly as stated (e.g. '3+ years' not '5 years')",
+  "educationRequired": "Exactly as written",
+  "responsibilities": ["Exactly as written"],
+  "employmentType": "Exactly as written (full-time, contract, etc.)",
+  "salaryRange": "Exactly as written if present"
+}
+
+STRICT RULES:
+- Extract ONLY values explicitly stated in the posting text
+- NEVER invent, infer, or expand abbreviations or generic terms
+- If the posting says "familiar with cloud platforms" record ONLY "cloud platforms" — do NOT list AWS, GCP, Azure
+- NEVER inflate experience requirements: "3+ years" stays "3+ years", not "5+ years"
+- NEVER guess company info (size, funding, industry, culture) not stated
+- NEVER add phrases like "I assume", "likely", "probably", "presumably"
+- Use "" for missing strings, [] for missing arrays
+- Never omit any key
+        """.trimIndent()
+    }
+
+    data class Gate1Result(
+        val title: String,
+        val company: String,
+        val description: String,
+        val titleMethod: String,
+        val companyMethod: String
+    )
+
+    fun extractJob(rawText: String, sourceType: JobSourceType): Result<JobExtractionResult> {
+        Log.d(TAG, "[JobExtraction] THREAD=${Thread.currentThread().name} | RAW_LENGTH=${rawText.length}")
+        val startTime = System.currentTimeMillis()
+
+        if (rawText.isBlank()) {
+            Log.e(TAG, "[JobExtraction] FAILED: empty input")
+            return Result.failure(Exception("EMPTY_DESCRIPTION"))
+        }
+
+        val gate0Start = System.currentTimeMillis()
+        val gate0Result = runGate0(rawText)
+        val gate0Duration = System.currentTimeMillis() - gate0Start
+
+        Log.i(TAG, "[Gate0] SIGNAL_ANALYTICS: score=${gate0Result.score} | signals=${gate0Result.detectedSignals} | penalties=${gate0Result.appliedPenalties} | narrativeDensity=${"%.2f".format(gate0Result.narrativeDensity)}")
+
+        if (!gate0Result.accepted) {
+            Log.i(TAG, "[Gate0] REJECTED: reason=${gate0Result.reason}")
+            return Result.failure(Exception("GATE0_REJECTED"))
+        }
+
+        val gate1Start = System.currentTimeMillis()
+        val gate1Result = runGate1(rawText)
+        val gate1Duration = System.currentTimeMillis() - gate1Start
+
+        Log.i(TAG, "[Gate1] EXIT: titleFound=${gate1Result.titleMethod} | companyFound=${gate1Result.companyMethod} | descLength=${gate1Result.description.length}")
+
+        val gate2Start = System.currentTimeMillis()
+        val normalizedDescription = sanitizeForGate2(gate1Result.description)
+        val gate2Duration = System.currentTimeMillis() - gate2Start
+
+        Log.i(TAG, "[Gate2] EXIT: normalizedDescLength=${normalizedDescription.length}")
+
+        val gate3Start = System.currentTimeMillis()
+        val confidenceResult = calculateConfidence(gate1Result.title, gate1Result.company, gate0Result.score)
+        val gate3Duration = System.currentTimeMillis() - gate3Start
+
+        Log.i(TAG, "[Gate3] EXIT: confidence=${"%.2f".format(confidenceResult.finalScore)} | breakdown=$confidenceResult")
+
+        val gate4Start = System.currentTimeMillis()
+
+        if (normalizedDescription.isBlank() || normalizedDescription.length < 10) {
+            Log.i(TAG, "[Gate4] REJECTED: description blank or too short (len=${normalizedDescription.length})")
+            return Result.failure(Exception("EMPTY_DESCRIPTION"))
+        }
+
+        val extractionId = UUID.randomUUID().toString()
+        val extractedAt = System.currentTimeMillis()
+        val totalDuration = extractedAt - startTime
+
+        try {
+            val metrics = JobExtractionMetrics(
+                durationMs = totalDuration,
+                sourceType = sourceType,
+                rawTextLength = rawText.length,
+                gate0DurationMs = gate0Duration,
+                gate1DurationMs = gate1Duration,
+                gate2DurationMs = gate2Duration,
+                gate3DurationMs = gate3Duration,
+                gate4DurationMs = System.currentTimeMillis() - gate4Start,
+                qualificationPassed = gate0Result.accepted,
+                narrativeDensity = gate0Result.narrativeDensity
+            )
+
+            val title = gate1Result.title.takeIf { it.isNotBlank() }
+            val company = gate1Result.company.takeIf { it.isNotBlank() }
+
+            val result = JobExtractionResult(
+                extractionId = extractionId,
+                extractedAt = extractedAt,
+                jobTitle = title,
+                company = company,
+                description = normalizedDescription,
+                confidenceScore = confidenceResult.finalScore,
+                confidenceBreakdown = confidenceResult,
+                gate0Result = gate0Result,
+                metrics = metrics
+            )
+
+            // GATE 5: Schema validation
+            val validationResult = ExtractionValidator.validateJob(result)
+            if (!validationResult.passed) {
+                val blockerFields = validationResult.errors
+                    .filter { it.severity == ValidationSeverity.BLOCKER }
+                    .joinToString(", ") { it.field }
+                Log.e(TAG, "[Gate5] REJECTED: validation failed — $blockerFields")
+                return Result.failure(Exception("VALIDATION_FAILED: $blockerFields"))
+            }
+            if (validationResult.warnings.isNotEmpty()) {
+                Log.w(TAG, "[Gate5] WARNINGS: ${validationResult.warnings.joinToString("; ") { it.message }}")
+            }
+
+            Log.i(TAG, "[Gate4] EXIT: extractionId=$extractionId | confidence=${"%.2f".format(result.confidenceScore)} | passed=true")
+            return Result.success(result)
+        } catch (e: Exception) {
+            Log.e(TAG, "[JobExtraction] EXCEPTION: ${e.message}", e)
+            return Result.failure(e)
+        }
+    }
+
+    private fun runGate0(rawText: String): Gate0JobResult {
+        val sanitized = sanitizeForGate0(rawText)
+        val lower = sanitized.lowercase(Locale.ROOT)
+        val nonEmptyLines = sanitized.lines().filter { it.isNotBlank() }
+
+        var score = 0
+        val detectedSignals = mutableListOf<String>()
+        val appliedPenalties = mutableListOf<String>()
+
+        for (signal in GATE_0_SIGNALS) {
+            if (signal in lower) {
+                detectedSignals.add(signal)
+                score++
+            }
+        }
+
+        val narrativeDensity = calculateNarrativeDensity(nonEmptyLines)
+        if (narrativeDensity > 0.6f) {
+            score--
+            appliedPenalties.add("HIGH_NARRATIVE_DENSITY")
+        }
+
+        score = max(score, 0)
+        val accepted = score >= GATE_0_PASS_THRESHOLD
+
+        val reason = when {
+            accepted -> Gate0JobReason.ACCEPTED
+            detectedSignals.isEmpty() -> Gate0JobReason.NO_VACANCY_SIGNALS
+            narrativeDensity > 0.6f && detectedSignals.size < 2 -> Gate0JobReason.HIGH_NARRATIVE_DENSITY
+            else -> Gate0JobReason.LOW_STRUCTURAL_EVIDENCE
+        }
+
+        val rejectionCauses = if (!accepted) listOf(reason.name) else emptyList()
+
+        return Gate0JobResult(
+            score = score,
+            threshold = GATE_0_PASS_THRESHOLD,
+            accepted = accepted,
+            reason = reason,
+            detectedSignals = detectedSignals,
+            appliedPenalties = appliedPenalties,
+            rejectionCauses = rejectionCauses,
+            narrativeDensity = narrativeDensity
+        )
+    }
+
+    private fun calculateNarrativeDensity(nonEmptyLines: List<String>): Float {
+        if (nonEmptyLines.isEmpty()) return 0.0f
+
+        val narrativeLines = nonEmptyLines.count { line ->
+            val alphabeticRatio = line.count { it.isLetter() }.toFloat() / max(line.length, 1)
+            val numericTokens = Regex("\\s+").split(line).count { token ->
+                token.any { it.isDigit() }
+            }
+            alphabeticRatio > 0.8f && numericTokens < 2
+        }
+
+        return narrativeLines.toFloat() / nonEmptyLines.size
+    }
+
+    private fun runGate1(rawText: String): Gate1Result {
+        val lines = rawText.lines()
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+
+        var title = ""
+        var titleMethod = "NONE"
+        var company = ""
+        var companyMethod = "NONE"
+        var consumedLines = 0
+
+        for ((idx, line) in lines.withIndex()) {
+            val lower = line.lowercase(Locale.ROOT)
+            if (Regex("\\b(position|role|vacancy|job title)\\b", RegexOption.IGNORE_CASE).containsMatchIn(lower)) {
+                title = line
+                titleMethod = "KEYWORD_MATCH"
+                consumedLines = idx + 1
+                break
+            }
+        }
+
+        if (title.isBlank() && lines.isNotEmpty()) {
+            for ((idx, line) in lines.withIndex()) {
+                if (line.length < 60) {
+                    val upperRatio = line.count { it.isUpperCase() }.toFloat() / line.length
+                    if (upperRatio > 0.4f) {
+                        title = line
+                        titleMethod = "UPPERCASE_HEURISTIC"
+                        consumedLines = idx + 1
+                        break
+                    }
+                }
+            }
+        }
+
+        if (title.isBlank() && lines.isNotEmpty()) {
+            title = lines[0]
+            titleMethod = "FIRST_LINE"
+            consumedLines = 1
+        }
+
+        for ((idx, line) in lines.withIndex()) {
+            if (idx >= consumedLines) {
+                val lower = line.lowercase(Locale.ROOT)
+                if (Regex("Ltd|Inc|Pty|Limited|Corp|LLC", RegexOption.IGNORE_CASE).containsMatchIn(line)) {
+                    company = line
+                    companyMethod = "LEGAL_ENTITY_PATTERN"
+                    consumedLines = max(consumedLines, idx + 1)
+                    break
+                }
+                if (Regex("we are hiring|join us|about our company").containsMatchIn(lower)) {
+                    company = line
+                    companyMethod = "BRANDING_PATTERN"
+                    consumedLines = max(consumedLines, idx + 1)
+                    break
+                }
+            }
+        }
+
+        if (company.isBlank() && lines.size > consumedLines) {
+            val candidate = lines[consumedLines]
+            val isLocationPattern = Regex("remote|location|based", RegexOption.IGNORE_CASE).containsMatchIn(candidate)
+            if (!isLocationPattern) {
+                company = candidate
+                companyMethod = "SECOND_LINE_FALLBACK"
+                consumedLines++
+            }
+        }
+
+        val description = lines.drop(consumedLines).joinToString("\n")
+
+        return Gate1Result(title, company, description, titleMethod, companyMethod)
+    }
+
+    private fun sanitizeForGate0(raw: String): String {
+        return raw.replace("\u00ad", "")
+            .lines()
+            .map { Regex("\\s+").replace(it, " ").trim() }
+            .filter { line -> line.isNotEmpty() && line.any { it.isLetterOrDigit() } }
+            .joinToString("\n")
+    }
+
+    private fun sanitizeForGate2(description: String): String {
+        return Regex("\\s+").replace(description.replace("\u00ad", ""), " ").trim()
+    }
+
+    private fun calculateConfidence(title: String, company: String, gate0Score: Int): ConfidenceBreakdown {
+        val penalties = mutableListOf<String>()
+
+        val titleContribution = if (title.isNotBlank() && title.length > 5) 0.2f else 0.0f
+        var baseScore = 0.5f + titleContribution
+
+        val companyContribution = if (company.isNotBlank() && company.length > 3) 0.2f else 0.0f
+        baseScore += companyContribution
+
+        val qualificationContribution = if (gate0Score >= 4) 0.1f else 0.0f
+        baseScore += qualificationContribution
+
+        when {
+            title.isBlank() && company.isBlank() -> {
+                baseScore -= 0.1f
+                penalties.add("MISSING_TITLE_AND_COMPANY")
+            }
+            title.isBlank() -> {
+                baseScore -= 0.05f
+                penalties.add("MISSING_TITLE")
+            }
+            company.isBlank() -> {
+                baseScore -= 0.05f
+                penalties.add("MISSING_COMPANY")
+            }
+        }
+
+        val finalScore = baseScore.coerceIn(0.0f, 1.0f)
+
+        return ConfidenceBreakdown(
+            baseScore = 0.5f,
+            titleContribution = titleContribution,
+            companyContribution = companyContribution,
+            qualificationContribution = qualificationContribution,
+            penalties = penalties,
+            finalScore = finalScore
+        )
+    }
+}
