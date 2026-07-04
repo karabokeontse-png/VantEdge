@@ -164,7 +164,7 @@ class W5ScoreEngineTest {
 
         val trace = W5TraceContext("dz-001", "", 1000L)
         val result = engine.evaluate(profile, job, trace)
-        assertEquals(0.0, result.axisScores.find { it.axisName == "ExperienceAlignment" }?.score, 0.0)
+        assertEquals(0.0, result.axisScores.find { it.axisName == "ExperienceAlignment" }!!.score, 0.0)
     }
 
     @Test
@@ -195,7 +195,7 @@ class W5ScoreEngineTest {
 
         val trace = W5TraceContext("dz-002", "", 1000L)
         val result = engine.evaluate(profile, job, trace)
-        assertEquals(0.0, result.axisScores.find { it.axisName == "KeywordCoverage" }?.score, 0.0)
+        assertEquals(0.0, result.axisScores.find { it.axisName == "KeywordCoverage" }!!.score, 0.0)
     }
 
     @Test
@@ -290,7 +290,7 @@ class W5ScoreEngineTest {
         val trace = W5TraceContext("null-001", "", 1000L)
         val result = engine.evaluate(profile, job, trace)
         assertFalse("Should handle null currentTitle and seniorityLevel", result.totalScore.isNaN())
-        assertEquals(0.0, result.axisScores.find { it.axisName == "SeniorityFit" }?.score, 0.0)
+        assertEquals(0.0, result.axisScores.find { it.axisName == "SeniorityFit" }!!.score, 0.0)
     }
 
     @Test
@@ -842,7 +842,7 @@ class W5ScoreEngineTest {
                 score = 85,
                 threshold = 50,
                 accepted = true,
-                reason = Gate0JobReason.QUALIFIED,
+                reason = "QUALIFIED",
                 detectedSignals = listOf("tech_role", "experienced"),
                 appliedPenalties = emptyList(),
                 rejectionCauses = emptyList(),
