@@ -1,10 +1,11 @@
 package com.vantedge.app.w5.scoring
 
 import java.security.MessageDigest
+import java.util.Locale
 
 fun tokenize(input: String, stopWords: Set<String>): List<String> {
-    val step1 = input.lowercase()
-    val step2 = step1.replace(Regex("[^a-z0-9\\s]"), " ")
+    val step1 = input.lowercase(Locale.ROOT)
+    val step2 = step1.replace(Regex("[^a-z0-9\\s+.#\\-]"), " ")
     val step3 = step2.split(Regex("\\s+"))
     val step4 = step3.filter { it.isNotEmpty() }
     val step5 = step4.filter { it !in stopWords }
@@ -14,7 +15,7 @@ fun tokenize(input: String, stopWords: Set<String>): List<String> {
 fun jaccard(setA: Set<String>, setB: Set<String>): Double {
     val intersection = setA.intersect(setB)
     val union = setA.union(setB)
-    return if (union.isEmpty()) 1.0 else intersection.size.toDouble() / union.size
+    return if (union.isEmpty()) 0.0 else intersection.size.toDouble() / union.size
 }
 
 fun expand(tokens: Set<String>, dictionary: Map<String, List<String>>): Set<String> {
@@ -39,8 +40,24 @@ fun expand(tokens: Set<String>, dictionary: Map<String, List<String>>): Set<Stri
 }
 
 fun computeInputHash(profile: ValidatedProfile, job: ValidatedJob): String {
-    val allItems = profile.skills + profile.roles + listOf(profile.currentTitle ?: "") +
-                   job.requiredSkills + job.keywords
+    val allItems = mutableListOf<String>()
+    allItems.addAll(profile.skills)
+    allItems.addAll(profile.roles)
+    allItems.add(profile.currentTitle ?: "")
+    allItems.add(profile.experienceYears.toString())
+    allItems.add(profile.seniorityLevel ?: "")
+    allItems.add(profile.isAccepted.toString())
+    allItems.add(profile.isDegraded.toString())
+    allItems.add(profile.completedFields.sorted().joinToString(","))
+    allItems.addAll(job.requiredSkills)
+    allItems.add(job.title)
+    allItems.addAll(job.keywords)
+    allItems.add(job.requiredYears.toString())
+    allItems.add(job.seniorityLevel ?: "")
+    allItems.add(job.isAccepted.toString())
+    allItems.add(job.isDegraded.toString())
+    allItems.add(job.completedFields.sorted().joinToString(","))
+
     val sorted = allItems.sorted()
     val canonicalString = sorted.joinToString("|")
     val digest = MessageDigest.getInstance("SHA-256")
@@ -56,12 +73,16 @@ object SeniorityDeriver {
         "lead" to 3
     )
 
+    val levelCount: Int
+        get() = levelMap.size
+
     fun derive(title: String?, experienceYears: Int?): String? {
         if (title != null) {
-            val lowerTitle = title.lowercase()
+            val lowerTitle = title.lowercase(Locale.ROOT)
+            val titleTokens = lowerTitle.split(Regex("[^a-z0-9+.#\\-]+")).filter { it.isNotEmpty() }
             val sortedKeywords = levelMap.entries.sortedByDescending { it.key.length }
             for ((keyword, _) in sortedKeywords) {
-                if (lowerTitle.contains(keyword)) {
+                if (keyword in titleTokens) {
                     return keyword
                 }
             }

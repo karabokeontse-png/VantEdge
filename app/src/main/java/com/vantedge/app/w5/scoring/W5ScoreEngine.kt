@@ -1,11 +1,11 @@
 package com.vantedge.app.w5.scoring
 
+import java.util.Locale
 import kotlin.math.min
 
 class W5ScoreEngine(private val assets: ValidationAssets) {
     fun evaluate(profile: ValidatedProfile, job: ValidatedJob, trace: W5TraceContext): ScoreResult {
-        val inputHash = computeInputHash(profile, job)
-        val outputTrace = W5TraceContext(trace.correlationId, inputHash, trace.timestamp)
+        val outputTrace = trace
 
         val skillMatch = AxisEvaluators.skillMatch(profile, job, assets)
         val experienceAlignment = AxisEvaluators.experienceAlignment(profile, job)
@@ -29,16 +29,8 @@ class W5ScoreEngine(private val assets: ValidationAssets) {
             axis.score * AxisWeights.get(axis.axisName)
         }
 
-        val profileCompleteness = if (RequiredProfileFields.fields.isEmpty()) {
-            1.0
-        } else {
-            profile.completedFields.size.toDouble() / RequiredProfileFields.fields.size
-        }
-        val jobCompleteness = if (RequiredJobFields.fields.isEmpty()) {
-            1.0
-        } else {
-            job.completedFields.size.toDouble() / RequiredJobFields.fields.size
-        }
+        val profileCompleteness = profile.completedFields.intersect(RequiredProfileFields.fields).size.toDouble() / RequiredProfileFields.fields.size
+        val jobCompleteness = job.completedFields.intersect(RequiredJobFields.fields).size.toDouble() / RequiredJobFields.fields.size
         val completenessRatio = (profileCompleteness + jobCompleteness) / 2.0
 
         val profileMultiplier = if (profile.isDegraded) 0.85 else 1.0
@@ -56,9 +48,14 @@ class W5ScoreEngine(private val assets: ValidationAssets) {
                     weight = AxisWeights.get(axis.axisName),
                     contributingFactors = listOf(
                         Factor(
-                            field = "score",
-                            value = String.format("%.4f", axis.score),
-                            contribution = 1.0
+                            field = "rawScore",
+                            value = String.format(Locale.US, "%.4f", axis.score),
+                            contribution = axis.score
+                        ),
+                        Factor(
+                            field = "weightedContribution",
+                            value = String.format(Locale.US, "%.4f", axis.score * AxisWeights.get(axis.axisName)),
+                            contribution = axis.score * AxisWeights.get(axis.axisName)
                         )
                     )
                 )

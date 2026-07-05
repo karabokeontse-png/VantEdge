@@ -145,9 +145,8 @@ object W5Adapter {
         if (currentTitle != null && currentTitle.isNotEmpty()) fields.add("currentTitle")
         if (experienceYears > 0) fields.add("experienceYears")
         if (seniorityLevel != null) fields.add("seniorityLevel")
-        return fields
+        return fields.intersect(RequiredProfileFields.fields)
     }
-
 
     private fun buildJobCompletedFields(
         requiredSkills: List<String>,
@@ -162,6 +161,6 @@ object W5Adapter {
         if (keywords.isNotEmpty()) fields.add("keywords")
         if (requiredYears != null) fields.add("requiredYears")
         if (seniorityLevel != null) fields.add("seniorityLevel")
-        return fields
+        return fields.intersect(RequiredJobFields.fields)
     }
 }
