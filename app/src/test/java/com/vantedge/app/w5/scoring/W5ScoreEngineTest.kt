@@ -593,9 +593,10 @@ class W5ScoreEngineTest {
             job = job,
             jobRequiredSkills = jobRequiredSkills,
             jobPreferredSkills = jobPreferredSkills,
+            jobRequiredYears = 5,
             jobDecision = jobDecision,
-            traceId = traceId,
-            assets = assets
+            correlationId = traceId,
+            asOfYear = 2026
         )
 
         val vp = result.profile
@@ -627,9 +628,10 @@ class W5ScoreEngineTest {
             job = job,
             jobRequiredSkills = jobRequiredSkills,
             jobPreferredSkills = jobPreferredSkills,
+            jobRequiredYears = 5,
             jobDecision = jobDecision,
-            traceId = traceId,
-            assets = assets
+            correlationId = traceId,
+            asOfYear = 2026
         )
 
         val vj = result.job
@@ -664,9 +666,10 @@ class W5ScoreEngineTest {
             job = job,
             jobRequiredSkills = listOf("Kotlin"),
             jobPreferredSkills = emptyList(),
+            jobRequiredYears = null,
             jobDecision = jobDecision,
-            traceId = traceId,
-            assets = assets
+            correlationId = traceId,
+            asOfYear = 2026
         )
 
         assertTrue(result.profile.isDegraded)
@@ -696,9 +699,10 @@ class W5ScoreEngineTest {
             job = job,
             jobRequiredSkills = listOf("Kotlin"),
             jobPreferredSkills = emptyList(),
+            jobRequiredYears = null,
             jobDecision = jobDecision,
-            traceId = traceId,
-            assets = assets
+            correlationId = traceId,
+            asOfYear = 2026
         )
 
         assertFalse(result.profile.isAccepted)

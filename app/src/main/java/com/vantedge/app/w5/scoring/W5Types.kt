@@ -83,3 +83,8 @@ data class ValidationAssets(
     val stopWords: Set<String>,
     val keywordDictionary: Map<String, List<String>>
 )
+
+data class AdaptedW5Input(
+    val profile: ValidatedProfile,
+    val job: ValidatedJob
+)

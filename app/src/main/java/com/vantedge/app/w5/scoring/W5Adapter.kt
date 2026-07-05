@@ -1,9 +1,10 @@
 package com.vantedge.app.w5.scoring
 
+
 import com.vantedge.app.data.model.StructuredProfileExtraction
 import com.vantedge.app.data.model.JobExtractionResult
-import com.vantedge.app.data.model.ExtractedExperience
 import com.vantedge.pipeline.validation.ValidationDecision
+
 
 object W5Adapter {
     fun adapt(
@@ -12,21 +13,23 @@ object W5Adapter {
         job: JobExtractionResult,
         jobRequiredSkills: List<String>,
         jobPreferredSkills: List<String>,
+        jobRequiredYears: Int?,
         jobDecision: ValidationDecision,
-        traceId: String,
-        assets: ValidationAssets
-    ): W5Input {
+        correlationId: String,
+        asOfYear: Int
+    ): AdaptedW5Input {
         val skills = profile.skills.mapNotNull { it.value }
-        val roles = profile.workHistory.mapNotNull { it.jobTitle.value }
+        val roles = profile.workHistory.mapNotNull { it.jobTitle?.value }
         val currentTitle = deriveCurrentTitle(profile)
-        val experienceYears = deriveExperienceYears(profile)
+        val experienceYears = deriveExperienceYears(profile, asOfYear)
         val seniorityLevel = SeniorityDeriver.derive(currentTitle, experienceYears)
         val profileCompletedFields = buildProfileCompletedFields(skills, roles, currentTitle, experienceYears, seniorityLevel)
         val profileIsAccepted = profileDecision is ValidationDecision.Accept || profileDecision is ValidationDecision.Degraded
         val profileIsDegraded = profileDecision is ValidationDecision.Degraded
 
+
         val validatedProfile = ValidatedProfile(
-            correlationId = traceId,
+            correlationId = correlationId,
             skills = skills,
             roles = roles,
             currentTitle = currentTitle,
@@ -37,30 +40,31 @@ object W5Adapter {
             isDegraded = profileIsDegraded
         )
 
+
         val title = job.jobTitle ?: ""
-        val keywords = buildKeywords(job, jobRequiredSkills, assets)
-        val requiredYears = deriveRequiredYears(job)
-        val jobSeniorityLevel = SeniorityDeriver.derive(title, requiredYears)
-        val jobCompletedFields = buildJobCompletedFields(jobRequiredSkills, title, keywords, requiredYears, jobSeniorityLevel)
+        val keywords = buildKeywords(jobRequiredSkills, jobPreferredSkills)
+        val jobSeniorityLevel = SeniorityDeriver.derive(title, jobRequiredYears)
+        val jobCompletedFields = buildJobCompletedFields(jobRequiredSkills, title, keywords, jobRequiredYears, jobSeniorityLevel)
         val jobIsAccepted = jobDecision is ValidationDecision.Accept || jobDecision is ValidationDecision.Degraded
         val jobIsDegraded = jobDecision is ValidationDecision.Degraded
 
+
         val validatedJob = ValidatedJob(
-            correlationId = traceId,
+            correlationId = correlationId,
             requiredSkills = jobRequiredSkills,
             title = title,
             keywords = keywords,
-            requiredYears = requiredYears,
+            requiredYears = jobRequiredYears,
             seniorityLevel = jobSeniorityLevel,
             completedFields = jobCompletedFields,
             isAccepted = jobIsAccepted,
             isDegraded = jobIsDegraded
         )
 
-        val trace = W5TraceContext(traceId, "", System.currentTimeMillis())
 
-        return W5Input(validatedProfile, validatedJob, trace)
+        return AdaptedW5Input(validatedProfile, validatedJob)
     }
+
 
     private fun deriveCurrentTitle(profile: StructuredProfileExtraction): String? {
         val latest = profile.workHistory.maxByOrNull { experience ->
@@ -69,47 +73,64 @@ object W5Adapter {
         val latestTitle = latest?.jobTitle?.value
         if (latestTitle != null && latestTitle.isNotEmpty()) return latestTitle
 
+
         return profile.personalInfo.headline?.value
     }
 
-    private fun deriveExperienceYears(profile: StructuredProfileExtraction): Int {
-        var totalYears = 0
-        for (experience in profile.workHistory) {
-            val startYear = extractYear(experience.startDate?.value)
-            val endYear = extractYear(experience.endDate?.value) ?: java.time.Year.now().value
-            if (startYear != null) {
-                totalYears += (endYear - startYear).coerceAtLeast(0)
+
+    private fun deriveExperienceYears(
+        profile: StructuredProfileExtraction,
+        asOfYear: Int
+    ): Int {
+        val intervals = profile.workHistory.mapNotNull { experience ->
+            val start = extractYear(experience.startDate?.value)
+            val end = extractYear(experience.endDate?.value) ?: asOfYear
+            if (start != null && start <= end) start to end else null
+        }.sortedBy { it.first }
+
+
+        if (intervals.isEmpty()) return 0
+
+
+        val merged = mutableListOf<Pair<Int, Int>>()
+        var currentStart = intervals[0].first
+        var currentEnd = intervals[0].second
+
+
+        for ((start, end) in intervals.drop(1)) {
+            if (start <= currentEnd) {
+                currentEnd = maxOf(currentEnd, end)
+            } else {
+                merged.add(currentStart to currentEnd)
+                currentStart = start
+                currentEnd = end
             }
         }
-        return totalYears
+        merged.add(currentStart to currentEnd)
+
+
+        return merged.sumOf { (start, end) -> end - start }
     }
 
+
+    // TECHNICAL DEBT: Date normalization should migrate upstream (W4/P3).
+    // W5 consumes extracted date strings because upstream does not yet provide normalized year Ints.
+    // When upstream adds normalized year fields, this function should be removed and W5 should
+    // consume Int? directly from StructuredProfileExtraction.workHistory[].startYear / .endYear.
     private fun extractYear(dateString: String?): Int? {
         if (dateString == null) return null
         val match = Regex("""\b(19|20)\d{2}\b""").find(dateString)
         return match?.value?.toInt()
     }
 
+
     private fun buildKeywords(
-        job: JobExtractionResult,
         jobRequiredSkills: List<String>,
-        assets: ValidationAssets
+        jobPreferredSkills: List<String>
     ): List<String> {
-        val descriptionTokens = tokenize(job.description, assets.stopWords)
-        val frequencyMap = descriptionTokens.groupingBy { it }.eachCount()
-        val topTokens = frequencyMap.entries
-            .sortedByDescending { it.value }
-            .take(10)
-            .map { it.key }
-        return (jobRequiredSkills + topTokens).distinct()
+        return (jobRequiredSkills + jobPreferredSkills).distinct()
     }
 
-    private fun deriveRequiredYears(job: JobExtractionResult): Int? {
-        val pattern = Regex("""(\d+)\+?\s*(years|yrs|year)""")
-        val matches = pattern.findAll(job.description)
-        val years = matches.map { it.groupValues[1].toInt() }.toList()
-        return if (years.isEmpty()) null else years.max()
-    }
 
     private fun buildProfileCompletedFields(
         skills: List<String>,
@@ -126,6 +147,7 @@ object W5Adapter {
         if (seniorityLevel != null) fields.add("seniorityLevel")
         return fields
     }
+
 
     private fun buildJobCompletedFields(
         requiredSkills: List<String>,
