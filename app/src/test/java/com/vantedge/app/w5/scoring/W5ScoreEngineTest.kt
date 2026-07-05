@@ -843,7 +843,6 @@ class W5ScoreEngineTest {
                 threshold = 50,
                 accepted = true,
                 reason = Gate0JobReason.ACCEPTED,
-                reason = Gate0JobReason.ACCEPTED,
                 detectedSignals = listOf("tech_role", "experienced"),
                 appliedPenalties = emptyList(),
                 rejectionCauses = emptyList(),
