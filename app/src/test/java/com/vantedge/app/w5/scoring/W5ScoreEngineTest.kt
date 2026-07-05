@@ -502,7 +502,7 @@ class W5ScoreEngineTest {
 
         val gap = GapAnalyzer.analyze(profile, job, assets)
 
-        assertTrue("Kotlin should be matched", gap.matched.contains("Kotlin"))
+        assertTrue("Kotlin should be weak", gap.weak.contains("Kotlin"))
         assertTrue("Kubernetes should be missing", gap.missing.contains("Kubernetes"))
         assertTrue("Python should be missing", gap.missing.contains("Python"))
     }
@@ -721,7 +721,7 @@ class W5ScoreEngineTest {
     fun `jaccard similarity produces correct values`() {
         assertEquals(1.0, jaccard(setOf("a", "b"), setOf("a", "b")), 0.001)
         assertEquals(0.0, jaccard(setOf("a", "b"), setOf("c", "d")), 0.001)
-        assertEquals(0.5, jaccard(setOf("a", "b"), setOf("b", "c")), 0.001)
+        assertEquals(0.333, jaccard(setOf("a", "b"), setOf("b", "c")), 0.001)
         assertEquals(1.0, jaccard(emptySet(), emptySet()), 0.001)
     }
 
