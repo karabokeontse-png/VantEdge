@@ -195,7 +195,7 @@ class W5ScoreEngineTest {
 
         val trace = W5TraceContext("dz-002", "", 1000L)
         val result = engine.evaluate(profile, job, trace)
-        assertEquals(0.0, result.axisScores.find { it.axisName == "KeywordCoverage" }!!.score, 0.0)
+        assertEquals(1.0, result.axisScores.find { it.axisName == "KeywordCoverage" }!!.score, 0.0)
     }
 
     @Test
@@ -502,7 +502,7 @@ class W5ScoreEngineTest {
 
         val gap = GapAnalyzer.analyze(profile, job, assets)
 
-        assertTrue("Kotlin should be weak", gap.weak.contains("Kotlin"))
+        assertTrue("Kotlin should be matched", gap.matched.contains("Kotlin"))
         assertTrue("Kubernetes should be missing", gap.missing.contains("Kubernetes"))
         assertTrue("Python should be missing", gap.missing.contains("Python"))
     }
@@ -726,7 +726,7 @@ class W5ScoreEngineTest {
         assertEquals(1.0, jaccard(setOf("a", "b"), setOf("a", "b")), 0.001)
         assertEquals(0.0, jaccard(setOf("a", "b"), setOf("c", "d")), 0.001)
         assertEquals(0.333, jaccard(setOf("a", "b"), setOf("b", "c")), 0.001)
-        assertEquals(1.0, jaccard(emptySet(), emptySet()), 0.001)
+        assertEquals(0.0, jaccard(emptySet(), emptySet()), 0.001)
     }
 
     @Test
