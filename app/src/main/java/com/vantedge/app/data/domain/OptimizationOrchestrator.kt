@@ -22,6 +22,8 @@ import com.vantedge.pipeline.contract.ExtractionMetadata
 import com.vantedge.pipeline.contract.JobType
 import com.vantedge.pipeline.validation.P2ValidationEngine
 import com.vantedge.pipeline.validation.ValidationDecision
+import kotlin.coroutines.resume
+import kotlin.coroutines.suspendCoroutine
 import java.util.UUID
 
 class OptimizationOrchestrator(
@@ -108,55 +110,49 @@ class OptimizationOrchestrator(
                     "${cycle.jobDescription}\n\n---\n$improvementContext"
                 else cycle.jobDescription
 
-            var cvError: String? = null
-            var cvJson: String? = null
-            generatorEngine.generateCv(
-                profile = cycle.profileSnapshot,
-                jobDescription = enrichedJobDescription,
-                designId = "modern",
-                schemeId = "navy",
-                jobTitle = cycle.jobTitle,
-                company = cycle.company,
-                correlationId = correlationId,
-                onResult = { result ->
-                    when (result) {
-                        is EngineResult.Success -> {
-                            cvJson = result.data
-                            cvError = null
-                        }
-                        is EngineResult.Failure -> {
-                            cvJson = null
-                            cvError = result.detail ?: result.type
-                        }
-                    }
-                }
-            )
+            val cvResult = suspendCoroutine<EngineResult> { cont ->
+                generatorEngine.generateCv(
+                    profile = cycle.profileSnapshot,
+                    jobDescription = enrichedJobDescription,
+                    designId = "modern",
+                    schemeId = "navy",
+                    jobTitle = cycle.jobTitle,
+                    company = cycle.company,
+                    correlationId = correlationId,
+                    onResult = { result -> cont.resume(result) }
+                )
+            }
+            val cvJson: String = when (cvResult) {
+                is EngineResult.Success -> cvResult.data
+                is EngineResult.Failure -> ""
+            }
+            val cvError: String? = when (cvResult) {
+                is EngineResult.Success -> null
+                is EngineResult.Failure -> cvResult.detail ?: cvResult.type
+            }
 
-            var coverLetterBody: String? = null
-            var coverLetterError: String? = null
-            generatorEngine.generateCoverLetter(
-                profile = cycle.profileSnapshot,
-                jobDescription = enrichedJobDescription,
-                designId = "modern",
-                schemeId = "navy",
-                jobTitle = cycle.jobTitle,
-                company = cycle.company,
-                correlationId = correlationId,
-                onResult = { result ->
-                    when (result) {
-                        is EngineResult.Success -> {
-                            coverLetterBody = result.data
-                            coverLetterError = null
-                        }
-                        is EngineResult.Failure -> {
-                            coverLetterBody = null
-                            coverLetterError = result.detail ?: result.type
-                        }
-                    }
-                }
-            )
+            val clResult = suspendCoroutine<EngineResult> { cont ->
+                generatorEngine.generateCoverLetter(
+                    profile = cycle.profileSnapshot,
+                    jobDescription = enrichedJobDescription,
+                    designId = "modern",
+                    schemeId = "navy",
+                    jobTitle = cycle.jobTitle,
+                    company = cycle.company,
+                    correlationId = correlationId,
+                    onResult = { result -> cont.resume(result) }
+                )
+            }
+            val coverLetterBody: String? = when (clResult) {
+                is EngineResult.Success -> clResult.data
+                is EngineResult.Failure -> null
+            }
+            val coverLetterError: String? = when (clResult) {
+                is EngineResult.Success -> null
+                is EngineResult.Failure -> clResult.detail ?: clResult.type
+            }
 
-            val matchedKeywords = if (cvJson == null) {
+            val matchedKeywords = if (cvJson.isEmpty()) {
                 emptyList()
             } else {
                 try {
@@ -238,56 +234,50 @@ class OptimizationOrchestrator(
                 else jobDescription
 
             onProgress(PipelineStep.GENERATING_CV)
-            var cvError: String? = null
-            var cvJson: String? = null
-            generatorEngine.generateCv(
-                profile = profile,
-                jobDescription = enrichedJobDescription,
-                designId = "modern",
-                schemeId = "navy",
-                jobTitle = jobTitle,
-                company = company,
-                correlationId = correlationId,
-                onResult = { result ->
-                    when (result) {
-                        is EngineResult.Success -> {
-                            cvJson = result.data
-                            cvError = null
-                        }
-                        is EngineResult.Failure -> {
-                            cvJson = null
-                            cvError = result.detail ?: result.type
-                        }
-                    }
-                }
-            )
+            val cvResult = suspendCoroutine<EngineResult> { cont ->
+                generatorEngine.generateCv(
+                    profile = profile,
+                    jobDescription = enrichedJobDescription,
+                    designId = "modern",
+                    schemeId = "navy",
+                    jobTitle = jobTitle,
+                    company = company,
+                    correlationId = correlationId,
+                    onResult = { result -> cont.resume(result) }
+                )
+            }
+            val cvJson: String = when (cvResult) {
+                is EngineResult.Success -> cvResult.data
+                is EngineResult.Failure -> ""
+            }
+            val cvError: String? = when (cvResult) {
+                is EngineResult.Success -> null
+                is EngineResult.Failure -> cvResult.detail ?: cvResult.type
+            }
 
             onProgress(PipelineStep.GENERATING_COVER_LETTER)
-            var coverLetterBody: String? = null
-            var coverLetterError: String? = null
-            generatorEngine.generateCoverLetter(
-                profile = profile,
-                jobDescription = enrichedJobDescription,
-                designId = "modern",
-                schemeId = "navy",
-                jobTitle = jobTitle,
-                company = company,
-                correlationId = correlationId,
-                onResult = { result ->
-                    when (result) {
-                        is EngineResult.Success -> {
-                            coverLetterBody = result.data
-                            coverLetterError = null
-                        }
-                        is EngineResult.Failure -> {
-                            coverLetterBody = null
-                            coverLetterError = result.detail ?: result.type
-                        }
-                    }
-                }
-            )
+            val clResult = suspendCoroutine<EngineResult> { cont ->
+                generatorEngine.generateCoverLetter(
+                    profile = profile,
+                    jobDescription = enrichedJobDescription,
+                    designId = "modern",
+                    schemeId = "navy",
+                    jobTitle = jobTitle,
+                    company = company,
+                    correlationId = correlationId,
+                    onResult = { result -> cont.resume(result) }
+                )
+            }
+            val coverLetterBody: String? = when (clResult) {
+                is EngineResult.Success -> clResult.data
+                is EngineResult.Failure -> null
+            }
+            val coverLetterError: String? = when (clResult) {
+                is EngineResult.Success -> null
+                is EngineResult.Failure -> clResult.detail ?: clResult.type
+            }
 
-            val matchedKeywords = if (cvJson == null) {
+            val matchedKeywords = if (cvJson.isEmpty()) {
                 emptyList()
             } else {
                 try {
