@@ -22,6 +22,8 @@ import com.vantedge.pipeline.contract.ExtractionMetadata
 import com.vantedge.pipeline.contract.JobType
 import com.vantedge.pipeline.validation.P2ValidationEngine
 import com.vantedge.pipeline.validation.ValidationDecision
+import com.vantedge.app.w5.scoring.ProfileSanitizer
+import com.vantedge.app.w5.scoring.NormalizedProfile
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
@@ -355,6 +357,26 @@ class OptimizationOrchestrator(
         jobDescription: String
     ): CompatibilityResult {
         val correlationId = UUID.randomUUID().toString().take(8)
+
+        // ==========================================
+        // PROFILE SANITIZATION (P0 Hallucination Elimination)
+        // ==========================================
+        val sanitizationResult = ProfileSanitizer.sanitize(profile)
+        val normalizedProfile = NormalizedProfile.from(profile, sanitizationResult)
+
+        PipelineTrace.dataQuality(
+            stage = "ProfileSanitizer_ACTIVE",
+            issue = "SANITIZATION_RESULT",
+            details = mapOf(
+                "correlationId" to correlationId,
+                "originalSkillCount" to profile.skills.size,
+                "sanitizedSkillCount" to sanitizationResult.skills.size,
+                "excludedTokens" to sanitizationResult.excluded.map { it.token },
+                "auditRuleIds" to sanitizationResult.audit.entries.map { it.ruleId }
+            ),
+            correlationId = correlationId
+        )
+
         val systemPrompt = """
 You are an elite ATS analyst and career strategist. Perform a deep compatibility analysis.
 Return ONLY a valid JSON object. No markdown. No explanation. No code blocks.
@@ -386,12 +408,12 @@ STRICT RULES:
         val userPrompt = """
 CANDIDATE PROFILE:
 Name: ${profile.name}
-Summary: ${profile.summary}
-Skills: ${profile.skills.joinToString(", ")}
-Certifications: ${profile.certifications.joinToString(", ")}
-Experience: ${profile.workHistory.joinToString("\n") { "${it.role} at ${it.company} (${it.startDate}-${it.endDate}): ${it.description}" }}
-Education: ${profile.education.joinToString(", ")}
-Languages: ${profile.languages.joinToString(", ")}
+Summary: ${normalizedProfile.summary}
+Skills: ${normalizedProfile.skills.joinToString(", ")}
+Certifications: ${normalizedProfile.certifications.joinToString(", ")}
+Experience: ${normalizedProfile.workHistory.joinToString("\n")}
+Education: ${normalizedProfile.education.joinToString(", ")}
+Languages: ${normalizedProfile.languages.joinToString(", ")}
 
 JOB DESCRIPTION:
 $jobDescription
