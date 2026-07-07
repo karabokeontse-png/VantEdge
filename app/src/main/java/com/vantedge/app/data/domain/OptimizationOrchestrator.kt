@@ -22,8 +22,10 @@ import com.vantedge.pipeline.contract.ExtractionMetadata
 import com.vantedge.pipeline.contract.JobType
 import com.vantedge.pipeline.validation.P2ValidationEngine
 import com.vantedge.pipeline.validation.ValidationDecision
-import kotlin.coroutines.resume
-import kotlin.coroutines.suspendCoroutine
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import java.util.UUID
 
 class OptimizationOrchestrator(
@@ -110,17 +112,21 @@ class OptimizationOrchestrator(
                     "${cycle.jobDescription}\n\n---\n$improvementContext"
                 else cycle.jobDescription
 
-            val cvResult = suspendCoroutine<EngineResult> { cont ->
-                generatorEngine.generateCv(
-                    profile = cycle.profileSnapshot,
-                    jobDescription = enrichedJobDescription,
-                    designId = "modern",
-                    schemeId = "navy",
-                    jobTitle = cycle.jobTitle,
-                    company = cycle.company,
-                    correlationId = correlationId,
-                    onResult = { result -> cont.resume(result) }
-                )
+            val cvResult = coroutineScope {
+                val d = CompletableDeferred<EngineResult>()
+                launch(Dispatchers.IO) {
+                    generatorEngine.generateCv(
+                        profile = cycle.profileSnapshot,
+                        jobDescription = enrichedJobDescription,
+                        designId = "modern",
+                        schemeId = "navy",
+                        jobTitle = cycle.jobTitle,
+                        company = cycle.company,
+                        correlationId = correlationId,
+                        onResult = { result -> d.complete(result) }
+                    )
+                }
+                d.await()
             }
             val cvJson: String = when (cvResult) {
                 is EngineResult.Success -> cvResult.data
@@ -131,17 +137,21 @@ class OptimizationOrchestrator(
                 is EngineResult.Failure -> cvResult.detail ?: cvResult.type
             }
 
-            val clResult = suspendCoroutine<EngineResult> { cont ->
-                generatorEngine.generateCoverLetter(
-                    profile = cycle.profileSnapshot,
-                    jobDescription = enrichedJobDescription,
-                    designId = "modern",
-                    schemeId = "navy",
-                    jobTitle = cycle.jobTitle,
-                    company = cycle.company,
-                    correlationId = correlationId,
-                    onResult = { result -> cont.resume(result) }
-                )
+            val clResult = coroutineScope {
+                val d = CompletableDeferred<EngineResult>()
+                launch(Dispatchers.IO) {
+                    generatorEngine.generateCoverLetter(
+                        profile = cycle.profileSnapshot,
+                        jobDescription = enrichedJobDescription,
+                        designId = "modern",
+                        schemeId = "navy",
+                        jobTitle = cycle.jobTitle,
+                        company = cycle.company,
+                        correlationId = correlationId,
+                        onResult = { result -> d.complete(result) }
+                    )
+                }
+                d.await()
             }
             val coverLetterBody: String? = when (clResult) {
                 is EngineResult.Success -> clResult.data
@@ -234,17 +244,21 @@ class OptimizationOrchestrator(
                 else jobDescription
 
             onProgress(PipelineStep.GENERATING_CV)
-            val cvResult = suspendCoroutine<EngineResult> { cont ->
-                generatorEngine.generateCv(
-                    profile = profile,
-                    jobDescription = enrichedJobDescription,
-                    designId = "modern",
-                    schemeId = "navy",
-                    jobTitle = jobTitle,
-                    company = company,
-                    correlationId = correlationId,
-                    onResult = { result -> cont.resume(result) }
-                )
+            val cvResult = coroutineScope {
+                val d = CompletableDeferred<EngineResult>()
+                launch(Dispatchers.IO) {
+                    generatorEngine.generateCv(
+                        profile = profile,
+                        jobDescription = enrichedJobDescription,
+                        designId = "modern",
+                        schemeId = "navy",
+                        jobTitle = jobTitle,
+                        company = company,
+                        correlationId = correlationId,
+                        onResult = { result -> d.complete(result) }
+                    )
+                }
+                d.await()
             }
             val cvJson: String = when (cvResult) {
                 is EngineResult.Success -> cvResult.data
@@ -256,17 +270,21 @@ class OptimizationOrchestrator(
             }
 
             onProgress(PipelineStep.GENERATING_COVER_LETTER)
-            val clResult = suspendCoroutine<EngineResult> { cont ->
-                generatorEngine.generateCoverLetter(
-                    profile = profile,
-                    jobDescription = enrichedJobDescription,
-                    designId = "modern",
-                    schemeId = "navy",
-                    jobTitle = jobTitle,
-                    company = company,
-                    correlationId = correlationId,
-                    onResult = { result -> cont.resume(result) }
-                )
+            val clResult = coroutineScope {
+                val d = CompletableDeferred<EngineResult>()
+                launch(Dispatchers.IO) {
+                    generatorEngine.generateCoverLetter(
+                        profile = profile,
+                        jobDescription = enrichedJobDescription,
+                        designId = "modern",
+                        schemeId = "navy",
+                        jobTitle = jobTitle,
+                        company = company,
+                        correlationId = correlationId,
+                        onResult = { result -> d.complete(result) }
+                    )
+                }
+                d.await()
             }
             val coverLetterBody: String? = when (clResult) {
                 is EngineResult.Success -> clResult.data
