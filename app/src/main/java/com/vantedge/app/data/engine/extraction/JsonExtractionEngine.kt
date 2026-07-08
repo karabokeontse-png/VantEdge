@@ -1,6 +1,5 @@
 package com.vantedge.app.data.engine.extraction
 
-import android.util.Log
 import com.vantedge.app.domain.PipelineTrace
 import org.json.JSONObject
 import java.util.regex.Pattern
@@ -9,7 +8,8 @@ data class ExtractionResult(
     val content: String,
     val strategy: String,
     val success: Boolean,
-    val failureReason: String?
+    val failureReason: String?,
+    val repairTrail: List<String> = emptyList()
 )
 
 object JsonExtractionEngine {
@@ -41,7 +41,8 @@ object JsonExtractionEngine {
                 "strategy" to result.strategy,
                 "success" to result.success,
                 "failureReason" to (result.failureReason ?: ""),
-                "contentLength" to result.content.length
+                "contentLength" to result.content.length,
+                "repairTrail" to result.repairTrail.joinToString(";")
             )
         )
 
@@ -49,10 +50,23 @@ object JsonExtractionEngine {
     }
 
     private fun extractInternal(normalized: String): ExtractionResult {
-        try {
-            JSONObject(normalized)
-            return ExtractionResult(normalized, "direct_parse", true, null)
-        } catch (_: Exception) {}
+        val repairTrail = mutableListOf<String>()
+
+        val directObj = tryDirectParse(normalized)
+        if (directObj != null) {
+            if (hasTrailingCorruption(normalized)) {
+                repairTrail.add("direct_parse:STRUCTURAL_CORRUPTION")
+                return ExtractionResult(
+                    normalized,
+                    "direct_parse_quarantined",
+                    false,
+                    "STRUCTURAL_CORRUPTION_AFTER_OBJECT_CLOSURE",
+                    repairTrail
+                )
+            }
+            return ExtractionResult(normalized, "direct_parse", true, null, repairTrail)
+        }
+        repairTrail.add("direct_parse:INVALID_JSON")
 
         val noFence = normalized
             .replace("```json", "")
@@ -61,31 +75,73 @@ object JsonExtractionEngine {
             .replace(Pattern.compile("""\*(.+?)\*""").toRegex(), "$1")
             .trim()
         if (noFence != normalized) {
-            try {
-                JSONObject(noFence)
-                return ExtractionResult(noFence, "markdown_strip", true, null)
-            } catch (_: Exception) {}
+            val stripObj = tryDirectParse(noFence)
+            if (stripObj != null) {
+                if (hasTrailingCorruption(noFence)) {
+                    repairTrail.add("markdown_strip:STRUCTURAL_CORRUPTION")
+                    return ExtractionResult(
+                        noFence,
+                        "markdown_strip_quarantined",
+                        false,
+                        "STRUCTURAL_CORRUPTION_AFTER_OBJECT_CLOSURE",
+                        repairTrail
+                    )
+                }
+                repairTrail.add("markdown_strip:REPAIRED")
+                return ExtractionResult(noFence, "markdown_strip", true, null, repairTrail)
+            }
+            repairTrail.add("markdown_strip:INVALID_JSON")
         }
 
         val rootObj = extractNestingAwareRoot(normalized)
         if (rootObj != null) {
-            try {
-                JSONObject(rootObj)
-                return ExtractionResult(rootObj, "nesting_aware_root", true, null)
-            } catch (_: Exception) {}
+            val rootParsed = tryDirectParse(rootObj)
+            if (rootParsed != null) {
+                val trailing = normalized.substringAfter(rootObj).trim()
+                if (trailing.isNotEmpty()) {
+                    repairTrail.add("nesting_aware_root:STRUCTURAL_CORRUPTION")
+                    return ExtractionResult(
+                        rootObj,
+                        "nesting_aware_root_quarantined",
+                        false,
+                        "STRUCTURAL_CORRUPTION_AFTER_OBJECT_CLOSURE: trailing=${trailing.take(100)}",
+                        repairTrail
+                    )
+                }
+                repairTrail.add("nesting_aware_root:REPAIRED")
+                return ExtractionResult(rootObj, "nesting_aware_root", true, null, repairTrail)
+            }
+            repairTrail.add("nesting_aware_root:EXTRACTED_BUT_INVALID_JSON")
         }
 
         val candidates = findAllNestingAwareCandidates(normalized)
             .filter { it.length > 50 }
             .sortedByDescending { it.length }
-        for (candidate in candidates) {
-            try {
-                JSONObject(candidate)
-                return ExtractionResult(candidate, "substring_scan", true, null)
-            } catch (_: Exception) {}
+        for ((index, candidate) in candidates.withIndex()) {
+            val candidateObj = tryDirectParse(candidate)
+            if (candidateObj != null) {
+                repairTrail.add("substring_scan:REPAIRED candidate=$index")
+                return ExtractionResult(candidate, "substring_scan", true, null, repairTrail)
+            }
+            repairTrail.add("substring_scan:INVALID_JSON candidate=$index")
         }
 
-        return ExtractionResult(normalized, "failed", false, "ALL_STRATEGIES_FAILED")
+        return ExtractionResult(normalized, "failed", false, "ALL_STRATEGIES_FAILED", repairTrail)
+    }
+
+    private fun tryDirectParse(input: String): JSONObject? {
+        return try {
+            JSONObject(input)
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun hasTrailingCorruption(input: String): Boolean {
+        val root = extractNestingAwareRoot(input)
+        if (root == null) return false
+        val remaining = input.substringAfter(root).trim()
+        return remaining.isNotEmpty()
     }
 
     private fun extractNestingAwareRoot(raw: String): String? {

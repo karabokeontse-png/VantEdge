@@ -8,6 +8,18 @@ import com.vantedge.app.domain.PipelineTrace
 import org.json.JSONArray
 import org.json.JSONObject
 
+data class EvidenceSummary(
+    val overallSeverity: String,
+    val thinCount: Int,
+    val mismatchCount: Int,
+    val unsupportedCount: Int,
+    val correctedCount: Int,
+    val annotatedCount: Int,
+    val haltRequired: Boolean,
+    val regenerateRequired: Boolean,
+    val affectedFields: List<String>
+)
+
 data class RuleConfig(
     val name: String,
     val field: String,
@@ -19,7 +31,9 @@ data class RuleConfig(
 
 data class ValidationResult<T>(
     val decision: ValidationDecision,
-    val validated: T
+    val validated: T,
+    val confidencePenaltyPercent: Int = 0,
+    val evidenceAffectedFields: List<String> = emptyList()
 )
 
 object P2ValidationEngine {
@@ -111,31 +125,88 @@ object P2ValidationEngine {
         }
     }
 
-    fun validateContractResult(node: JsonNode, correlationId: String): ValidationResult<JsonNode> {
+    private fun computeEvidenceDecision(
+        baseDecision: ValidationDecision,
+        evidenceSummary: EvidenceSummary?
+    ): Pair<ValidationDecision, Int> {
+        if (evidenceSummary == null) return Pair(baseDecision, 0)
+
+        val penaltyThin = evidenceSummary.thinCount * 2
+        val penaltyMismatch = evidenceSummary.mismatchCount * 5
+        val penaltyUnsupported = evidenceSummary.unsupportedCount * 2
+        val totalPenalty = minOf(penaltyThin + penaltyMismatch + penaltyUnsupported, 20)
+
+        val decision = when {
+            evidenceSummary.haltRequired -> ValidationDecision.Reject(
+                "Evidence integrity HALT: affected=${evidenceSummary.affectedFields.joinToString()}",
+                ValidationTrace("EvidenceIntegrity", evidenceSummary.affectedFields.firstOrNull() ?: "unknown", System.currentTimeMillis())
+            )
+            evidenceSummary.regenerateRequired -> ValidationDecision.Reject(
+                "Evidence integrity REGENERATE required: affected=${evidenceSummary.affectedFields.joinToString()}",
+                ValidationTrace("EvidenceIntegrity", evidenceSummary.affectedFields.firstOrNull() ?: "unknown", System.currentTimeMillis())
+            )
+            evidenceSummary.overallSeverity == "E4" -> ValidationDecision.Reject(
+                "Evidence integrity E4: ${evidenceSummary.affectedFields.joinToString()}",
+                ValidationTrace("EvidenceIntegrity", evidenceSummary.affectedFields.firstOrNull() ?: "unknown", System.currentTimeMillis())
+            )
+            evidenceSummary.overallSeverity == "E3" -> ValidationDecision.Reject(
+                "Evidence integrity E3: ${evidenceSummary.affectedFields.joinToString()}",
+                ValidationTrace("EvidenceIntegrity", evidenceSummary.affectedFields.firstOrNull() ?: "unknown", System.currentTimeMillis())
+            )
+            evidenceSummary.mismatchCount > 0 -> ValidationDecision.Degraded(
+                ValidationTrace("EvidenceIntegrity", evidenceSummary.affectedFields.firstOrNull() ?: "unknown", System.currentTimeMillis()),
+                evidenceSummary.affectedFields + "mismatch_count=${evidenceSummary.mismatchCount}"
+            )
+            evidenceSummary.thinCount > 0 -> ValidationDecision.Degraded(
+                ValidationTrace("EvidenceIntegrity", evidenceSummary.affectedFields.firstOrNull() ?: "unknown", System.currentTimeMillis()),
+                evidenceSummary.affectedFields + "thin_count=${evidenceSummary.thinCount}"
+            )
+            evidenceSummary.unsupportedCount > 0 -> ValidationDecision.Degraded(
+                ValidationTrace("EvidenceIntegrity", evidenceSummary.affectedFields.firstOrNull() ?: "unknown", System.currentTimeMillis()),
+                evidenceSummary.affectedFields + "unsupported_count=${evidenceSummary.unsupportedCount}"
+            )
+            else -> baseDecision
+        }
+
+        return Pair(decision, totalPenalty)
+    }
+
+    fun validateContractResult(
+        node: JsonNode,
+        correlationId: String,
+        evidenceSummary: EvidenceSummary? = null
+    ): ValidationResult<JsonNode> {
         val inputHash = node.toString().hashCode()
         PipelineTrace.dataQuality("P2Validation", "P2_VALIDATION_START", mapOf(
             "correlationId" to correlationId,
             "validationType" to "ContractResult",
-            "inputHash" to inputHash.toString()
+            "inputHash" to inputHash.toString(),
+            "evidenceSummaryPresent" to (evidenceSummary != null).toString()
         ), correlationId)
         val trace = buildTrace("ContractResult", correlationId)
         for (rule in compatibilityRules) {
             trace.addResult(runRule(node, rule))
         }
-        val decision = computeDecision(trace)
-        val failureCodes = when (decision) {
-            is ValidationDecision.Reject -> listOf(decision.reason)
-            is ValidationDecision.Degraded -> decision.warnings
+        val baseDecision = computeDecision(trace)
+        val (evidenceDecision, penalty) = computeEvidenceDecision(baseDecision, evidenceSummary)
+
+        val finalDecision = if (baseDecision is ValidationDecision.Reject) baseDecision else evidenceDecision
+
+        val failureCodes = when (finalDecision) {
+            is ValidationDecision.Reject -> listOf(finalDecision.reason)
+            is ValidationDecision.Degraded -> finalDecision.warnings
             else -> emptyList()
         }
         PipelineTrace.dataQuality("P2Validation", "P2_VALIDATION_END", mapOf(
             "correlationId" to correlationId,
             "validationType" to "ContractResult",
-            "decision" to decision.javaClass.simpleName,
+            "decision" to finalDecision.javaClass.simpleName,
             "traceHash" to trace.hashCode().toString(),
-            "failureCodes" to failureCodes.toString()
+            "failureCodes" to failureCodes.toString(),
+            "confidencePenalty" to penalty.toString(),
+            "evidenceFields" to (evidenceSummary?.affectedFields?.joinToString() ?: "")
         ), correlationId)
-        return ValidationResult(decision, node)
+        return ValidationResult(finalDecision, node, penalty, evidenceSummary?.affectedFields ?: emptyList())
     }
 
     fun validateJobExtractionResult(result: JobExtractionResult, correlationId: String): ValidationResult<JobExtractionResult> {

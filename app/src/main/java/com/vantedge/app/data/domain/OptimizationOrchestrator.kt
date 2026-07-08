@@ -20,10 +20,17 @@ import com.vantedge.pipeline.contract.ContractValidator
 import com.vantedge.pipeline.contract.ExtractedAiPayload
 import com.vantedge.pipeline.contract.ExtractionMetadata
 import com.vantedge.pipeline.contract.JobType
+import com.vantedge.pipeline.validation.EvidenceSummary
 import com.vantedge.pipeline.validation.P2ValidationEngine
 import com.vantedge.pipeline.validation.ValidationDecision
 import com.vantedge.app.w5.scoring.ProfileSanitizer
 import com.vantedge.app.w5.scoring.NormalizedProfile
+import com.vantedge.pipeline.evidence.VantEdgeEvidenceRegistry
+import com.vantedge.pipeline.evidence.EvidenceIntegrityDetector
+import com.vantedge.pipeline.evidence.EvidencePolicyEnforcer
+import com.vantedge.pipeline.evidence.EnforcementAction
+import com.vantedge.pipeline.evidence.FabricationSeverity
+import com.vantedge.pipeline.evidence.ViolationType
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
@@ -39,343 +46,100 @@ class OptimizationOrchestrator(
 ) : CompatibilityOrchestrator {
 
     suspend fun runAnalysisOnly(
-        profile: UserProfile,
-        jobTitle: String,
-        company: String,
-        jobDescription: String,
+        profile: UserProfile, jobTitle: String, company: String, jobDescription: String,
         improvementContext: String? = null
     ): GenerationCycle {
         val correlationId = UUID.randomUUID().toString().take(8)
         val startMs = System.currentTimeMillis()
-        PipelineTrace.entry("analysis_only", mapOf(
-            "correlationId" to correlationId,
-            "jobTitle" to jobTitle,
-            "company" to company
-        ))
-
+        PipelineTrace.entry("analysis_only", mapOf("correlationId" to correlationId, "jobTitle" to jobTitle, "company" to company))
         return try {
             val analysisResult = runAnalysisFresh(profile, jobTitle, company, jobDescription)
             val compatibility = when (analysisResult) {
                 is CompatibilityResult.Success -> analysisResult.data
-                is CompatibilityResult.Failure -> throw IllegalStateException(
-                    "Compatibility analysis failed: ${analysisResult.type} - ${analysisResult.message}"
-                )
+                is CompatibilityResult.Failure -> throw IllegalStateException("Compatibility analysis failed: ${analysisResult.type} - ${analysisResult.message}")
             }
-
-            val cycle = GenerationCycle(
-                jobTitle = jobTitle,
-                company = company,
-                jobDescription = jobDescription,
-                profileSnapshot = profile,
-                compatibility = compatibility,
-                title = improvementContext,
-                isVisibleInHistory = true
-            )
-
+            val cycle = GenerationCycle(jobTitle = jobTitle, company = company, jobDescription = jobDescription,
+                profileSnapshot = profile, compatibility = compatibility, title = improvementContext, isVisibleInHistory = true)
             historyStore.saveCycle(cycle)
-
             val durationMs = System.currentTimeMillis() - startMs
-            PipelineTrace.exit("analysis_only", durationMs, mapOf(
-                "correlationId" to correlationId,
-                "status" to "success",
-                "score" to compatibility.score
-            ))
+            PipelineTrace.exit("analysis_only", durationMs, mapOf("correlationId" to correlationId, "status" to "success", "score" to compatibility.score))
             cycle
         } catch (e: Exception) {
             val durationMs = System.currentTimeMillis() - startMs
             PipelineTrace.error("analysis_only", e.message ?: "unknown", e, correlationId)
-            PipelineTrace.exit("analysis_only", durationMs, mapOf(
-                "correlationId" to correlationId,
-                "status" to "failure",
-                "error" to (e.message ?: "unknown")
-            ))
+            PipelineTrace.exit("analysis_only", durationMs, mapOf("correlationId" to correlationId, "status" to "failure", "error" to (e.message ?: "unknown")))
             throw e
         }
     }
 
-    suspend fun runGenerationFromCycle(
-        cycle: GenerationCycle,
-        improvementContext: String? = null
-    ): GenerationCycle {
+    suspend fun runGenerationFromCycle(cycle: GenerationCycle, improvementContext: String? = null): GenerationCycle {
         val correlationId = UUID.randomUUID().toString().take(8)
         val startMs = System.currentTimeMillis()
-        PipelineTrace.entry("generation_from_cycle", mapOf(
-            "correlationId" to correlationId,
-            "jobTitle" to cycle.jobTitle,
-            "company" to cycle.company
-        ))
-
+        PipelineTrace.entry("generation_from_cycle", mapOf("correlationId" to correlationId, "jobTitle" to cycle.jobTitle, "company" to cycle.company))
         return try {
-            val compatibility = cycle.compatibility
-                ?: throw Exception("Cannot generate: cycle has no compatibility analysis.")
-
-            val enrichedJobDescription =
-                if (!improvementContext.isNullOrBlank())
-                    "${cycle.jobDescription}\n\n---\n$improvementContext"
-                else cycle.jobDescription
-
-            val cvResult = coroutineScope {
-                val d = CompletableDeferred<EngineResult>()
-                launch(Dispatchers.IO) {
-                    generatorEngine.generateCv(
-                        profile = cycle.profileSnapshot,
-                        jobDescription = enrichedJobDescription,
-                        designId = "modern",
-                        schemeId = "navy",
-                        jobTitle = cycle.jobTitle,
-                        company = cycle.company,
-                        correlationId = correlationId,
-                        onResult = { result -> d.complete(result) }
-                    )
-                }
-                d.await()
-            }
-            val cvJson: String = when (cvResult) {
-                is EngineResult.Success -> cvResult.data
-                is EngineResult.Failure -> ""
-            }
-            val cvError: String? = when (cvResult) {
-                is EngineResult.Success -> null
-                is EngineResult.Failure -> cvResult.detail ?: cvResult.type
-            }
-
-            val clResult = coroutineScope {
-                val d = CompletableDeferred<EngineResult>()
-                launch(Dispatchers.IO) {
-                    generatorEngine.generateCoverLetter(
-                        profile = cycle.profileSnapshot,
-                        jobDescription = enrichedJobDescription,
-                        designId = "modern",
-                        schemeId = "navy",
-                        jobTitle = cycle.jobTitle,
-                        company = cycle.company,
-                        correlationId = correlationId,
-                        onResult = { result -> d.complete(result) }
-                    )
-                }
-                d.await()
-            }
-            val coverLetterBody: String? = when (clResult) {
-                is EngineResult.Success -> clResult.data
-                is EngineResult.Failure -> null
-            }
-            val coverLetterError: String? = when (clResult) {
-                is EngineResult.Success -> null
-                is EngineResult.Failure -> clResult.detail ?: clResult.type
-            }
-
-            val matchedKeywords = if (cvJson.isEmpty()) {
-                emptyList()
-            } else {
-                try {
-                    val json = org.json.JSONObject(cvJson)
-                    val arr = json.getJSONArray("matchedKeywords")
-                    (0 until arr.length()).map { arr.getString(it) }
-                } catch (e: Exception) {
-                    throw IllegalStateException(
-                        "Failed to parse matchedKeywords from cvJson",
-                        e
-                    )
-                }
-            }
-
-            val readyCycle = cycle.copy(
-                compatibility = compatibility,
-                matchedKeywords = matchedKeywords,
-                cvContent = cvJson,
-                coverLetterContent = coverLetterBody,
-                cvErrorMessage = cvError,
-                coverLetterErrorMessage = coverLetterError,
-                title = improvementContext,
-                isVisibleInHistory = true
-            )
-
+            val compatibility = cycle.compatibility ?: throw Exception("Cannot generate: cycle has no compatibility analysis.")
+            val enrichedJobDescription = if (!improvementContext.isNullOrBlank()) "${cycle.jobDescription}\n\n---\n$improvementContext" else cycle.jobDescription
+            val cvResult = coroutineScope { val d = CompletableDeferred<EngineResult>(); launch(Dispatchers.IO) { generatorEngine.generateCv(profile = cycle.profileSnapshot, jobDescription = enrichedJobDescription, designId = "modern", schemeId = "navy", jobTitle = cycle.jobTitle, company = cycle.company, correlationId = correlationId, onResult = { result -> d.complete(result) }) }; d.await() }
+            val cvJson: String = when (cvResult) { is EngineResult.Success -> cvResult.data; is EngineResult.Failure -> "" }
+            val cvError: String? = when (cvResult) { is EngineResult.Success -> null; is EngineResult.Failure -> cvResult.detail ?: cvResult.type }
+            val clResult = coroutineScope { val d = CompletableDeferred<EngineResult>(); launch(Dispatchers.IO) { generatorEngine.generateCoverLetter(profile = cycle.profileSnapshot, jobDescription = enrichedJobDescription, designId = "modern", schemeId = "navy", jobTitle = cycle.jobTitle, company = cycle.company, correlationId = correlationId, onResult = { result -> d.complete(result) }) }; d.await() }
+            val coverLetterBody: String? = when (clResult) { is EngineResult.Success -> clResult.data; is EngineResult.Failure -> null }
+            val coverLetterError: String? = when (clResult) { is EngineResult.Success -> null; is EngineResult.Failure -> clResult.detail ?: clResult.type }
+            val matchedKeywords = if (cvJson.isEmpty()) emptyList() else { try { val json = org.json.JSONObject(cvJson); val arr = json.getJSONArray("matchedKeywords"); (0 until arr.length()).map { arr.getString(it) } } catch (e: Exception) { throw IllegalStateException("Failed to parse matchedKeywords from cvJson", e) } }
+            val readyCycle = cycle.copy(compatibility = compatibility, matchedKeywords = matchedKeywords, cvContent = cvJson, coverLetterContent = coverLetterBody, cvErrorMessage = cvError, coverLetterErrorMessage = coverLetterError, title = improvementContext, isVisibleInHistory = true)
             historyStore.saveCycle(readyCycle)
-
             val durationMs = System.currentTimeMillis() - startMs
-            PipelineTrace.exit("generation_from_cycle", durationMs, mapOf(
-                "correlationId" to correlationId,
-                "status" to "success",
-                "cvError" to (cvError ?: "none"),
-                "coverLetterError" to (coverLetterError ?: "none")
-            ))
+            PipelineTrace.exit("generation_from_cycle", durationMs, mapOf("correlationId" to correlationId, "status" to "success", "cvError" to (cvError ?: "none"), "coverLetterError" to (coverLetterError ?: "none")))
             readyCycle
         } catch (e: Exception) {
             val durationMs = System.currentTimeMillis() - startMs
             PipelineTrace.error("generation_from_cycle", e.message ?: "unknown", e, correlationId)
-            PipelineTrace.exit("generation_from_cycle", durationMs, mapOf(
-                "correlationId" to correlationId,
-                "status" to "failure",
-                "error" to (e.message ?: "unknown")
-            ))
+            PipelineTrace.exit("generation_from_cycle", durationMs, mapOf("correlationId" to correlationId, "status" to "failure", "error" to (e.message ?: "unknown")))
             throw e
         }
     }
 
     suspend fun runFullPipeline(
-        profile: UserProfile,
-        jobTitle: String,
-        company: String,
-        jobDescription: String,
-        mode: GenerationMode,
-        improvementContext: String? = null,
-        onProgress: (PipelineStep) -> Unit = {}
+        profile: UserProfile, jobTitle: String, company: String, jobDescription: String,
+        mode: GenerationMode, improvementContext: String? = null, onProgress: (PipelineStep) -> Unit = {}
     ): GenerationCycle {
         val correlationId = UUID.randomUUID().toString().take(8)
         val startMs = System.currentTimeMillis()
-        PipelineTrace.entry("full_pipeline", mapOf(
-            "correlationId" to correlationId,
-            "jobTitle" to jobTitle,
-            "company" to company,
-            "mode" to mode.name
-        ))
-
+        PipelineTrace.entry("full_pipeline", mapOf("correlationId" to correlationId, "jobTitle" to jobTitle, "company" to company, "mode" to mode.name))
         return try {
             onProgress(PipelineStep.ANALYSING)
             val analysisResult = runAnalysisFresh(profile, jobTitle, company, jobDescription)
-            val compatibility = when (analysisResult) {
-                is CompatibilityResult.Success -> analysisResult.data
-                is CompatibilityResult.Failure -> throw IllegalStateException(
-                    "Compatibility analysis failed: ${analysisResult.type} - ${analysisResult.message}"
-                )
-            }
-
-            val enrichedJobDescription =
-                if (!improvementContext.isNullOrBlank())
-                    "$jobDescription\n\n---\n$improvementContext"
-                else jobDescription
-
+            val compatibility = when (analysisResult) { is CompatibilityResult.Success -> analysisResult.data; is CompatibilityResult.Failure -> throw IllegalStateException("Compatibility analysis failed: ${analysisResult.type} - ${analysisResult.message}") }
+            val enrichedJobDescription = if (!improvementContext.isNullOrBlank()) "$jobDescription\n\n---\n$improvementContext" else jobDescription
             onProgress(PipelineStep.GENERATING_CV)
-            val cvResult = coroutineScope {
-                val d = CompletableDeferred<EngineResult>()
-                launch(Dispatchers.IO) {
-                    generatorEngine.generateCv(
-                        profile = profile,
-                        jobDescription = enrichedJobDescription,
-                        designId = "modern",
-                        schemeId = "navy",
-                        jobTitle = jobTitle,
-                        company = company,
-                        correlationId = correlationId,
-                        onResult = { result -> d.complete(result) }
-                    )
-                }
-                d.await()
-            }
-            val cvJson: String = when (cvResult) {
-                is EngineResult.Success -> cvResult.data
-                is EngineResult.Failure -> ""
-            }
-            val cvError: String? = when (cvResult) {
-                is EngineResult.Success -> null
-                is EngineResult.Failure -> cvResult.detail ?: cvResult.type
-            }
-
+            val cvResult = coroutineScope { val d = CompletableDeferred<EngineResult>(); launch(Dispatchers.IO) { generatorEngine.generateCv(profile = profile, jobDescription = enrichedJobDescription, designId = "modern", schemeId = "navy", jobTitle = jobTitle, company = company, correlationId = correlationId, onResult = { result -> d.complete(result) }) }; d.await() }
+            val cvJson: String = when (cvResult) { is EngineResult.Success -> cvResult.data; is EngineResult.Failure -> "" }
+            val cvError: String? = when (cvResult) { is EngineResult.Success -> null; is EngineResult.Failure -> cvResult.detail ?: cvResult.type }
             onProgress(PipelineStep.GENERATING_COVER_LETTER)
-            val clResult = coroutineScope {
-                val d = CompletableDeferred<EngineResult>()
-                launch(Dispatchers.IO) {
-                    generatorEngine.generateCoverLetter(
-                        profile = profile,
-                        jobDescription = enrichedJobDescription,
-                        designId = "modern",
-                        schemeId = "navy",
-                        jobTitle = jobTitle,
-                        company = company,
-                        correlationId = correlationId,
-                        onResult = { result -> d.complete(result) }
-                    )
-                }
-                d.await()
-            }
-            val coverLetterBody: String? = when (clResult) {
-                is EngineResult.Success -> clResult.data
-                is EngineResult.Failure -> null
-            }
-            val coverLetterError: String? = when (clResult) {
-                is EngineResult.Success -> null
-                is EngineResult.Failure -> clResult.detail ?: clResult.type
-            }
-
-            val matchedKeywords = if (cvJson.isEmpty()) {
-                emptyList()
-            } else {
-                try {
-                    val json = org.json.JSONObject(cvJson)
-                    val arr = json.getJSONArray("matchedKeywords")
-                    (0 until arr.length()).map { arr.getString(it) }
-                } catch (e: Exception) {
-                    throw IllegalStateException(
-                        "Failed to parse matchedKeywords from cvJson",
-                        e
-                    )
-                }
-            }
-
-            val cycle = GenerationCycle(
-                jobTitle = jobTitle,
-                company = company,
-                jobDescription = jobDescription,
-                profileSnapshot = profile,
-                compatibility = compatibility,
-                matchedKeywords = matchedKeywords,
-                cvContent = cvJson,
-                coverLetterContent = coverLetterBody,
-                cvErrorMessage = cvError,
-                coverLetterErrorMessage = coverLetterError,
-                title = improvementContext,
-                isVisibleInHistory = true
-            )
-
+            val clResult = coroutineScope { val d = CompletableDeferred<EngineResult>(); launch(Dispatchers.IO) { generatorEngine.generateCoverLetter(profile = profile, jobDescription = enrichedJobDescription, designId = "modern", schemeId = "navy", jobTitle = jobTitle, company = company, correlationId = correlationId, onResult = { result -> d.complete(result) }) }; d.await() }
+            val coverLetterBody: String? = when (clResult) { is EngineResult.Success -> clResult.data; is EngineResult.Failure -> null }
+            val coverLetterError: String? = when (clResult) { is EngineResult.Success -> null; is EngineResult.Failure -> clResult.detail ?: clResult.type }
+            val matchedKeywords = if (cvJson.isEmpty()) emptyList() else { try { val json = org.json.JSONObject(cvJson); val arr = json.getJSONArray("matchedKeywords"); (0 until arr.length()).map { arr.getString(it) } } catch (e: Exception) { throw IllegalStateException("Failed to parse matchedKeywords from cvJson", e) } }
+            val cycle = GenerationCycle(jobTitle = jobTitle, company = company, jobDescription = jobDescription, profileSnapshot = profile, compatibility = compatibility, matchedKeywords = matchedKeywords, cvContent = cvJson, coverLetterContent = coverLetterBody, cvErrorMessage = cvError, coverLetterErrorMessage = coverLetterError, title = improvementContext, isVisibleInHistory = true)
             historyStore.saveCycle(cycle)
-
             val durationMs = System.currentTimeMillis() - startMs
-            PipelineTrace.exit("full_pipeline", durationMs, mapOf(
-                "correlationId" to correlationId,
-                "status" to "success",
-                "score" to compatibility.score,
-                "cvError" to (cvError ?: "none"),
-                "coverLetterError" to (coverLetterError ?: "none")
-            ))
+            PipelineTrace.exit("full_pipeline", durationMs, mapOf("correlationId" to correlationId, "status" to "success", "score" to compatibility.score, "cvError" to (cvError ?: "none"), "coverLetterError" to (coverLetterError ?: "none")))
             cycle
         } catch (e: Exception) {
             val durationMs = System.currentTimeMillis() - startMs
             PipelineTrace.error("full_pipeline", e.message ?: "unknown", e, correlationId)
-            PipelineTrace.exit("full_pipeline", durationMs, mapOf(
-                "correlationId" to correlationId,
-                "status" to "failure",
-                "error" to (e.message ?: "unknown")
-            ))
+            PipelineTrace.exit("full_pipeline", durationMs, mapOf("correlationId" to correlationId, "status" to "failure", "error" to (e.message ?: "unknown")))
             throw e
         }
     }
 
     override suspend fun runAnalysisFresh(
-        profile: UserProfile,
-        jobTitle: String,
-        company: String,
-        jobDescription: String
+        profile: UserProfile, jobTitle: String, company: String, jobDescription: String
     ): CompatibilityResult {
         val correlationId = UUID.randomUUID().toString().take(8)
-
-        // ==========================================
-        // PROFILE SANITIZATION (P0 Hallucination Elimination)
-        // ==========================================
         val sanitizationResult = ProfileSanitizer.sanitize(profile)
         val normalizedProfile = NormalizedProfile.from(profile, sanitizationResult)
-
-        PipelineTrace.dataQuality(
-            stage = "ProfileSanitizer_ACTIVE",
-            issue = "SANITIZATION_RESULT",
-            details = mapOf(
-                "correlationId" to correlationId,
-                "originalSkillCount" to profile.skills.size,
-                "sanitizedSkillCount" to sanitizationResult.skills.size,
-                "excludedTokens" to sanitizationResult.excluded.map { it.token },
-                "auditRuleIds" to sanitizationResult.audit.entries.map { it.ruleId }
-            ),
-            correlationId = correlationId
-        )
+        PipelineTrace.dataQuality(stage = "ProfileSanitizer_ACTIVE", issue = "SANITIZATION_RESULT", details = mapOf("correlationId" to correlationId, "originalSkillCount" to profile.skills.size, "sanitizedSkillCount" to sanitizationResult.skills.size, "excludedTokens" to sanitizationResult.excluded.map { it.token }, "auditRuleIds" to sanitizationResult.audit.entries.map { it.ruleId }), correlationId = correlationId)
 
         val systemPrompt = """
 You are an elite ATS analyst and career strategist. Perform a deep compatibility analysis.
@@ -421,201 +185,161 @@ $jobDescription
 
         val request = AiRequest(systemPrompt = systemPrompt, userPrompt = userPrompt)
         val aiResponse = aiGateway.generate("compatibility", request, 120_000L)
-
-        if (aiResponse == null) {
-            return CompatibilityResult.Failure("null_response", "AI returned null")
-        }
+        if (aiResponse == null) return CompatibilityResult.Failure("null_response", "AI returned null")
 
         val extractionResult = JsonExtractionEngine.extract(aiResponse)
-        if (!extractionResult.success) {
-            return CompatibilityResult.Failure(
-                "no_json",
-                extractionResult.failureReason ?: "No JSON found",
-                rawResponse = aiResponse
-            )
-        }
+        if (!extractionResult.success) return CompatibilityResult.Failure("no_json", extractionResult.failureReason ?: "No JSON found", rawResponse = aiResponse)
 
-        val jsonNode = try {
-            JsonMapper.builder().build().readTree(extractionResult.content)
-        } catch (e: Exception) {
-            return CompatibilityResult.Failure("parse_error", e.message, rawResponse = aiResponse)
-        }
+        val jsonNode = try { JsonMapper.builder().build().readTree(extractionResult.content) } catch (e: Exception) { return CompatibilityResult.Failure("parse_error", e.message, rawResponse = aiResponse) }
 
-        val metadata = ExtractionMetadata(
-            requestId = "",
-            correlationId = "",
-            modelName = "",
-            extractionStrategy = extractionResult.strategy,
-            rawLength = aiResponse.length,
-            normalizedLength = extractionResult.content.length
-        )
-        val payload = ExtractedAiPayload(
-            rawJson = aiResponse,
-            parsedObject = jsonNode,
-            metadata = metadata
-        )
+        val metadata = ExtractionMetadata(requestId = "", correlationId = "", modelName = "", extractionStrategy = extractionResult.strategy, rawLength = aiResponse.length, normalizedLength = extractionResult.content.length)
+        val payload = ExtractedAiPayload(rawJson = aiResponse, parsedObject = jsonNode, metadata = metadata)
 
         return when (val validation = contractValidator.validate(JobType.VACANCY_SCORING, payload)) {
             is ContractValidationResult.Success -> {
-                val validatedNode = validation.validatedObject.node
                 val record = compatibilityEngine.analyze(
-                    node = validatedNode,
+                    node = validation.validatedObject.node,
                     jobTitle = jobTitle,
                     company = company,
                     jobDescription = jobDescription
                 )
-                val p2Result = P2ValidationEngine.validateContractResult(validatedNode, correlationId)
-                PipelineTrace.dataQuality("P2Validation", "P2_DECISION", mapOf(
-                    "correlationId" to correlationId,
-                    "orchestrator" to "OptimizationOrchestrator",
-                    "decision" to p2Result.decision.javaClass.simpleName
-                ), correlationId)
-                when (p2Result.decision) {
-                    is ValidationDecision.Reject -> {
-                        CompatibilityResult.Failure("p2_rejection", p2Result.decision.reason, rawResponse = aiResponse)
+
+                val evidenceRegistry = VantEdgeEvidenceRegistry(
+                    normalizedProfile = normalizedProfile,
+                    userProfile = profile,
+                    jobDescription = jobDescription,
+                    correlationId = correlationId
+                )
+                val validationReport = EvidenceIntegrityDetector.validate(record, evidenceRegistry)
+                val enforcementDecision = EvidencePolicyEnforcer.enforce(validationReport)
+
+                val integrityAnnotatedRecord = when (enforcementDecision.action) {
+                    EnforcementAction.ANNOTATE,
+                    EnforcementAction.CORRECT -> {
+                        val notes = enforcementDecision.classifiedEntries
+                            .filter { it.severity != FabricationSeverity.E0 }
+                            .joinToString("; ") { "${it.entry.fieldPath}: ${it.entry.violationType}" }
+                        record.copy(dataIntegrityNote = if (record.dataIntegrityNote.isBlank()) notes else "${record.dataIntegrityNote}; $notes")
                     }
+                    else -> record
+                }
+
+                when (enforcementDecision.action) {
+                    EnforcementAction.HALT -> {
+                        return CompatibilityResult.Failure(
+                            type = "evidence_integrity_e4",
+                            message = "Evidence integrity E4 violation. Violated fields: ${enforcementDecision.classifiedEntries.filter { it.severity == FabricationSeverity.E4 }.joinToString { "${it.entry.fieldPath}(${it.entry.violationType})" }}",
+                            rawResponse = aiResponse
+                        )
+                    }
+                    EnforcementAction.REGENERATE -> {
+                        PipelineTrace.dataQuality(
+                            stage = "OptimizationOrchestrator",
+                            issue = "E3_REGENERATION_DEFERRED",
+                            details = mapOf(
+                                "correlationId" to correlationId,
+                                "violatedFields" to enforcementDecision.classifiedEntries.filter { it.severity >= FabricationSeverity.E3 }.joinToString { "${it.entry.fieldPath}(${it.entry.violationType})" },
+                                "reason" to "Full source required for AI generation call integration"
+                            ),
+                            correlationId
+                        )
+                        return CompatibilityResult.Failure(
+                            type = "evidence_integrity_e3",
+                            message = "Evidence integrity E3 violation requires regeneration. Violated fields: ${enforcementDecision.classifiedEntries.filter { it.severity >= FabricationSeverity.E3 }.joinToString { "${it.entry.fieldPath}(${it.entry.violationType})" }}",
+                            rawResponse = aiResponse
+                        )
+                    }
+                    else -> { }
+                }
+
+                val severityPriority = mapOf("E0" to 0, "E1" to 1, "E2" to 2, "E3" to 3, "E4" to 4)
+                val maxSeverityNum = enforcementDecision.classifiedEntries
+                    .map { severityPriority[it.severity.name] ?: 0 }
+                    .maxOrNull() ?: 0
+                val overallSeverity = severityPriority.entries.find { it.value == maxSeverityNum }?.key ?: "E0"
+
+                val e0Count = enforcementDecision.classifiedEntries.count { it.severity == FabricationSeverity.E0 }
+
+                val evidenceSummary = EvidenceSummary(
+                    overallSeverity = overallSeverity,
+                    thinCount = enforcementDecision.classifiedEntries.count { it.entry.violationType == ViolationType.THIN },
+                    mismatchCount = enforcementDecision.classifiedEntries.count { it.entry.violationType == ViolationType.MISMATCH },
+                    unsupportedCount = enforcementDecision.classifiedEntries.count { it.entry.violationType == ViolationType.MISSING },
+                    correctedCount = if (enforcementDecision.action == EnforcementAction.CORRECT) e0Count else 0,
+                    annotatedCount = if (enforcementDecision.action == EnforcementAction.ANNOTATE) e0Count else 0,
+                    haltRequired = enforcementDecision.action == EnforcementAction.HALT,
+                    regenerateRequired = enforcementDecision.action == EnforcementAction.REGENERATE,
+                    affectedFields = enforcementDecision.classifiedEntries.map { it.entry.fieldPath }
+                )
+
+                val p2Result = P2ValidationEngine.validateContractResult(
+                    validation.validatedObject.node,
+                    correlationId,
+                    evidenceSummary
+                )
+                PipelineTrace.dataQuality(
+                    "P2Validation",
+                    "P2_DECISION",
+                    mapOf(
+                        "correlationId" to correlationId,
+                        "orchestrator" to "OptimizationOrchestrator",
+                        "decision" to p2Result.decision.javaClass.simpleName,
+                        "confidencePenalty" to p2Result.confidencePenaltyPercent
+                    ),
+                    correlationId
+                )
+
+                when (p2Result.decision) {
+                    is ValidationDecision.Reject -> CompatibilityResult.Failure(
+                        "p2_rejection",
+                        p2Result.decision.reason,
+                        rawResponse = aiResponse
+                    )
                     else -> {
                         if (p2Result.decision is ValidationDecision.Degraded) {
-                            PipelineTrace.warn("OptimizationOrchestrator", "P2 degraded: ${p2Result.decision.warnings}")
+                            PipelineTrace.warn(
+                                "OptimizationOrchestrator",
+                                "P2 degraded: ${p2Result.decision.warnings}; confidencePenalty=${p2Result.confidencePenaltyPercent}%; evidenceFields=${p2Result.evidenceAffectedFields.joinToString()}"
+                            )
                         }
-                        CompatibilityResult.Success(record)
+                        CompatibilityResult.Success(integrityAnnotatedRecord)
                     }
                 }
             }
-            is ContractValidationResult.Failure -> {
-                CompatibilityResult.Failure(
-                    type = "contract_violation",
-                    message = validation.details,
-                    rawResponse = aiResponse
-                )
-            }
+            is ContractValidationResult.Failure -> CompatibilityResult.Failure(type = "contract_violation", message = validation.details, rawResponse = aiResponse)
         }
     }
 
-    suspend fun applyDesign(
-        cycleId: String,
-        design: DesignConfig
-    ): GenerationCycle {
+    suspend fun applyDesign(cycleId: String, design: DesignConfig): GenerationCycle {
         val correlationId = UUID.randomUUID().toString().take(8)
         val startMs = System.currentTimeMillis()
-        PipelineTrace.entry("apply_design", mapOf(
-            "correlationId" to correlationId,
-            "cycleId" to cycleId,
-            "designId" to design.templateId
-        ))
-
+        PipelineTrace.entry("apply_design", mapOf("correlationId" to correlationId, "cycleId" to cycleId, "designId" to design.templateId))
         return try {
-            val cycle = historyStore.getCycleByIdSuspend(cycleId)
-                ?: throw Exception("Cycle not found.")
-
-            val compatibility = cycle.compatibility
-                ?: throw Exception("Cycle is not ready for design.")
-
+            val cycle = historyStore.getCycleByIdSuspend(cycleId) ?: throw Exception("Cycle not found.")
+            val compatibility = cycle.compatibility ?: throw Exception("Cycle is not ready for design.")
             val previousCycles = historyStore.getCyclesForJob(cycle.jobTitle, cycle.company)
             val version = previousCycles.count { it.design != null } + 1
-
-            val (cvHtml, coverLetterHtml) = generatorEngine.applyDesignToContent(
-                profile = cycle.profileSnapshot,
-                jobTitle = cycle.jobTitle,
-                company = cycle.company,
-                matchedKeywordsJson = "{\"matchedKeywords\":${
-                    cycle.matchedKeywords.joinToString(
-                        prefix = "[",
-                        postfix = "]",
-                        separator = ","
-                    ) { "\"$it\"" }
-                }}",
-                coverLetterBody = cycle.coverLetterContent ?: "",
-                designId = design.templateId,
-                schemeId = design.colorScheme
-            )
-
-            val fullCycle = cycle.copy(
-                compatibility = compatibility,
-                cvContent = cvHtml,
-                coverLetterContent = coverLetterHtml,
-                design = design,
-                version = version,
-                title = null,
-                isVisibleInHistory = true
-            )
-
+            val (cvHtml, coverLetterHtml) = generatorEngine.applyDesignToContent(profile = cycle.profileSnapshot, jobTitle = cycle.jobTitle, company = cycle.company, matchedKeywordsJson = "{\"matchedKeywords\":${cycle.matchedKeywords.joinToString(prefix = "[", postfix = "]", separator = ",") { "\"$it\"" }}}", coverLetterBody = cycle.coverLetterContent ?: "", designId = design.templateId, schemeId = design.colorScheme)
+            val fullCycle = cycle.copy(compatibility = compatibility, cvContent = cvHtml, coverLetterContent = coverLetterHtml, design = design, version = version, title = null, isVisibleInHistory = true)
             historyStore.saveCycle(fullCycle)
-
             val durationMs = System.currentTimeMillis() - startMs
-            PipelineTrace.exit("apply_design", durationMs, mapOf(
-                "correlationId" to correlationId,
-                "status" to "success",
-                "version" to version
-            ))
+            PipelineTrace.exit("apply_design", durationMs, mapOf("correlationId" to correlationId, "status" to "success", "version" to version))
             fullCycle
-        } catch (e: Exception) {
-            val durationMs = System.currentTimeMillis() - startMs
-            PipelineTrace.error("apply_design", e.message ?: "unknown", e, correlationId)
-            PipelineTrace.exit("apply_design", durationMs, mapOf(
-                "correlationId" to correlationId,
-                "status" to "failure",
-                "error" to (e.message ?: "unknown")
-            ))
-            throw e
-        }
+        } catch (e: Exception) { val durationMs = System.currentTimeMillis() - startMs; PipelineTrace.error("apply_design", e.message ?: "unknown", e, correlationId); PipelineTrace.exit("apply_design", durationMs, mapOf("correlationId" to correlationId, "status" to "failure", "error" to (e.message ?: "unknown"))); throw e }
     }
 
-    suspend fun generateCv(
-        profile: UserProfile,
-        jobDescription: String,
-        designId: String,
-        schemeId: String,
-        jobTitle: String,
-        company: String,
-        onResult: (EngineResult) -> Unit
-    ) {
+    suspend fun generateCv(profile: UserProfile, jobDescription: String, designId: String, schemeId: String, jobTitle: String, company: String, onResult: (EngineResult) -> Unit) {
         val correlationId = UUID.randomUUID().toString().take(8)
-        generatorEngine.generateCv(
-            profile = profile,
-            jobDescription = jobDescription,
-            designId = designId,
-            schemeId = schemeId,
-            jobTitle = jobTitle,
-            company = company,
-            correlationId = correlationId,
-            onResult = onResult
-        )
+        generatorEngine.generateCv(profile = profile, jobDescription = jobDescription, designId = designId, schemeId = schemeId, jobTitle = jobTitle, company = company, correlationId = correlationId, onResult = onResult)
     }
 
-    suspend fun generateCoverLetter(
-        profile: UserProfile,
-        jobDescription: String,
-        designId: String,
-        schemeId: String,
-        jobTitle: String,
-        company: String,
-        onResult: (EngineResult) -> Unit
-    ) {
+    suspend fun generateCoverLetter(profile: UserProfile, jobDescription: String, designId: String, schemeId: String, jobTitle: String, company: String, onResult: (EngineResult) -> Unit) {
         val correlationId = UUID.randomUUID().toString().take(8)
-        generatorEngine.generateCoverLetter(
-            profile = profile,
-            jobDescription = jobDescription,
-            designId = designId,
-            schemeId = schemeId,
-            jobTitle = jobTitle,
-            company = company,
-            correlationId = correlationId,
-            onResult = onResult
-        )
+        generatorEngine.generateCoverLetter(profile = profile, jobDescription = jobDescription, designId = designId, schemeId = schemeId, jobTitle = jobTitle, company = company, correlationId = correlationId, onResult = onResult)
     }
 
-    suspend fun generateCvDocx(
-        profile: UserProfile,
-        jobDescription: String,
-        onResult: (EngineResult) -> Unit
-    ) {
+    suspend fun generateCvDocx(profile: UserProfile, jobDescription: String, onResult: (EngineResult) -> Unit) {
         val correlationId = UUID.randomUUID().toString().take(8)
-        generatorEngine.generateCvDocx(
-            profile = profile,
-            jobDescription = jobDescription,
-            correlationId = correlationId,
-            onResult = onResult
-        )
+        generatorEngine.generateCvDocx(profile = profile, jobDescription = jobDescription, correlationId = correlationId, onResult = onResult)
     }
 }

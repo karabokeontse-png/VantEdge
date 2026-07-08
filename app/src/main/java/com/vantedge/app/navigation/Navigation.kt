@@ -57,6 +57,9 @@ import com.vantedge.app.ui.screens.ResultScreen
 import com.vantedge.app.ui.screens.ResultScreenMode
 import com.vantedge.app.ui.screens.ReviewExtractionScreen
 import com.vantedge.app.ui.screens.WelcomeScreen
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import com.vantedge.app.util.TelemetryCollector
 import kotlinx.coroutines.launch
 
@@ -94,7 +97,11 @@ fun AppNavigation(userPreferences: UserPreferences) {
     val context = LocalContext.current
 
     val db = remember { VantEdgeDatabase.getInstance(context) }
-    val geminiService = remember { GeminiService(artifactDao = db.aiRawResponseArtifactDao()) }
+    val persistenceScope = remember { CoroutineScope(SupervisorJob() + Dispatchers.IO) }
+    val geminiService = remember { GeminiService(
+        artifactDao = db.aiRawResponseArtifactDao(),
+        persistenceScope = persistenceScope
+    ) }
     val aiGateway = remember { AiGateway(geminiService) }
 
     val historyStore = remember { HistoryStore(db.cycleDao()) }
