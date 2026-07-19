@@ -2,6 +2,7 @@ package com.vantedge.app.w6.improvement
 
 import com.vantedge.app.w5.scoring.AxisScore
 import com.vantedge.app.w5.scoring.GapAnalysis
+import com.vantedge.app.w5.scoring.MatchEvidence
 import com.vantedge.app.w5.scoring.RecommendationHints
 import com.vantedge.app.w5.scoring.ScoreBreakdown
 import com.vantedge.app.w5.scoring.ScoreResult
@@ -88,7 +89,7 @@ class W6EngineTest {
         val gaps = GapAnalysis(
             missing = listOf("Kotlin", "AWS"),
             weak = emptyList(),
-            matched = listOf("Java")
+            matched = listOf(MatchEvidence("Java", 1.0))
         )
         val score = ScoreResult(
             correlationId = "dedup",
@@ -308,7 +309,7 @@ class W6EngineTest {
         val gaps = GapAnalysis(
             missing = listOf("Kotlin", "AWS"),
             weak = emptyList(),
-            matched = listOf("Java")
+            matched = listOf(MatchEvidence("Java", 1.0))
         )
         val hints = RecommendationHints(listOf("Acquire Kotlin"))
         val score = ScoreResult(
@@ -383,7 +384,7 @@ class W6EngineTest {
         val gaps = GapAnalysis(
             missing = listOf("Kubernetes"),
             weak = listOf("Python"),
-            matched = listOf("Kotlin", "AWS", "Docker")
+            matched = listOf(MatchEvidence("Kotlin", 1.0), MatchEvidence("AWS", 1.0), MatchEvidence("Docker", 1.0))
         )
 
         val hints = RecommendationHints(emptyList())

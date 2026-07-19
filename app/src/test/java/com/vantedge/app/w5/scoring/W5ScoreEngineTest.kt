@@ -502,7 +502,7 @@ class W5ScoreEngineTest {
 
         val gap = GapAnalyzer.analyze(profile, job, assets)
 
-        assertTrue("Kotlin should be matched", gap.matched.contains("Kotlin"))
+        assertTrue("Kotlin should be matched", gap.matched.any { it.name == "Kotlin" })
         assertTrue("Kubernetes should be missing", gap.missing.contains("Kubernetes"))
         assertTrue("Python should be missing", gap.missing.contains("Python"))
     }
@@ -512,7 +512,7 @@ class W5ScoreEngineTest {
         val gap = GapAnalysis(
             missing = listOf("Kubernetes"),
             weak = listOf("Docker"),
-            matched = listOf("Kotlin")
+            matched = listOf(MatchEvidence("Kotlin", 1.0))
         )
 
         val axisScores = listOf(
