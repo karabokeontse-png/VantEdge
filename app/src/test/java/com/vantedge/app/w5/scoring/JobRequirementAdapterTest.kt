@@ -54,8 +54,8 @@ class JobRequirementAdapterTest {
 
         val maxPhraseLength = result.validatedJob.requiredQualifications.maxOfOrNull { it.originalText.length } ?: 0
         assertTrue(
-            maxPhraseLength <= 150,
-            "Expected all extracted qualification phrases in requiredQualifications to be <= 150 characters, but found one of length $maxPhraseLength"
+            "Expected all extracted qualification phrases in requiredQualifications to be <= 150 characters, but found one of length $maxPhraseLength",
+            maxPhraseLength <= 150
         )
     }
 }
