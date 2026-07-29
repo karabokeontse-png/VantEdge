@@ -33,6 +33,11 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
+      - name: Fix gradle.properties for CI
+        run: |
+          sed -i '/org.gradle.java.home/d' gradle.properties
+          sed -i '/android.aapt2FromMavenOverride/d' gradle.properties
+
       - name: Run W5 Scoring Tests
         run: ./gradlew testDebugUnitTest --tests "com.vantedge.app.w5.scoring.*" --no-daemon
 
@@ -68,6 +73,11 @@ jobs:
 
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
+
+      - name: Fix gradle.properties for CI
+        run: |
+          sed -i '/org.gradle.java.home/d' gradle.properties
+          sed -i '/android.aapt2FromMavenOverride/d' gradle.properties
 
       - name: Run W5 Baseline Test
         run: ./gradlew testDebugUnitTest --tests "com.vantedge.app.w5.scoring.W5ScoreBaselineTest" --no-daemon
