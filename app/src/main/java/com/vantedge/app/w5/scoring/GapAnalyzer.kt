@@ -4,7 +4,7 @@ object GapAnalyzer {
     fun analyze(profile: ValidatedProfile, job: ValidatedJob, assets: ValidationAssets): GapAnalysis {
         val missing = mutableListOf<String>()
         val weak = mutableListOf<String>()
-        val matched = mutableListOf<String>()
+        val matched = mutableListOf<MatchEvidence>()
 
         for (requiredSkill in job.requiredSkills) {
             val skillTokens = tokenize(requiredSkill, emptySet()).toSet()
@@ -23,7 +23,7 @@ object GapAnalyzer {
             when {
                 maxSimilarity < 0.3 -> missing.add(requiredSkill)
                 maxSimilarity <= 0.6 -> weak.add(requiredSkill)
-                else -> matched.add(requiredSkill)
+                else -> matched.add(MatchEvidence(name = requiredSkill, similarity = maxSimilarity))
             }
         }
 
