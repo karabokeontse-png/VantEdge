@@ -9,6 +9,7 @@ data class W5TraceContext(
 data class ValidatedProfile(
     val correlationId: String,
     val skills: List<String>,
+    val qualifications: List<RequirementEvidence> = emptyList(),
     val roles: List<String>,
     val currentTitle: String?,
     val experienceYears: Int,
@@ -21,6 +22,7 @@ data class ValidatedProfile(
 data class ValidatedJob(
     val correlationId: String,
     val requiredSkills: List<String>,
+    val requiredQualifications: List<RequirementEvidence> = emptyList(),
     val title: String,
     val keywords: List<String>,
     val requiredYears: Int?,
@@ -69,10 +71,15 @@ data class Factor(
     val contribution: Double
 )
 
+data class MatchEvidence(
+    val name: String,
+    val similarity: Double
+)
+
 data class GapAnalysis(
     val missing: List<String>,
     val weak: List<String>,
-    val matched: List<String>
+    val matched: List<MatchEvidence>
 )
 
 data class RecommendationHints(

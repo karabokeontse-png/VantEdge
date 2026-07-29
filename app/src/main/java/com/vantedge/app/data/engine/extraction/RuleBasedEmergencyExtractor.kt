@@ -15,7 +15,7 @@ import java.util.UUID
 import kotlin.math.max
 
 object RuleBasedEmergencyExtractor {
-    private const val GATE_0_PASS_THRESHOLD = 2
+    private const val DEFAULT_GATE0_THRESHOLD = 2
 
     private val HEADER_BLACKLIST = listOf(
         "vacancy", "vacancy announcement", "vacancy notice",
@@ -40,7 +40,7 @@ object RuleBasedEmergencyExtractor {
     private val BRANDING_PATTERN = Regex("we are hiring|join us|about our company", RegexOption.IGNORE_CASE)
     private val LOCATION_PATTERN = Regex("remote|location|based", RegexOption.IGNORE_CASE)
 
-    fun extractJob(rawText: String, sourceType: JobSourceType, correlationId: String? = null): Result<JobExtractionResult> {
+    fun extractJob(rawText: String, sourceType: JobSourceType, correlationId: String? = null, policyThreshold: Int? = null): Result<JobExtractionResult> {
         val startTime = System.currentTimeMillis()
         PipelineTrace.warn("RuleBasedEmergencyExtractor", "EMERGENCY FALLBACK INVOKED — no LLM available", correlationId)
 
@@ -48,7 +48,46 @@ object RuleBasedEmergencyExtractor {
             return Result.failure(Exception("EMPTY_DESCRIPTION"))
         }
 
+        val effectiveThreshold = try {
+            policyThreshold ?: DEFAULT_GATE0_THRESHOLD
+        } catch (e: Exception) {
+            PipelineTrace.warn("RuleBasedEmergencyExtractor", "POLICY_LOOKUP_FAILED: using default=$DEFAULT_GATE0_THRESHOLD error=${e.message}", correlationId)
+            DEFAULT_GATE0_THRESHOLD
+        }
+
+        PipelineTrace.dataQuality(
+            stage = "RuleBasedEmergencyExtractor",
+            issue = "POLICY_LOOKUP",
+            details = mapOf(
+                "thresholdDomain" to "EMERGENCY_EXTRACTION_GATE0",
+                "value" to effectiveThreshold,
+                "source" to if (policyThreshold != null) "INJECTED_POLICY" else "DEFAULT_FALLBACK"
+            ),
+            correlationId = correlationId
+        )
+
         val gate0Score = runGate0(rawText)
+        val isAccepted = gate0Score >= effectiveThreshold
+
+        PipelineTrace.dataQuality(
+            stage = "RuleBasedEmergencyExtractor",
+            issue = "THRESHOLD_DECISION",
+            details = mapOf(
+                "thresholdDomain" to "EMERGENCY_EXTRACTION_GATE0",
+                "thresholdValue" to effectiveThreshold,
+                "measuredValue" to gate0Score,
+                "decision" to if (isAccepted) "PASS" else "FAIL",
+                "originatingPolicy" to "ThresholdPolicy",
+                "evaluationSource" to "RuleBasedEmergencyExtractor"
+            ),
+            correlationId = correlationId
+        )
+
+        if (!isAccepted) {
+            PipelineTrace.warn("RuleBasedEmergencyExtractor", "Gate 0 rejected: score=$gate0Score, threshold=$effectiveThreshold", correlationId)
+            return Result.failure(Exception("EMERGENCY_EXTRACTION_REJECTED: Insufficient structural evidence"))
+        }
+
         val lines = rawText.lines().map { it.trim() }.filter { it.isNotBlank() }
         if (lines.isEmpty()) {
             return Result.failure(Exception("EMPTY_DESCRIPTION"))
@@ -124,12 +163,17 @@ object RuleBasedEmergencyExtractor {
             rawText.take(3000)
         }
 
+        val descLower = description.lowercase()
+        val emergencySkills = listOf("data protection", "privacy", "compliance", "gdpr", "kotlin", "sql", "android").filter { it in descLower }
+
         val result = JobExtractionResult(
             extractionId = UUID.randomUUID().toString(),
             extractedAt = System.currentTimeMillis(),
             jobTitle = title.takeIf { it.isNotBlank() },
             company = company.takeIf { it.isNotBlank() },
             description = description,
+            requiredSkills = emergencySkills,
+            preferredSkills = emptyList(),
             confidenceScore = 0.3f,
             confidenceBreakdown = ConfidenceBreakdown(
                 baseScore = 0.3f,
@@ -141,8 +185,8 @@ object RuleBasedEmergencyExtractor {
             ),
             gate0Result = Gate0JobResult(
                 score = gate0Score,
-                threshold = GATE_0_PASS_THRESHOLD,
-                accepted = true,
+                threshold = effectiveThreshold,
+                accepted = isAccepted,
                 reason = Gate0JobReason.ACCEPTED,
                 detectedSignals = emptyList(),
                 appliedPenalties = emptyList(),
