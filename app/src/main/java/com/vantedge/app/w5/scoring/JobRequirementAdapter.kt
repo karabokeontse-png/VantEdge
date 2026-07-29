@@ -309,11 +309,21 @@ object JobRequirementAdapter {
         val extractedQualifications = mutableListOf<RequirementEvidence>()
         val extractedUnmapped = mutableListOf<RequirementEvidence>()
 
-        val phrases = jobDescription.split(Regex("[.!?;,]+|\\s+and\\s+|\\s+or\\s+"))
+        val phrases = jobDescription.split(Regex("[.!?;,/\\n\\r]+|\\s+and\\s+|\\s+or\\s+"))
             .map { it.trim() }
             .filter { it.length >= 3 }
 
         for (phrase in phrases) {
+            if (phrase.length > 150) {
+                extractedUnmapped.add(RequirementEvidence(
+                    originalText = phrase,
+                    category = RequirementCategory.UNCLASSIFIED,
+                    classificationStatus = ClassificationStatus.UNMAPPED,
+                    matchedTaxonomySkill = null
+                ))
+                continue
+            }
+
             val category = classifyRequirement(phrase)
             if (category == RequirementCategory.UNCLASSIFIED) continue
 
