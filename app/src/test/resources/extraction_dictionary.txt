@@ -1,0 +1,12 @@
+// PLACEHOLDER: Minimal test set. Production will merge full 10,000-word SCOWL list with VantEdge taxonomy. NOTE: 'responsible' must remain in production dictionary for Test Case A.
+sql
+managed
+responsible
+automation
+certified
+information
+security
+cloud
+server
+network
+java
