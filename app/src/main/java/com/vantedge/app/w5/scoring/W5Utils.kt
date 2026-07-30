@@ -1,5 +1,6 @@
 package com.vantedge.app.w5.scoring
 
+import com.vantedge.app.data.model.WorkExperience
 import java.security.MessageDigest
 import java.util.Locale
 
@@ -63,6 +64,35 @@ fun computeInputHash(profile: ValidatedProfile, job: ValidatedJob): String {
     val digest = MessageDigest.getInstance("SHA-256")
     val hashBytes = digest.digest(canonicalString.toByteArray(Charsets.UTF_8))
     return hashBytes.joinToString("") { "%02x".format(it) }
+}
+
+fun extractYear(dateValue: String?): Int? {
+    if (dateValue == null) return null
+    val match = Regex("""\b(19|20)\d{2}\b""").find(dateValue)
+    return match?.value?.toInt()
+}
+
+fun computeYearsExperience(workHistory: List<WorkExperience>, asOfYear: Int): Int {
+    val intervals = workHistory.mapNotNull { exp ->
+        val start = extractYear(exp.startDate)
+        val end = extractYear(exp.endDate) ?: asOfYear
+        if (start != null && start <= end) start to end else null
+    }.sortedBy { it.first }
+    if (intervals.isEmpty()) return 0
+    val merged = mutableListOf<Pair<Int, Int>>()
+    var currentStart = intervals[0].first
+    var currentEnd = intervals[0].second
+    for ((start, end) in intervals.drop(1)) {
+        if (start <= currentEnd) {
+            currentEnd = maxOf(currentEnd, end)
+        } else {
+            merged.add(currentStart to currentEnd)
+            currentStart = start
+            currentEnd = end
+        }
+    }
+    merged.add(currentStart to currentEnd)
+    return merged.sumOf { (start, end) -> end - start }
 }
 
 object SeniorityDeriver {

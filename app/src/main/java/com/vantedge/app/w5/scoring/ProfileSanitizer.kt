@@ -139,24 +139,22 @@ object ProfileSanitizer {
         if (token.isBlank()) return true
         val alphaRatio = token.count { it.isLetter() }.toDouble() / token.length
         if (alphaRatio < MIN_ALPHA_RATIO) return true
-        val consonantRun = token.runningFold(0) { acc, c ->
-            if (c.isLetter() && c.lowercaseChar() !in "aeiou") acc + 1 else 0
-        }.max()
-        if (consonantRun > 6) return true
 
-
-        // Word-level OCR hardening (R5-skill)
         val words = token.split(Regex("[^A-Za-z]+")).filter { it.isNotBlank() }
-        for (word in words) {
-            // Exact-match truncated fragment detection
-            if (word.equals("mation", ignoreCase = true)) {
-                return true
-            }
-            // Impossible consonant cluster detection
-            if (word.contains("trdl", ignoreCase = true)) {
-                return true
-            }
+        val wordsToCheck = if (words.isEmpty()) listOf(token) else words
+
+        for (word in wordsToCheck) {
+            val consonantRun = word.runningFold(0) { acc, c ->
+                if (c.isLetter() && c.lowercaseChar() !in "aeiouy") acc + 1 else 0
+            }.max()
+
+            // General heuristic OCR artifact detection (multi-signal, no hardcoded strings)
+            // Applied per-word so compound skill strings (e.g., "Rok-based Access Contrdl")
+            // don't dilute the signal — catches impossible consonant clusters in short,
+            // garbled words while preserving valid technical terms (e.g., "strengths", "PostgreSQL")
+            if (consonantRun >= 5 && word.length <= 7) return true
         }
+
         return false
     }
 }

@@ -1,11 +1,18 @@
 package com.vantedge.app.w5.scoring
 
+import com.vantedge.app.domain.PipelineTrace
 import java.util.Locale
 import kotlin.math.min
 
 class W5ScoreEngine(private val assets: ValidationAssets) {
     fun evaluate(profile: ValidatedProfile, job: ValidatedJob, trace: W5TraceContext): ScoreResult {
-        val outputTrace = trace
+        val startMs = System.currentTimeMillis()
+        val correlationId = trace.correlationId
+        PipelineTrace.entry("W5ScoreEngine", mapOf(
+            "correlationId" to correlationId,
+            "profileSkills" to profile.skills.size,
+            "jobRequiredSkills" to job.requiredSkills.size
+        ))
 
         val skillMatch = AxisEvaluators.skillMatch(profile, job, assets)
         val experienceAlignment = AxisEvaluators.experienceAlignment(profile, job)
@@ -65,6 +72,30 @@ class W5ScoreEngine(private val assets: ValidationAssets) {
         val gapAnalysis = GapAnalyzer.analyze(profile, job, assets)
         val hints = HintBuilder.build(gapAnalysis, axisScores)
 
+        val durationMs = System.currentTimeMillis() - startMs
+        PipelineTrace.dataQuality(
+            stage = "W5ScoreEngine",
+            issue = "AXIS_SCORES",
+            details = mapOf(
+                "correlationId" to correlationId,
+                "totalScore" to totalScore,
+                "confidence" to confidence,
+                "skillMatch" to skillMatch,
+                "experienceAlignment" to experienceAlignment,
+                "constraintCompliance" to constraintCompliance,
+                "missingCount" to gapAnalysis.missing.size,
+                "weakCount" to gapAnalysis.weak.size,
+                "matchedCount" to gapAnalysis.matched.size
+            ),
+            correlationId = correlationId
+        )
+        PipelineTrace.exit("W5ScoreEngine", durationMs, mapOf(
+            "correlationId" to correlationId,
+            "totalScore" to totalScore,
+            "confidence" to confidence,
+            "missingGaps" to gapAnalysis.missing.size
+        ))
+
         return ScoreResult(
             correlationId = trace.correlationId,
             totalScore = totalScore,
@@ -73,7 +104,7 @@ class W5ScoreEngine(private val assets: ValidationAssets) {
             breakdown = breakdown,
             gapAnalysis = gapAnalysis,
             hints = hints,
-            trace = outputTrace
+            trace = trace
         )
     }
 }
