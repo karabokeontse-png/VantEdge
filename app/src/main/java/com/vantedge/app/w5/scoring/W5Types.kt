@@ -76,10 +76,17 @@ data class MatchEvidence(
     val similarity: Double
 )
 
+data class QualificationGap(
+    val required: RequirementEvidence,
+    val isMatched: Boolean,
+    val matchedProfileEvidence: RequirementEvidence?
+)
+
 data class GapAnalysis(
     val missing: List<String>,
     val weak: List<String>,
-    val matched: List<MatchEvidence>
+    val matched: List<MatchEvidence>,
+    val qualificationGaps: List<QualificationGap> = emptyList()
 )
 
 data class RecommendationHints(
