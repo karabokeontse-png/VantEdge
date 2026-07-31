@@ -15,6 +15,8 @@ object ProfileSanitizer {
     private val MAX_SKILL_LENGTH = 80
     private val MIN_ALPHA_RATIO = 0.4
 
+    private val tokenRegex = Regex("""[\s,/\n]+""")
+
     fun sanitize(profile: UserProfile): SanitizationResult {
         val audit = mutableListOf<SanitizationAuditEntry>()
         val excluded = mutableListOf<ExcludedToken>()
@@ -59,27 +61,91 @@ object ProfileSanitizer {
             valid
         }
 
-        // R5-skill: OCR artifact detection (shared engine with certifications)
-        val ocrFiltered = alphaFiltered.filter { skill ->
-            val artifact = isOcrArtifact(skill)
-            if (artifact) {
-                excluded.add(ExcludedToken(skill, "OCR artifact", "R5"))
+        // R5-skill: OCR artifact detection and fuzzy repair via ExtractionValidator
+        val validatedSkills = mutableListOf<String>()
+        alphaFiltered.forEach { skill ->
+            val phaseA = ExtractionValidator.validate(skill)
+            if (phaseA.verdict == AssessmentVerdict.ACCEPTED) {
+                validatedSkills.add(skill)
                 audit.add(
                     SanitizationAuditEntry(
                         originalValue = skill,
-                        normalizedValue = "",
-                        ruleId = "R5",
-                        reason = "OCR artifact (skill)",
-                        confidence = "LOW_CONFIDENCE"
+                        normalizedValue = skill,
+                        ruleId = "R5_PASS",
+                        reason = "skill retained",
+                        confidence = "HIGH"
                     )
                 )
+            } else {
+                val words = skill.split(tokenRegex).filter { it.isNotBlank() }
+                val assessments = words.map { word -> word to ExtractionValidator.validate(word) }
+
+                val rejected = assessments.firstOrNull { it.second.verdict == AssessmentVerdict.REJECTED }
+                if (rejected != null) {
+                    excluded.add(ExcludedToken(skill, rejected.second.reason, "R5"))
+                    audit.add(
+                        SanitizationAuditEntry(
+                            originalValue = skill,
+                            normalizedValue = "",
+                            ruleId = "R5",
+                            reason = rejected.second.reason,
+                            confidence = "REJECTED"
+                        )
+                    )
+                } else {
+                    val repaired = assessments.firstOrNull { it.second.verdict == AssessmentVerdict.REPAIRED }
+                    if (repaired != null) {
+                        val reconstructed = words.mapIndexed { index, word ->
+                            val assessment = assessments[index].second
+                            if (assessment.verdict == AssessmentVerdict.REPAIRED && assessment.optionalSuggestion != null) {
+                                applyCasing(word, assessment.optionalSuggestion)
+                            } else {
+                                word
+                            }
+                        }.joinToString(" ")
+                        validatedSkills.add(reconstructed)
+                        audit.add(
+                            SanitizationAuditEntry(
+                                originalValue = skill,
+                                normalizedValue = reconstructed,
+                                ruleId = "R5_REPAIRED",
+                                reason = "Suggested repair applied",
+                                confidence = "MEDIUM"
+                            )
+                        )
+                    } else {
+                        val lowConfidence = assessments.firstOrNull { it.second.verdict == AssessmentVerdict.LOW_CONFIDENCE }
+                        if (lowConfidence != null) {
+                            validatedSkills.add(skill)
+                            audit.add(
+                                SanitizationAuditEntry(
+                                    originalValue = skill,
+                                    normalizedValue = skill,
+                                    ruleId = "R5_LOW_CONFIDENCE",
+                                    reason = lowConfidence.second.reason,
+                                    confidence = "LOW_CONFIDENCE"
+                                )
+                            )
+                        } else {
+                            validatedSkills.add(skill)
+                            audit.add(
+                                SanitizationAuditEntry(
+                                    originalValue = skill,
+                                    normalizedValue = skill,
+                                    ruleId = "R5_PASS",
+                                    reason = "skill retained",
+                                    confidence = "HIGH"
+                                )
+                            )
+                        }
+                    }
+                }
             }
-            !artifact
         }
 
         // R3: Deterministic case-insensitive deduplication
         val skillMap = linkedMapOf<String, String>()
-        ocrFiltered.forEach { skill ->
+        validatedSkills.forEach { skill ->
             val key = skill.lowercase()
             if (!skillMap.containsKey(key)) {
                 skillMap[key] = skill
@@ -97,65 +163,77 @@ object ProfileSanitizer {
         }
         val dedupedSkills = skillMap.values.toList()
 
-        // R4: Filter OCR artifacts from certifications
-        val cleanCertifications = profile.certifications.filter { cert ->
-            val artifact = isOcrArtifact(cert.name)
-            if (artifact) {
-                excluded.add(ExcludedToken(cert.name, "OCR artifact", "R5"))
-                audit.add(
-                    SanitizationAuditEntry(
-                        originalValue = cert.name,
-                        normalizedValue = "",
-                        ruleId = "R5",
-                        reason = "OCR artifact (certification)",
-                        confidence = "LOW_CONFIDENCE"
+        // R4: Filter OCR artifacts and apply repairs to certifications
+        val cleanCertifications = mutableListOf<String>()
+        profile.certifications.forEach { cert ->
+            val assessment = ExtractionValidator.validate(cert.name)
+            when (assessment.verdict) {
+                AssessmentVerdict.REJECTED -> {
+                    excluded.add(ExcludedToken(cert.name, assessment.reason, "R5"))
+                    audit.add(
+                        SanitizationAuditEntry(
+                            originalValue = cert.name,
+                            normalizedValue = "",
+                            ruleId = "R5",
+                            reason = assessment.reason,
+                            confidence = "REJECTED"
+                        )
                     )
-                )
-            } else {
-                audit.add(
-                    SanitizationAuditEntry(
-                        originalValue = cert.name,
-                        normalizedValue = cert.name,
-                        ruleId = "R5_PASS",
-                        reason = "certification retained",
-                        confidence = "HIGH"
+                }
+                AssessmentVerdict.REPAIRED -> {
+                    val reconstructed = assessment.optionalSuggestion?.let { applyCasing(cert.name, it) } ?: cert.name
+                    cleanCertifications.add(reconstructed)
+                    audit.add(
+                        SanitizationAuditEntry(
+                            originalValue = cert.name,
+                            normalizedValue = reconstructed,
+                            ruleId = "R5_REPAIRED",
+                            reason = "Suggested repair applied",
+                            confidence = "MEDIUM"
+                        )
                     )
-                )
+                }
+                AssessmentVerdict.LOW_CONFIDENCE -> {
+                    cleanCertifications.add(cert.name)
+                    audit.add(
+                        SanitizationAuditEntry(
+                            originalValue = cert.name,
+                            normalizedValue = cert.name,
+                            ruleId = "R5_LOW_CONFIDENCE",
+                            reason = assessment.reason,
+                            confidence = "LOW_CONFIDENCE"
+                        )
+                    )
+                }
+                AssessmentVerdict.ACCEPTED -> {
+                    cleanCertifications.add(cert.name)
+                    audit.add(
+                        SanitizationAuditEntry(
+                            originalValue = cert.name,
+                            normalizedValue = cert.name,
+                            ruleId = "R5_PASS",
+                            reason = "certification retained",
+                            confidence = "HIGH"
+                        )
+                    )
+                }
             }
-            !artifact
         }
 
         // TODO: overlapping employment periods are not de-duplicated in current P0 model
 
         return SanitizationResult(
             skills = dedupedSkills,
-            certifications = cleanCertifications.map { it.name },
+            certifications = cleanCertifications,
             audit = SanitizationAudit(audit),
             excluded = excluded
         )
     }
 
-    private fun isOcrArtifact(token: String): Boolean {
-        if (token.isBlank()) return true
-        val alphaRatio = token.count { it.isLetter() }.toDouble() / token.length
-        if (alphaRatio < MIN_ALPHA_RATIO) return true
-
-        val words = token.split(Regex("[^A-Za-z]+")).filter { it.isNotBlank() }
-        val wordsToCheck = if (words.isEmpty()) listOf(token) else words
-
-        for (word in wordsToCheck) {
-            val consonantRun = word.runningFold(0) { acc, c ->
-                if (c.isLetter() && c.lowercaseChar() !in "aeiouy") acc + 1 else 0
-            }.max()
-
-            // General heuristic OCR artifact detection (multi-signal, no hardcoded strings)
-            // Applied per-word so compound skill strings (e.g., "Rok-based Access Contrdl")
-            // don't dilute the signal — catches impossible consonant clusters in short,
-            // garbled words while preserving valid technical terms (e.g., "strengths", "PostgreSQL")
-            if (consonantRun >= 5 && word.length <= 7) return true
-        }
-
-        return false
+    fun applyCasing(original: String, suggestion: String): String {
+        if (original.all { it.isUpperCase() }) return suggestion.uppercase()
+        if (original.firstOrNull()?.isUpperCase() == true) return suggestion.replaceFirstChar { it.uppercase() }
+        return suggestion
     }
 }
 

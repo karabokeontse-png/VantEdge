@@ -76,4 +76,73 @@ class ProfileSanitizerTest {
         assertTrue(result.certifications.contains("CIPP/E"))
         assertTrue(result.excluded.isEmpty())
     }
+
+    @Test
+    fun `technical identifier C-sharp preserved as accepted when in taxonomy`() {
+        val profile = UserProfile(
+            skills = listOf("C#")
+        )
+
+        val result = ProfileSanitizer.sanitize(profile)
+
+        assertEquals(1, result.skills.size)
+        assertEquals("C#", result.skills[0])
+        assertTrue(result.excluded.isEmpty())
+
+        val auditEntry = result.audit.entries.first { it.originalValue == "C#" }
+        assertEquals("R5_PASS", auditEntry.ruleId)
+        assertEquals("HIGH", auditEntry.confidence)
+    }
+
+    @Test
+    fun `technical identifier Node JS preserved as accepted when in taxonomy`() {
+        val profile = UserProfile(
+            skills = listOf("Node.js")
+        )
+
+        val result = ProfileSanitizer.sanitize(profile)
+
+        assertEquals(1, result.skills.size)
+        assertEquals("Node.js", result.skills[0])
+        assertTrue(result.excluded.isEmpty())
+
+        val auditEntry = result.audit.entries.first { it.originalValue == "Node.js" }
+        assertEquals("R5_PASS", auditEntry.ruleId)
+        assertEquals("HIGH", auditEntry.confidence)
+    }
+
+    @Test
+    fun `technical identifier ASP dot NET preserved as accepted when in taxonomy`() {
+        val profile = UserProfile(
+            skills = listOf("ASP.NET")
+        )
+
+        val result = ProfileSanitizer.sanitize(profile)
+
+        assertEquals(1, result.skills.size)
+        assertEquals("ASP.NET", result.skills[0])
+        assertTrue(result.excluded.isEmpty())
+
+        val auditEntry = result.audit.entries.first { it.originalValue == "ASP.NET" }
+        assertEquals("R5_PASS", auditEntry.ruleId)
+        assertEquals("HIGH", auditEntry.confidence)
+    }
+
+    @Test
+    fun `certifed Java repairs to certified Java`() {
+        val profile = UserProfile(
+            skills = listOf("certifed Java")
+        )
+
+        val result = ProfileSanitizer.sanitize(profile)
+
+        assertEquals(1, result.skills.size)
+        assertEquals("certified Java", result.skills[0])
+        assertTrue(result.excluded.isEmpty())
+
+        val auditEntry = result.audit.entries.first { it.ruleId == "R5_REPAIRED" }
+        assertEquals("certifed Java", auditEntry.originalValue)
+        assertEquals("certified Java", auditEntry.normalizedValue)
+        assertEquals("MEDIUM", auditEntry.confidence)
+    }
 }

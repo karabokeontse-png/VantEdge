@@ -19,6 +19,11 @@ object ExtractionValidator {
     )
 
     private var _dictionary: Set<String>? = null
+    private var androidContext: android.content.Context? = null
+
+    fun init(context: android.content.Context) {
+        androidContext = context.applicationContext
+    }
 
     fun validate(
         token: String,
@@ -30,7 +35,8 @@ object ExtractionValidator {
 
         val entitySet = taxonomy.filter {
             it.contains(" ") || it.contains(Regex("[^a-zA-Z0-9]"))
-        }.toSet()
+        }.map { it.lowercase() }.toSet()
+        val lowerTaxonomy = taxonomy.map { it.lowercase() }.toSet()
 
         if (lowerToken in entitySet) {
             return ExtractionAssessment(
@@ -41,7 +47,7 @@ object ExtractionValidator {
             )
         }
 
-        if (lowerToken in taxonomy) {
+        if (lowerToken in lowerTaxonomy) {
             return ExtractionAssessment(
                 originalText = token,
                 verdict = AssessmentVerdict.ACCEPTED,
@@ -148,12 +154,18 @@ object ExtractionValidator {
     }
 
     private fun loadDictionary(): Set<String> {
-        val stream = javaClass.classLoader?.getResourceAsStream("extraction_dictionary.txt")
-            ?: return emptySet()
-        return stream.bufferedReader().readLines()
-            .filter { !it.startsWith("//") && it.isNotBlank() }
-            .map { it.trim().lowercase() }
-            .toSet()
+        val ctx = androidContext
+        val stream = if (ctx != null) {
+            val resourceId = ctx.resources.getIdentifier("extraction_dictionary", "raw", ctx.packageName)
+            if (resourceId != 0) ctx.resources.openRawResource(resourceId) else null
+        } else {
+            javaClass.classLoader?.getResourceAsStream("extraction_dictionary.txt")
+        }
+
+        return stream?.bufferedReader()?.readLines()
+            ?.filter { !it.startsWith("//") && it.isNotBlank() }
+            ?.map { it.trim().lowercase() }
+            ?.toSet() ?: emptySet()
     }
 
     private fun levenshtein(s1: String, s2: String, maxDist: Int): Int {
