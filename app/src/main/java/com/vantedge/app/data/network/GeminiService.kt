@@ -77,10 +77,10 @@ class GeminiService(
 ) {
 
     private val client = OkHttpClient.Builder()
-        .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(30, TimeUnit.SECONDS)
-        .writeTimeout(20, TimeUnit.SECONDS)
-        .callTimeout(35, TimeUnit.SECONDS)
+        .connectTimeout(30, TimeUnit.SECONDS)
+        .readTimeout(60, TimeUnit.SECONDS)
+        .writeTimeout(30, TimeUnit.SECONDS)
+        .callTimeout(120, TimeUnit.SECONDS)
         .build()
 
     private val mediaType = "application/json".toMediaType()
@@ -90,7 +90,7 @@ class GeminiService(
 
     companion object {
         private const val MAX_RETRY_ATTEMPTS = 3
-        private const val GENERATION_TIMEOUT_MS = 30_000L
+        private const val BODY_READ_TIMEOUT_MS = 90_000L
         private const val RAW_ARTIFACT_MAX_BYTES = 100 * 1024
         private const val RAW_BODY_LOG_LIMIT = 8192
         private const val DEGRADE_THRESHOLD = 3
@@ -631,7 +631,7 @@ class GeminiService(
                         correlationId = requestId
                     )
 
-                    val raw = withTimeout(20_000L) {
+                    val raw = withTimeout(BODY_READ_TIMEOUT_MS) {
                         response.body?.string()
                     }
 
@@ -655,7 +655,7 @@ class GeminiService(
                     details = mapOf(
                         "requestId" to requestId,
                         "model" to model,
-                        "timeoutMs" to 20_000,
+                        "timeoutMs" to BODY_READ_TIMEOUT_MS,
                         "httpCode" to httpCode
                     ),
                     correlationId = requestId

@@ -553,7 +553,11 @@ STRICT RULES:
         """.trimIndent()
 
         val userPrompt = "Extract this CV following the schema and rules above. Never invent content.\n\nCV:\n$rawText"
-        val request = AiRequest(systemPrompt = systemPrompt, userPrompt = userPrompt)
+        val request = AiRequest(
+            systemPrompt = systemPrompt,
+            userPrompt = userPrompt,
+            maxTokens = 4096
+        )
         val response = aiGateway.generate("profile_extraction", request, 120_000L)
 
         if (response.isNullOrBlank()) {
