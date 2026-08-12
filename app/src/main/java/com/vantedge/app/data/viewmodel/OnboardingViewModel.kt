@@ -84,11 +84,7 @@ class OnboardingViewModel(
                 _draft.value = saved.copy(stage = OnboardingStage.Extracting)
                 _extractionState.value = ExtractionState.Extracting("Recovering your session...")
                 
-                val extractionMode = when {
-                    saved.uploadedCvUri?.endsWith(".pdf", true) == true -> ExtractionMode.PDF_TEXT
-                    saved.uploadedCvUri?.endsWith(".docx", true) == true -> ExtractionMode.DOCX
-                    else -> ExtractionMode.OCR
-                }
+                val extractionMode = saved.extractionMode ?: ExtractionMode.UNKNOWN
 
                 val structureResult = extractionEngine.structureProfile(
                     rawText = saved.rawExtractedText!!,
@@ -181,24 +177,18 @@ class OnboardingViewModel(
                     return@withLock
                 }
 
-                val rawText = rawResult.getOrThrow()
-                updateDraft { it.copy(rawExtractedText = rawText) }
+                val raw = rawResult.getOrThrow()
+                updateDraft { it.copy(rawExtractedText = raw.text, extractionMode = raw.mode) }
 
-                runStructuredExtraction(token, rawText)
+                runStructuredExtraction(token, raw.text, raw.mode)
             }
         }
     }
 
-    private suspend fun runStructuredExtraction(token: Long, rawText: String) {
+    private suspend fun runStructuredExtraction(token: Long, rawText: String, extractionMode: ExtractionMode) {
         Log.i(TAG, "[Extraction] ENTRY: runStructuredExtraction, rawText.length=${rawText.length}")
         _extractionState.value = ExtractionState.Extracting("Analyzing profile...")
 
-        val extractionMode = when {
-            _draft.value.uploadedCvUri?.endsWith(".pdf", true) == true -> ExtractionMode.PDF_TEXT
-            _draft.value.uploadedCvUri?.endsWith(".docx", true) == true -> ExtractionMode.DOCX
-            else -> ExtractionMode.OCR
-        }
-        
         Log.i(TAG, "[Gate0] ENTRY: structureProfile called, rawText.length=${rawText.length}, mode=$extractionMode")
 
         val result = extractionEngine.structureProfile(

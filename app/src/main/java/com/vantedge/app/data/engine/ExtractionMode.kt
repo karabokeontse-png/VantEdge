@@ -2,6 +2,10 @@ package com.vantedge.app.data.engine
 
 enum class ExtractionMode {
     PDF_TEXT,
-    OCR,
-    DOCX
+    PDF_OCR,
+    PDF_TEXT_TIMEOUT,
+    DOCX,
+    IMAGE_OCR,
+    PLAIN,
+    UNKNOWN
 }
