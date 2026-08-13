@@ -197,11 +197,30 @@ $jobDescription
 
         return when (val validation = contractValidator.validate(JobType.VACANCY_SCORING, payload)) {
             is ContractValidationResult.Success -> {
-                val record = compatibilityEngine.analyze(
+                var record = compatibilityEngine.analyze(
                     node = validation.validatedObject.node,
                     jobTitle = jobTitle,
                     company = company,
                     jobDescription = jobDescription
+                )
+
+                // TD-COMPATIBILITY-001: Override LLM-hallucinated simple counts with deterministic values.
+                record = record.copy(
+                    profileStats = record.profileStats.copy(
+                        skillCount = normalizedProfile.skills.size,
+                        certificationCount = normalizedProfile.certifications.size
+                    )
+                )
+
+                PipelineTrace.dataQuality(
+                    stage = "OptimizationOrchestrator",
+                    issue = "DETERMINISTIC_OVERRIDE",
+                    details = mapOf(
+                        "correlationId" to correlationId,
+                        "skillCount" to normalizedProfile.skills.size,
+                        "certificationCount" to normalizedProfile.certifications.size
+                    ),
+                    correlationId = correlationId
                 )
 
                 val evidenceRegistry = VantEdgeEvidenceRegistry(
@@ -224,11 +243,18 @@ $jobDescription
                     else -> record
                 }
 
+                // Compute overall severity once for use in both HALT and later evidenceSummary
+                val severityPriority = mapOf("E0" to 0, "E1" to 1, "E2" to 2, "E3" to 3, "E4" to 4)
+                val maxSeverityNum = enforcementDecision.classifiedEntries
+                    .map { severityPriority[it.severity.name] ?: 0 }
+                    .maxOrNull() ?: 0
+                val overallSeverity = severityPriority.entries.find { it.value == maxSeverityNum }?.key ?: "E0"
+
                 when (enforcementDecision.action) {
                     EnforcementAction.HALT -> {
                         return CompatibilityResult.Failure(
-                            type = "evidence_integrity_e4",
-                            message = "Evidence integrity E4 violation. Violated fields: ${enforcementDecision.classifiedEntries.filter { it.severity == FabricationSeverity.E4 }.joinToString { "${it.entry.fieldPath}(${it.entry.violationType})" }}",
+                            type = "evidence_integrity_$overallSeverity",
+                            message = "Evidence integrity $overallSeverity violation. Violated fields: ${enforcementDecision.classifiedEntries.filter { it.severity.name == overallSeverity }.joinToString { "${it.entry.fieldPath}(${it.entry.violationType})" }}",
                             rawResponse = aiResponse
                         )
                     }
@@ -241,7 +267,7 @@ $jobDescription
                                 "violatedFields" to enforcementDecision.classifiedEntries.filter { it.severity >= FabricationSeverity.E3 }.joinToString { "${it.entry.fieldPath}(${it.entry.violationType})" },
                                 "reason" to "Full source required for AI generation call integration"
                             ),
-                            correlationId
+                            correlationId = correlationId
                         )
                         return CompatibilityResult.Failure(
                             type = "evidence_integrity_e3",
@@ -251,12 +277,6 @@ $jobDescription
                     }
                     else -> { }
                 }
-
-                val severityPriority = mapOf("E0" to 0, "E1" to 1, "E2" to 2, "E3" to 3, "E4" to 4)
-                val maxSeverityNum = enforcementDecision.classifiedEntries
-                    .map { severityPriority[it.severity.name] ?: 0 }
-                    .maxOrNull() ?: 0
-                val overallSeverity = severityPriority.entries.find { it.value == maxSeverityNum }?.key ?: "E0"
 
                 val e0Count = enforcementDecision.classifiedEntries.count { it.severity == FabricationSeverity.E0 }
 
