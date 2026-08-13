@@ -159,7 +159,8 @@ Schema (every field required unless noted):
 STRICT RULES:
 - score is 0-100 integer: overall compatibility
 - vacancyScore is 0-100 integer: how well candidate meets the hard vacancy requirements only
-- relevancyItems must include ALL certifications and skills from the candidate profile
+- relevancyItems must include relevant certifications and skills from the candidate profile.
+- STRICT CONSTRAINT: Every item in relevancyItems MUST exactly match a skill or certification explicitly listed in the CANDIDATE PROFILE above. Do NOT invent, infer, or add any skills or certifications that are not present in the CANDIDATE PROFILE list.
 - relevancyGroup must be exactly one of: "HIGH", "MEDIUM", "LOW", "PROFESSIONAL_MISMATCH"
 - gaps must only list skills/certs the candidate does NOT have but the job needs
 - importance must be exactly "MANDATORY", "IMPORTANT", or "NICE_TO_HAVE"
@@ -204,12 +205,44 @@ $jobDescription
                     jobDescription = jobDescription
                 )
 
-                // TD-COMPATIBILITY-001: Override LLM-hallucinated simple counts with deterministic values.
+                // TD-COMPATIBILITY-001: Deterministic override of simple counts (previously verified).
                 record = record.copy(
                     profileStats = record.profileStats.copy(
                         skillCount = normalizedProfile.skills.size,
                         certificationCount = normalizedProfile.certifications.size
                     )
+                )
+
+                // TD-COMPATIBILITY-001 ESCALATION: Deterministic filtering of hallucinated 
+                // relevancy items to eliminate E3 HALT. Aggregate scoring fields (matchedCount, 
+                // gapCount, qualificationRatio) are preserved to avoid scope creep into TD-COMPATIBILITY-002.
+                val validProfileAssets = (normalizedProfile.skills.map { it.lowercase().trim() } + 
+                                          normalizedProfile.certifications.map { it.lowercase().trim() }).toSet()
+                
+                val filteredRelevancyItems = record.relevancyItems.filter { item ->
+                    val isValid = validProfileAssets.contains(item.name.lowercase().trim())
+                    if (!isValid) {
+                        PipelineTrace.dataQuality(
+                            stage = "OptimizationOrchestrator",
+                            issue = "HALLUCINATED_RELEVANCY_ITEM_REMOVED",
+                            details = mapOf("itemName" to item.name, "itemType" to item.type),
+                            correlationId = correlationId
+                        )
+                    }
+                    isValid
+                }
+
+                val removedCount = record.relevancyItems.size - filteredRelevancyItems.size
+                val baseNote = record.dataIntegrityNote ?: ""
+                val integrityNote = if (removedCount > 0) {
+                    "System removed $removedCount hallucinated relevancy items to ensure data integrity. $baseNote".trim()
+                } else {
+                    baseNote
+                }
+
+                record = record.copy(
+                    relevancyItems = filteredRelevancyItems,
+                    dataIntegrityNote = integrityNote
                 )
 
                 PipelineTrace.dataQuality(
@@ -218,7 +251,8 @@ $jobDescription
                     details = mapOf(
                         "correlationId" to correlationId,
                         "skillCount" to normalizedProfile.skills.size,
-                        "certificationCount" to normalizedProfile.certifications.size
+                        "certificationCount" to normalizedProfile.certifications.size,
+                        "removedHallucinatedItems" to removedCount
                     ),
                     correlationId = correlationId
                 )
@@ -253,7 +287,7 @@ $jobDescription
                 when (enforcementDecision.action) {
                     EnforcementAction.HALT -> {
                         return CompatibilityResult.Failure(
-                            type = "evidence_integrity_$overallSeverity",
+                            type = "evidence_integrity_${overallSeverity.lowercase()}",
                             message = "Evidence integrity $overallSeverity violation. Violated fields: ${enforcementDecision.classifiedEntries.filter { it.severity.name == overallSeverity }.joinToString { "${it.entry.fieldPath}(${it.entry.violationType})" }}",
                             rawResponse = aiResponse
                         )
