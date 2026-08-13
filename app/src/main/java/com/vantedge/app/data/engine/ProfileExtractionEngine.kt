@@ -42,6 +42,8 @@ import java.util.zip.ZipInputStream
 // No other constructor behaviour changed.
 // ==========================================
 
+data class RawExtractionResult(val text: String, val mode: ExtractionMode)
+
 class ProfileExtractionEngine(
     private val context: Context,
     private val aiGateway: AiGateway,
@@ -113,11 +115,11 @@ class ProfileExtractionEngine(
     // RAW TEXT EXTRACTION
     // ==========================================
 
-    suspend fun extractRawText(uri: Uri): Result<String> =
+    suspend fun extractRawText(uri: Uri): Result<RawExtractionResult> =
         withContext(Dispatchers.IO) {
             val rawStartMs = System.currentTimeMillis()
             PipelineTrace.entry("extractRawText", mapOf("uri" to uri.toString()))
-            var extractionRoute = "UNKNOWN"
+            var mode = ExtractionMode.UNKNOWN
 
             try {
                 val mime = context.contentResolver.getType(uri) ?: ""
@@ -125,16 +127,16 @@ class ProfileExtractionEngine(
 
                 val text = when {
                     mime.contains("pdf", true) || fileName.endsWith(".pdf", true) -> {
-                        extractionRoute = "PDF_TEXT"
+                        mode = ExtractionMode.PDF_TEXT
                         try {
                             val parsed = extractPdf(uri)
                             if (parsed.isBlank()) {
-                                extractionRoute = "PDF_OCR"
+                                mode = ExtractionMode.PDF_OCR
                                 Log.w(TAG, "DEBUG: [extractRawText] PDF extraction blank → ML Kit OCR fallback")
                                 extractPdfOcr(uri)
                             } else parsed
                         } catch (e: TimeoutCancellationException) {
-                            extractionRoute = "PDF_TEXT_TIMEOUT"
+                            mode = ExtractionMode.PDF_TEXT_TIMEOUT
                             PipelineTrace.error("extractRawText", ERROR_PDF_TEXT_TIMEOUT, e)
                             return@withContext Result.failure(Exception(ERROR_PDF_TEXT_TIMEOUT))
                         }
@@ -143,18 +145,18 @@ class ProfileExtractionEngine(
                             mime.contains("officedocument", true) ||
                             fileName.endsWith(".docx", true) ||
                             fileName.endsWith(".doc", true) -> {
-                        extractionRoute = "DOCX"
+                        mode = ExtractionMode.DOCX
                         extractDocx(uri)
                     }
                     mime.startsWith("image/", true) ||
                             fileName.endsWith(".png", true) ||
                             fileName.endsWith(".jpg", true) ||
                             fileName.endsWith(".jpeg", true) -> {
-                        extractionRoute = "IMAGE_OCR"
+                        mode = ExtractionMode.IMAGE_OCR
                         extractImageOcr(uri)
                     }
                     else -> {
-                        extractionRoute = "PLAIN"
+                        mode = ExtractionMode.PLAIN
                         extractPlain(uri)
                     }
                 }
@@ -163,7 +165,7 @@ class ProfileExtractionEngine(
                     PipelineTrace.exit("extractRawText", System.currentTimeMillis() - rawStartMs, mapOf(
                         "status" to "FAILURE",
                         "reason" to ERROR_EMPTY_DOCUMENT,
-                        "method" to extractionRoute
+                        "method" to mode.name
                     ))
                     return@withContext Result.failure(Exception(ERROR_EMPTY_DOCUMENT))
                 }
@@ -171,9 +173,9 @@ class ProfileExtractionEngine(
                 PipelineTrace.exit("extractRawText", System.currentTimeMillis() - rawStartMs, mapOf(
                     "status" to "SUCCESS",
                     "charCount" to text.length,
-                    "method" to extractionRoute
+                    "method" to mode.name
                 ))
-                Result.success(text)
+                Result.success(RawExtractionResult(text, mode))
 
             } catch (e: TimeoutCancellationException) {
                 PipelineTrace.error("extractRawText", ERROR_PDF_TEXT_TIMEOUT, e)
@@ -448,7 +450,9 @@ class ProfileExtractionEngine(
                 Gate0Reason.HIGH_NARRATIVE_DENSITY
             sectionContribution == 0 -> Gate0Reason.NO_SECTIONAL_STRUCTURE
             chronologyContribution == 0 -> Gate0Reason.NO_CHRONOLOGY
-            extractionMode == ExtractionMode.OCR && layoutRatio < 0.2f ->
+            (extractionMode == ExtractionMode.PDF_OCR ||
+                    extractionMode == ExtractionMode.IMAGE_OCR) &&
+                    layoutRatio < 0.2f ->
                 Gate0Reason.OCR_TOO_FRAGMENTED
             else -> Gate0Reason.LOW_STRUCTURAL_EVIDENCE
         }
