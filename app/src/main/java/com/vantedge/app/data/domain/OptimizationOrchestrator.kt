@@ -10,6 +10,7 @@ import com.vantedge.app.data.model.DesignConfig
 import com.vantedge.app.data.model.GenerationCycle
 import com.vantedge.app.data.model.GenerationMode
 import com.vantedge.app.data.domain.PipelineStep
+import com.vantedge.app.data.model.QualificationRatio
 import com.vantedge.app.data.model.UserProfile
 import com.vantedge.app.data.network.AiGateway
 import com.vantedge.app.data.network.AiRequest
@@ -162,12 +163,13 @@ STRICT RULES:
 - relevancyItems must include relevant certifications and skills from the candidate profile.
 - STRICT CONSTRAINT: Every item in relevancyItems MUST exactly match a skill or certification explicitly listed in the CANDIDATE PROFILE above. Do NOT invent, infer, or add any skills or certifications that are not present in the CANDIDATE PROFILE list.
 - relevancyGroup must be exactly one of: "HIGH", "MEDIUM", "LOW", "PROFESSIONAL_MISMATCH"
-- gaps must only list skills/certs the candidate does NOT have but the job needs
+- gaps must list job requirements the candidate does not fully satisfy. This includes skills/certs the candidate completely lacks, AND skills the candidate possesses but lacks the required years of experience (experienceGap=true).
 - importance must be exactly "MANDATORY", "IMPORTANT", or "NICE_TO_HAVE"
 - experienceGap = true if the candidate has the skill but lacks sufficient years
 - platformGap = true if the gap is about a specific platform/vendor tool
 - For each gap provide 2-3 real course recommendations
 - ONLY use real URLs from: Coursera, Udemy, edX, Google, Microsoft, LinkedIn Learning, AWS, freeCodeCamp, Cisco, CompTIA
+- STRICT CONSISTENCY: profileStats.matchedCount MUST equal the count of relevancyItems with matchPercent > 0. profileStats.gapCount MUST equal gaps.length. qualificationRatio.matched MUST equal profileStats.matchedCount, qualificationRatio.gaps MUST equal profileStats.gapCount, and qualificationRatio.total MUST equal matched + gaps. criticalGapCount MUST equal the count of gaps with importance "MANDATORY".
         """.trimIndent()
 
         val userPrompt = """
@@ -184,7 +186,7 @@ JOB DESCRIPTION:
 $jobDescription
         """.trimIndent()
 
-        val request = AiRequest(systemPrompt = systemPrompt, userPrompt = userPrompt)
+        val request = AiRequest(systemPrompt = systemPrompt, userPrompt = userPrompt, maxTokens = 8192)
         val aiResponse = aiGateway.generate("compatibility", request, 120_000L)
         if (aiResponse == null) return CompatibilityResult.Failure("null_response", "AI returned null")
 
@@ -256,6 +258,38 @@ $jobDescription
                     ),
                     correlationId = correlationId
                 )
+
+                // TD-COMPATIBILITY-002: Deterministic Aggregate Reconciliation
+                val deterministicMatched = filteredRelevancyItems.count { it.matchPercent > 0 }
+                val deterministicGapCount = record.gaps.size
+                val deterministicCritical = record.gaps.count { it.importance == "MANDATORY" }
+                val deterministicRatio = QualificationRatio(
+                    matched = deterministicMatched,
+                    total = deterministicMatched + deterministicGapCount,
+                    gaps = deterministicGapCount
+                )
+
+                val mismatches = mutableListOf<String>()
+                if (record.profileStats.matchedCount != deterministicMatched) mismatches.add("matchedCount: LLM ${record.profileStats.matchedCount} -> $deterministicMatched")
+                if (record.profileStats.gapCount != deterministicGapCount) mismatches.add("gapCount: LLM ${record.profileStats.gapCount} -> $deterministicGapCount")
+                if (record.criticalGapCount != deterministicCritical) mismatches.add("criticalGapCount: LLM ${record.criticalGapCount} -> $deterministicCritical")
+                if (record.qualificationRatio != deterministicRatio) mismatches.add("qualificationRatio: LLM ${record.qualificationRatio} -> $deterministicRatio")
+
+                if (mismatches.isNotEmpty()) {
+                    val reconciliationNote = "Aggregate reconciliation: " + mismatches.joinToString("; ")
+                    val existingNote = record.profileStats.dataIntegrityNote
+                    val newNote = if (existingNote.isBlank()) reconciliationNote else "$existingNote | $reconciliationNote"
+
+                    record = record.copy(
+                        profileStats = record.profileStats.copy(
+                            matchedCount = deterministicMatched,
+                            gapCount = deterministicGapCount,
+                            dataIntegrityNote = newNote
+                        ),
+                        criticalGapCount = deterministicCritical,
+                        qualificationRatio = deterministicRatio
+                    )
+                }
 
                 val evidenceRegistry = VantEdgeEvidenceRegistry(
                     normalizedProfile = normalizedProfile,

@@ -230,13 +230,14 @@ object EvidenceIntegrityDetector {
             val skillResult = registry.query(EvidenceCategory.ProfileEvidence, "skill.${gap.skill}")
             val certResult = registry.query(EvidenceCategory.ProfileEvidence, "cert.${gap.skill}")
             val inProfile = skillResult is EvidenceResult.Found || certResult is EvidenceResult.Found
+            val isInvalidGap = inProfile && !gap.experienceGap
 
             entries += ValidationReportEntry(
                 fieldPath = "$fieldPrefix.skill",
-                violationType = if (!inProfile) ViolationType.VALID else ViolationType.MISMATCH,
-                expectedEvidence = "ProfileEvidence: skill.${gap.skill} must be MISSING (gap skill should not be in profile)",
-                actualEvidence = "skill=${gap.skill}, inProfile=$inProfile",
-                detail = if (inProfile) "Gap skill '${gap.skill}' was found in profile — cannot be a gap" else null
+                violationType = if (!isInvalidGap) ViolationType.VALID else ViolationType.MISMATCH,
+                expectedEvidence = "ProfileEvidence: skill.${gap.skill} must be MISSING unless marked as experienceGap=true",
+                actualEvidence = "skill=${gap.skill}, inProfile=$inProfile, experienceGap=${gap.experienceGap}",
+                detail = if (isInvalidGap) "Gap skill '${gap.skill}' was found in profile without experienceGap=true flag — hallucinated gap" else null
             )
 
             val jobResult = registry.query(EvidenceCategory.JobEvidence, "contains.${gap.skill}")
