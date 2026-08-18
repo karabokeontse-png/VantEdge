@@ -14,8 +14,19 @@ class VantEdgeEvidenceRegistry(
     private val normalizedProfile: NormalizedProfile,
     private val userProfile: UserProfile,
     private val jobDescription: String,
-    private val correlationId: String
+    private val correlationId: String,
+    val requiredSkills: List<String> = emptyList()
 ) : EvidenceRegistry {
+
+    companion object {
+        private const val SUBSTRING_MATCH_THRESHOLD = 0.5
+        private const val MIN_TOKEN_LENGTH_FOR_SUBSTRING = 3
+    }
+
+    private fun tokensMatch(a: String, b: String): Boolean {
+        if (a.length < MIN_TOKEN_LENGTH_FOR_SUBSTRING || b.length < MIN_TOKEN_LENGTH_FOR_SUBSTRING) return a == b
+        return a in b || b in a
+    }
 
     private val profileSkillsLower: Set<String> = normalizedProfile.skills.map { it.lowercase().trim() }.toSet()
     private val profileCertsLower: Set<String> = normalizedProfile.certifications.map { it.lowercase().trim() }.toSet()
@@ -73,7 +84,20 @@ class VantEdgeEvidenceRegistry(
             key == "description" -> EvidenceResult.Found(jobDescription)
             key.startsWith("contains.") -> {
                 val term = key.removePrefix("contains.").lowercase().trim()
-                EvidenceResult.Computed(term in jobDescriptionTokens)
+                val gapTokens = tokenize(term, emptySet())
+                if (gapTokens.isEmpty()) {
+                    EvidenceResult.Computed(false)
+                } else {
+                    val comparisonSurface = if (requiredSkills.isNotEmpty()) {
+                        requiredSkills.flatMap { tokenize(it.lowercase(), emptySet()) }.toSet()
+                    } else {
+                        jobDescriptionTokens
+                    }
+                    val matchedCount = gapTokens.count { gt ->
+                        comparisonSurface.any { ct -> tokensMatch(gt, ct) }
+                    }
+                    EvidenceResult.Computed(matchedCount.toDouble() / gapTokens.size >= SUBSTRING_MATCH_THRESHOLD)
+                }
             }
             else -> EvidenceResult.Missing
         }
