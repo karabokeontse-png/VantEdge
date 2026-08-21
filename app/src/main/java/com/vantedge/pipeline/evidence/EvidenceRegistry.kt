@@ -15,7 +15,9 @@ class VantEdgeEvidenceRegistry(
     private val userProfile: UserProfile,
     private val jobDescription: String,
     private val correlationId: String,
-    val requiredSkills: List<String> = emptyList()
+    val requiredSkills: List<String> = emptyList(),
+    private val preferredSkills: List<String> = emptyList(),
+    private val educationRequired: String? = null
 ) : EvidenceRegistry {
 
     companion object {
@@ -88,10 +90,14 @@ class VantEdgeEvidenceRegistry(
                 if (gapTokens.isEmpty()) {
                     EvidenceResult.Computed(false)
                 } else {
-                    val comparisonSurface = if (requiredSkills.isNotEmpty()) {
-                        requiredSkills.flatMap { tokenize(it.lowercase(), emptySet()) }.toSet()
-                    } else {
-                        jobDescriptionTokens
+                    val comparisonSurface = buildSet {
+                        if (requiredSkills.isNotEmpty()) {
+                            addAll(requiredSkills.flatMap { tokenize(it.lowercase(), emptySet()) })
+                        } else {
+                            addAll(jobDescriptionTokens)
+                        }
+                        educationRequired?.let { addAll(tokenize(it.lowercase(), emptySet())) }
+                        addAll(preferredSkills.flatMap { tokenize(it.lowercase(), emptySet()) })
                     }
                     val matchedCount = gapTokens.count { gt ->
                         comparisonSurface.any { ct -> tokensMatch(gt, ct) }

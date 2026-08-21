@@ -48,13 +48,16 @@ class OptimizationOrchestrator(
 
     suspend fun runAnalysisOnly(
         profile: UserProfile, jobTitle: String, company: String, jobDescription: String,
-        improvementContext: String? = null
+        improvementContext: String? = null,
+        requiredSkills: List<String> = emptyList(),
+        preferredSkills: List<String> = emptyList(),
+        educationRequired: String? = null
     ): GenerationCycle {
         val correlationId = UUID.randomUUID().toString().take(8)
         val startMs = System.currentTimeMillis()
         PipelineTrace.entry("analysis_only", mapOf("correlationId" to correlationId, "jobTitle" to jobTitle, "company" to company))
         return try {
-            val analysisResult = runAnalysisFresh(profile, jobTitle, company, jobDescription)
+            val analysisResult = runAnalysisFresh(profile, jobTitle, company, jobDescription, requiredSkills, preferredSkills, educationRequired)
             val compatibility = when (analysisResult) {
                 is CompatibilityResult.Success -> analysisResult.data
                 is CompatibilityResult.Failure -> throw IllegalStateException("Compatibility analysis failed: ${analysisResult.type} - ${analysisResult.message}")
@@ -102,14 +105,17 @@ class OptimizationOrchestrator(
 
     suspend fun runFullPipeline(
         profile: UserProfile, jobTitle: String, company: String, jobDescription: String,
-        mode: GenerationMode, improvementContext: String? = null, onProgress: (PipelineStep) -> Unit = {}
+        mode: GenerationMode, improvementContext: String? = null, onProgress: (PipelineStep) -> Unit = {},
+        requiredSkills: List<String> = emptyList(),
+        preferredSkills: List<String> = emptyList(),
+        educationRequired: String? = null
     ): GenerationCycle {
         val correlationId = UUID.randomUUID().toString().take(8)
         val startMs = System.currentTimeMillis()
         PipelineTrace.entry("full_pipeline", mapOf("correlationId" to correlationId, "jobTitle" to jobTitle, "company" to company, "mode" to mode.name))
         return try {
             onProgress(PipelineStep.ANALYSING)
-            val analysisResult = runAnalysisFresh(profile, jobTitle, company, jobDescription)
+            val analysisResult = runAnalysisFresh(profile, jobTitle, company, jobDescription, requiredSkills, preferredSkills, educationRequired)
             val compatibility = when (analysisResult) { is CompatibilityResult.Success -> analysisResult.data; is CompatibilityResult.Failure -> throw IllegalStateException("Compatibility analysis failed: ${analysisResult.type} - ${analysisResult.message}") }
             val enrichedJobDescription = if (!improvementContext.isNullOrBlank()) "$jobDescription\n\n---\n$improvementContext" else jobDescription
             onProgress(PipelineStep.GENERATING_CV)
@@ -135,9 +141,13 @@ class OptimizationOrchestrator(
     }
 
     override suspend fun runAnalysisFresh(
-        profile: UserProfile, jobTitle: String, company: String, jobDescription: String
+        profile: UserProfile, jobTitle: String, company: String, jobDescription: String,
+        requiredSkills: List<String>,
+        preferredSkills: List<String>,
+        educationRequired: String?
     ): CompatibilityResult {
         val correlationId = UUID.randomUUID().toString().take(8)
+        PipelineTrace.dataQuality(stage = "runAnalysisFresh", issue = "STRUCTURED_REQUIREMENTS", details = mapOf("correlationId" to correlationId, "requiredSkillsCount" to requiredSkills.size, "preferredSkillsCount" to preferredSkills.size, "educationRequired" to (educationRequired ?: "null")), correlationId = correlationId)
         val sanitizationResult = ProfileSanitizer.sanitize(profile)
         val normalizedProfile = NormalizedProfile.from(profile, sanitizationResult)
         PipelineTrace.dataQuality(stage = "ProfileSanitizer_ACTIVE", issue = "SANITIZATION_RESULT", details = mapOf("correlationId" to correlationId, "originalSkillCount" to profile.skills.size, "sanitizedSkillCount" to sanitizationResult.skills.size, "excludedTokens" to sanitizationResult.excluded.map { it.token }, "auditRuleIds" to sanitizationResult.audit.entries.map { it.ruleId }), correlationId = correlationId)
@@ -170,6 +180,8 @@ STRICT RULES:
 - For each gap provide 2-3 real course recommendations
 - ONLY use real URLs from: Coursera, Udemy, edX, Google, Microsoft, LinkedIn Learning, AWS, freeCodeCamp, Cisco, CompTIA
 - STRICT CONSISTENCY: profileStats.matchedCount MUST equal the count of relevancyItems with matchPercent > 0. profileStats.gapCount MUST equal gaps.length. qualificationRatio.matched MUST equal profileStats.matchedCount, qualificationRatio.gaps MUST equal profileStats.gapCount, and qualificationRatio.total MUST equal matched + gaps. criticalGapCount MUST equal the count of gaps with importance "MANDATORY".
+- CANONICAL REQUIREMENTS: When EXPLICIT REQUIRED SKILLS are provided below, they are the authoritative vacancy requirements. Use them as the ground truth for gap analysis, relevancyItems, and vacancyScore. Do NOT derive additional requirements from the raw job description text that contradict the explicit list.
+- PRIORITY ORDERING: MANDATORY gaps must appear first in the gaps array, followed by IMPORTANT, then NICE_TO_HAVE. vacancyScore MUST reflect the ratio of explicit required skills the candidate satisfies.
         """.trimIndent()
 
         val userPrompt = """
@@ -181,6 +193,11 @@ Certifications: ${normalizedProfile.certifications.joinToString(", ")}
 Experience: ${normalizedProfile.workHistory.joinToString("\n")}
 Education: ${normalizedProfile.education.joinToString(", ")}
 Languages: ${normalizedProfile.languages.joinToString(", ")}
+
+EXPLICIT VACANCY REQUIREMENTS (CANONICAL — use these as ground truth):
+Required Skills: ${requiredSkills.joinToString(", ")}
+Preferred Skills: ${preferredSkills.joinToString(", ")}
+Education Required: ${educationRequired ?: "Not specified"}
 
 JOB DESCRIPTION:
 $jobDescription
@@ -295,7 +312,10 @@ $jobDescription
                     normalizedProfile = normalizedProfile,
                     userProfile = profile,
                     jobDescription = jobDescription,
-                    correlationId = correlationId
+                    correlationId = correlationId,
+                    requiredSkills = requiredSkills,
+                    preferredSkills = preferredSkills,
+                    educationRequired = educationRequired
                 )
                 val validationReport = EvidenceIntegrityDetector.validate(record, evidenceRegistry)
                 val enforcementDecision = EvidencePolicyEnforcer.enforce(validationReport)
