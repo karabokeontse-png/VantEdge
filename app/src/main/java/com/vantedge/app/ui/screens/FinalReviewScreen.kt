@@ -21,6 +21,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.vantedge.app.data.model.UserProfile
 import com.vantedge.app.ui.theme.AppColors
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import com.vantedge.app.ui.components.WarningsBanner
+import com.vantedge.app.w5.scoring.extractYear
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 
@@ -213,6 +217,23 @@ fun FinalReviewScreen(
                     cardDark = cardDark,
                     badge = profile.workHistory.size
                 ) {
+                    val hasUnparseableStartDate = profile.workHistory.any { extractYear(it.startDate) == null }
+
+                    if (hasUnparseableStartDate) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 12.dp)
+                                .semantics {
+                                    contentDescription = "Warning: One or more employment start dates are missing or unclear. Updating them to include a 4-digit year will improve your job match accuracy."
+                                }
+                        ) {
+                            WarningsBanner(
+                                warnings = listOf("Employment start dates are missing or unclear. Updating them to include a 4-digit year will improve your job match accuracy.")
+                            )
+                        }
+                    }
+
                     if (profile.workHistory.isEmpty()) {
                         Text("No experience added.", fontSize = 13.sp, color = subtle)
                     } else {

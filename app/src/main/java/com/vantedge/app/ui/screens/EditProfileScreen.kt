@@ -23,9 +23,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import com.vantedge.app.data.model.Certification
 import com.vantedge.app.data.model.UserProfile
 import com.vantedge.app.data.model.WorkExperience
+import com.vantedge.app.ui.components.WarningsBanner
+import com.vantedge.app.w5.scoring.extractYear
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -198,6 +202,23 @@ fun EditProfileScreen(
 
                 // ── Work history ──────────────────────────────────────────
                 EditSection(title = "Work experience", icon = "💼") {
+                    val hasUnparseableStartDate = workHistory.any { extractYear(it.startDate) == null }
+
+                    if (hasUnparseableStartDate) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 12.dp)
+                                .semantics {
+                                    contentDescription = "Warning: One or more employment start dates are missing or unclear. Updating them to include a 4-digit year will improve your job match accuracy."
+                                }
+                        ) {
+                            WarningsBanner(
+                                warnings = listOf("Employment start dates are missing or unclear. Updating them to include a 4-digit year will improve your job match accuracy.")
+                            )
+                        }
+                    }
+
                     workHistory.forEachIndexed { index, exp ->
                         EditWorkCard(
                             experience = exp,

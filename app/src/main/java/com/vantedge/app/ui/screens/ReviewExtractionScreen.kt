@@ -23,6 +23,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.vantedge.app.data.model.*
+import com.vantedge.app.ui.components.WarningsBanner
 
 @Composable
 fun ReviewExtractionScreen(
@@ -585,21 +586,3 @@ private fun AddItemButton(label: String, teal: Color, onClick: () -> Unit) {
         }
     }
 }
-
-@Composable
-private fun WarningsBanner(warnings: List<String>) {
-    Column(        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(Color(0xFFFFB830).copy(alpha = 0.08f))
-            .border(1.dp, Color(0xFFFFB830).copy(alpha = 0.3f), RoundedCornerShape(12.dp))
-            .padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp)
-    ) {
-        Text("⚠ Things to double-check", fontSize = 13.sp,
-            fontWeight = FontWeight.SemiBold, color = Color(0xFFFFB830))
-        warnings.forEach { warning ->
-            Text("• $warning", fontSize = 12.sp, color = Color(0xFF9E9E9E))
-        }
-    }
-} 
