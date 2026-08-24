@@ -67,9 +67,17 @@ object ExtractionValidator {
             }
         }
 
+        // Structural / Required — BLOCKER
         checkField("personalInfo.email", pi.email?.value, errors, ValidationSeverity.BLOCKER) { value ->
             when {
                 value.isBlank() -> "Email is required but was empty"
+                else -> null
+            }
+        }
+        // Quality / Format — WARNING
+        checkField("personalInfo.email", pi.email?.value, warnings, ValidationSeverity.WARNING) { value ->
+            when {
+                value.isBlank() -> null // Handled by BLOCKER check above
                 !EMAIL_REGEX.matches(value.trim()) -> "Email does not match valid format"
                 value.length > MAX_EMAIL_LENGTH -> "Email exceeds ${MAX_EMAIL_LENGTH} chars"
                 containsHallucinationMarker(value) -> "Email contains hallucination marker"
@@ -174,10 +182,18 @@ object ExtractionValidator {
             }
         }
 
+        // Structural / Required — BLOCKER
         checkField("description", extraction.description, errors, ValidationSeverity.BLOCKER) { value ->
             when {
                 value.isBlank() -> "Job description is required but was empty"
-                value.length < MIN_JOB_DESC_LENGTH -> "Job description too short (${value.length} chars, min $MIN_JOB_DESC_LENGTH)"
+                value.length < MIN_JOB_DESC_LENGTH -> "Job description too short"
+                else -> null
+            }
+        }
+        // Quality / Format — WARNING
+        checkField("description", extraction.description, warnings, ValidationSeverity.WARNING) { value ->
+            when {
+                value.isBlank() || value.length < MIN_JOB_DESC_LENGTH -> null // Handled by BLOCKER check above
                 value.length > MAX_JOB_DESC_LENGTH -> "Job description exceeds ${MAX_JOB_DESC_LENGTH} chars"
                 containsHallucinationMarker(value) -> "Description contains hallucination marker"
                 else -> null
