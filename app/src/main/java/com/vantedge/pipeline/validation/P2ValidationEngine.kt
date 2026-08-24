@@ -218,7 +218,7 @@ object P2ValidationEngine {
         ), correlationId)
         val trace = buildTrace("JobExtractionResult", correlationId)
 
-        val desc = result.description ?: ""
+        val desc = result.description
         val charCount = desc.length
         val wordCount = desc.split("\\s+".toRegex()).count { it.isNotBlank() }
         val hasSep = desc.contains(".") || desc.contains("!") || desc.contains("?")
