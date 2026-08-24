@@ -4,8 +4,12 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.vantedge.app.data.domain.CompatibilityOrchestrator
 import com.vantedge.app.data.engine.CompatibilityResult
+import com.vantedge.app.domain.extraction.ExtractionOutcome
 import com.vantedge.app.domain.extraction.JobExtractionOrchestrator
+import com.vantedge.pipeline.validation.ValidationDecision
 import com.vantedge.app.data.model.CompatibilityRecord
+import com.vantedge.app.data.model.Gate0JobResult
+import com.vantedge.app.data.model.JobExtractionResult
 import com.vantedge.app.data.model.JobSourceType
 import com.vantedge.app.data.model.UserProfile
 import com.vantedge.app.data.model.Certification
@@ -41,6 +45,12 @@ class CompatibilityViewModel(
     var savedJobTitle: String = ""
     var savedCompany: String = ""
     var savedJobDescription: String = ""
+    var savedRequiredSkills: List<String> = emptyList()
+    var savedPreferredSkills: List<String> = emptyList()
+    var savedEducationRequired: String? = null
+    var savedConfidenceScore: Float = 0f
+    var savedGate0Result: Gate0JobResult? = null
+    var lastExtractionState: JobExtractionState = JobExtractionState.Idle
 
     private val _addedSkills = MutableStateFlow<Set<String>>(emptySet())
     val addedSkills: StateFlow<Set<String>> = _addedSkills
@@ -56,7 +66,10 @@ class CompatibilityViewModel(
         profile: UserProfile,
         jobTitle: String,
         company: String,
-        jobDescription: String
+        jobDescription: String,
+        requiredSkills: List<String> = emptyList(),
+        preferredSkills: List<String> = emptyList(),
+        educationRequired: String? = null
     ) {
         _uiState.value = CompatibilityUiState.Loading
         _addedSkills.value = emptySet()
@@ -67,7 +80,10 @@ class CompatibilityViewModel(
                 profile = profile,
                 jobTitle = jobTitle,
                 company = company,
-                jobDescription = jobDescription
+                jobDescription = jobDescription,
+                requiredSkills = requiredSkills,
+                preferredSkills = preferredSkills,
+                educationRequired = educationRequired
             )) {
                 is CompatibilityResult.Failure -> {
                     val userMessage = when (result.type) {
@@ -166,17 +182,62 @@ class CompatibilityViewModel(
 
     fun extractFieldsFromText(
         rawText: String,
-        onResult: (jobTitle: String?, company: String?, jobDescription: String?) -> Unit
+        onResult: (extraction: JobExtractionResult?) -> Unit
     ) {
         viewModelScope.launch(Dispatchers.IO) {
             val result = extractionOrchestrator.extractJob(rawText, JobSourceType.USER_INPUT)
-            result.onSuccess { extraction ->
+            val outcome = result.getOrNull()
+            if (outcome == null) {
                 viewModelScope.launch(Dispatchers.Main) {
-                    onResult(extraction.jobTitle, extraction.company, extraction.description)
+                    onResult(null)
                 }
-            }.onFailure {
-                viewModelScope.launch(Dispatchers.Main) {
-                    onResult(null, null, rawText.take(3000))
+                return@launch
+            }
+            when (outcome) {
+                is ExtractionOutcome.Accepted -> {
+                    savedRequiredSkills = outcome.result.requiredSkills
+                    savedPreferredSkills = outcome.result.preferredSkills
+                    savedEducationRequired = outcome.result.educationRequired
+                    savedConfidenceScore = outcome.result.confidenceScore
+                    savedGate0Result = outcome.result.gate0Result
+                    lastExtractionState = JobExtractionState.Success(outcome.result)
+                    viewModelScope.launch(Dispatchers.Main) {
+                        onResult(outcome.result)
+                    }
+                }
+                is ExtractionOutcome.ReviewRequired -> {
+                    savedRequiredSkills = outcome.result.requiredSkills
+                    savedPreferredSkills = outcome.result.preferredSkills
+                    savedEducationRequired = outcome.result.educationRequired
+                    savedConfidenceScore = outcome.result.confidenceScore
+                    savedGate0Result = outcome.result.gate0Result
+                    val warnings = if (outcome.decision is ValidationDecision.Degraded) outcome.decision.warnings else emptyList()
+                    lastExtractionState = JobExtractionState.SuccessWithWarning(outcome.result, warnings)
+                    viewModelScope.launch(Dispatchers.Main) {
+                        onResult(outcome.result)
+                    }
+                }
+                is ExtractionOutcome.EmergencyFallback -> {
+                    savedRequiredSkills = outcome.result.requiredSkills
+                    savedPreferredSkills = outcome.result.preferredSkills
+                    savedEducationRequired = outcome.result.educationRequired
+                    savedConfidenceScore = outcome.result.confidenceScore
+                    savedGate0Result = outcome.result.gate0Result
+                    lastExtractionState = JobExtractionState.SuccessWithWarning(outcome.result, listOf("Emergency extraction — validation not performed"))
+                    viewModelScope.launch(Dispatchers.Main) {
+                        onResult(outcome.result)
+                    }
+                }
+                is ExtractionOutcome.Rejected -> {
+                    savedRequiredSkills = emptyList()
+                    savedPreferredSkills = emptyList()
+                    savedEducationRequired = null
+                    savedConfidenceScore = 0f
+                    savedGate0Result = null
+                    lastExtractionState = JobExtractionState.Failure(outcome.reason)
+                    viewModelScope.launch(Dispatchers.Main) {
+                        onResult(null)
+                    }
                 }
             }
         }

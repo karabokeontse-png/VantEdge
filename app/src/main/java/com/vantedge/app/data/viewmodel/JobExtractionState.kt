@@ -6,5 +6,6 @@ sealed class JobExtractionState {
     object Idle : JobExtractionState()
     data class Extracting(val statusText: String) : JobExtractionState()
     data class Success(val result: JobExtractionResult) : JobExtractionState()
+    data class SuccessWithWarning(val result: JobExtractionResult, val warnings: List<String>) : JobExtractionState()
     data class Failure(val message: String) : JobExtractionState()
 }

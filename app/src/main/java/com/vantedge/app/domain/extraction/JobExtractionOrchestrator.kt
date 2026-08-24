@@ -28,16 +28,17 @@ class JobExtractionOrchestrator(
             rawText: String,
             sourceType: JobSourceType,
             onProgress: (String) -> Unit = {}
-        ): Result<JobExtractionResult> {
+        ): Result<ExtractionOutcome> {
             return JobExtractionOrchestrator(aiGateway = null).extractJob(rawText, sourceType, onProgress)
         }
     }
 
+    // Result.success indicates technical execution succeeded (no exception); business decision is determined by the inner ExtractionOutcome.
     suspend fun extractJob(
         rawText: String,
         sourceType: JobSourceType,
         onProgress: (String) -> Unit = {}
-    ): Result<JobExtractionResult> {
+    ): Result<ExtractionOutcome> {
         val startMs = System.currentTimeMillis()
         val correlationId = UUID.randomUUID().toString().take(8)
         PipelineTrace.entry("JobExtractionOrchestrator", mapOf(
@@ -142,6 +143,13 @@ class JobExtractionOrchestrator(
                     else -> {}
                 }
 
+                val p2Decision = p2Result.decision
+                val outcome = when (p2Decision) {
+                    is ValidationDecision.Accept -> ExtractionOutcome.Accepted(result, p2Decision)
+                    is ValidationDecision.Degraded -> ExtractionOutcome.ReviewRequired(result, p2Decision)
+                    is ValidationDecision.Reject -> ExtractionOutcome.Rejected(p2Decision.reason, correlationId)
+                }
+
                 PipelineTrace.exit("JobExtractionOrchestrator", durMs, mapOf(
                     "status" to "SUCCESS",
                     "title" to (title ?: ""),
@@ -150,7 +158,7 @@ class JobExtractionOrchestrator(
                     "method" to extractionMethod,
                     "correlationId" to correlationId
                 ))
-                Result.success(result)
+                Result.success(outcome)
             } else {
                 PipelineTrace.warn("JobExtractionOrchestrator", "AiGateway unavailable — falling back to RuleBasedEmergencyExtractor", correlationId)
 
@@ -162,7 +170,11 @@ class JobExtractionOrchestrator(
                     "method" to "EMERGENCY_RULE_BASED",
                     "correlationId" to correlationId
                 ))
-                return emergencyResult
+                return emergencyResult.fold(
+                    onSuccess = { ExtractionOutcome.EmergencyFallback(it, correlationId) },
+                    onFailure = { null }
+                )?.let { Result.success(it) }
+                    ?: Result.failure(emergencyResult.exceptionOrNull() ?: Exception("EXTRACTION_FAILED"))
             }
         } catch (e: Exception) {
             val failureDurMs = System.currentTimeMillis() - startMs
@@ -170,7 +182,12 @@ class JobExtractionOrchestrator(
 
             return try {
                 PipelineTrace.warn("JobExtractionOrchestrator", "Primary extraction failed — falling back to emergency extractor", correlationId)
-                RuleBasedEmergencyExtractor.extractJob(rawText, sourceType, correlationId)
+                val fallback = RuleBasedEmergencyExtractor.extractJob(rawText, sourceType, correlationId)
+                fallback.fold(
+                    onSuccess = { ExtractionOutcome.EmergencyFallback(it, correlationId) },
+                    onFailure = { null }
+                )?.let { Result.success(it) as Result<ExtractionOutcome> }
+                    ?: Result.failure(fallback.exceptionOrNull() ?: Exception("EXTRACTION_FAILED"))
             } catch (fallbackError: Exception) {
                 PipelineTrace.error("JobExtractionOrchestrator", "Emergency fallback also failed", fallbackError, correlationId)
                 Result.failure(Exception("EXTRACTION_FAILED: ${e.message}"))
@@ -209,10 +226,10 @@ class JobExtractionOrchestrator(
             confidenceScore = overallConfidence,
             confidenceBreakdown = confidenceBreakdown,
             gate0Result = Gate0JobResult(
-                score = 3,
-                threshold = 2,
-                accepted = true,
-                reason = Gate0JobReason.ACCEPTED,
+                score = 0,
+                threshold = 0,
+                accepted = false,
+                reason = Gate0JobReason.NOT_EVALUATED,
                 detectedSignals = emptyList(),
                 appliedPenalties = emptyList(),
                 rejectionCauses = emptyList(),
@@ -227,7 +244,8 @@ class JobExtractionOrchestrator(
                 gate2DurationMs = 0,
                 gate3DurationMs = 0,
                 gate4DurationMs = 0,
-                qualificationPassed = true,
+                // Gate 0 not evaluated on LLM path; false indicates no qualification was performed, not that qualification failed.
+                qualificationPassed = false,
                 narrativeDensity = 0.0f
             )
         )

@@ -25,6 +25,7 @@ import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.text.PDFTextStripper
+import com.vantedge.app.domain.extraction.ExtractionOutcome
 import com.vantedge.app.domain.extraction.JobExtractionOrchestrator
 import com.vantedge.app.data.model.JobSourceType
 import com.vantedge.app.data.model.UserProfile
@@ -78,6 +79,11 @@ fun CVGeneratorScreen(
             else viewModel.savedJobDescription
         )
     }
+    var savedRequiredSkills by remember { mutableStateOf<List<String>>(emptyList()) }
+    var savedPreferredSkills by remember { mutableStateOf<List<String>>(emptyList()) }
+    var savedEducationRequired by remember { mutableStateOf<String?>(null) }
+    var savedConfidenceScore by remember { mutableStateOf(0f) }
+    var savedGate0Result by remember { mutableStateOf<com.vantedge.app.data.model.Gate0JobResult?>(null) }
 
     var urlInput by remember { mutableStateOf("") }
     var showUrlInput by remember { mutableStateOf(false) }
@@ -204,11 +210,26 @@ fun CVGeneratorScreen(
         isExtracting = true
         scope.launch(Dispatchers.IO) {
             val result = extractionOrchestrator.extractJob(rawText, JobSourceType.USER_INPUT)
-            result.onSuccess { extraction ->
+            result.onSuccess { outcome ->
+                val extraction = when (outcome) {
+                    is ExtractionOutcome.Accepted -> outcome.result
+                    is ExtractionOutcome.ReviewRequired -> outcome.result
+                    is ExtractionOutcome.EmergencyFallback -> outcome.result
+                    is ExtractionOutcome.Rejected -> null
+                }
                 scope.launch(Dispatchers.Main) {
-                    if (extraction.jobTitle != null) jobTitle = extraction.jobTitle
-                    if (extraction.company != null) company = extraction.company
-                    jobDescription = extraction.description
+                    if (extraction != null) {
+                        if (extraction.jobTitle != null) jobTitle = extraction.jobTitle
+                        if (extraction.company != null) company = extraction.company
+                        jobDescription = extraction.description
+                        savedRequiredSkills = extraction.requiredSkills
+                        savedPreferredSkills = extraction.preferredSkills
+                        savedEducationRequired = extraction.educationRequired
+                        savedConfidenceScore = extraction.confidenceScore
+                        savedGate0Result = extraction.gate0Result
+                    } else {
+                        jobDescription = rawText.take(3000)
+                    }
                     isExtracting = false
                 }
             }.onFailure {

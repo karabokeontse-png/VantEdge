@@ -24,6 +24,7 @@ import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.text.PDFTextStripper
+import com.vantedge.app.domain.extraction.ExtractionOutcome
 import com.vantedge.app.domain.extraction.JobExtractionOrchestrator
 import com.vantedge.app.data.model.JobSourceType
 import com.vantedge.app.data.model.GenerationMode
@@ -100,11 +101,21 @@ fun JobInputScreen(
         isExtracting = true
         scope.launch(Dispatchers.IO) {
             val result = extractionOrchestrator.extractJob(rawText, JobSourceType.USER_INPUT)
-            result.onSuccess { extraction ->
+            result.onSuccess { outcome ->
+                val extraction = when (outcome) {
+                    is ExtractionOutcome.Accepted -> outcome.result
+                    is ExtractionOutcome.ReviewRequired -> outcome.result
+                    is ExtractionOutcome.EmergencyFallback -> outcome.result
+                    is ExtractionOutcome.Rejected -> null
+                }
                 scope.launch(Dispatchers.Main) {
-                    if (extraction.jobTitle != null) jobTitle = extraction.jobTitle
-                    if (extraction.company != null) company = extraction.company
-                    jobDescription = extraction.description
+                    if (extraction != null) {
+                        if (extraction.jobTitle != null) jobTitle = extraction.jobTitle
+                        if (extraction.company != null) company = extraction.company
+                        jobDescription = extraction.description
+                    } else {
+                        jobDescription = rawText.take(3000)
+                    }
                     isExtracting = false
                 }
             }.onFailure {

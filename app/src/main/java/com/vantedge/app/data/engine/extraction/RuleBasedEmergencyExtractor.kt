@@ -187,7 +187,7 @@ object RuleBasedEmergencyExtractor {
                 score = gate0Score,
                 threshold = effectiveThreshold,
                 accepted = isAccepted,
-                reason = Gate0JobReason.ACCEPTED,
+                reason = if (isAccepted) Gate0JobReason.ACCEPTED else Gate0JobReason.LOW_STRUCTURAL_EVIDENCE,
                 detectedSignals = emptyList(),
                 appliedPenalties = emptyList(),
                 rejectionCauses = emptyList(),
@@ -202,7 +202,7 @@ object RuleBasedEmergencyExtractor {
                 gate2DurationMs = 0,
                 gate3DurationMs = 0,
                 gate4DurationMs = 0,
-                qualificationPassed = true,
+                qualificationPassed = isAccepted,
                 narrativeDensity = 0.0f
             )
         )

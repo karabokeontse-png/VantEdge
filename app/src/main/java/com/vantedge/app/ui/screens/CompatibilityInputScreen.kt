@@ -77,6 +77,9 @@ fun CompatibilityInputScreen(
     var jobTitle by remember { mutableStateOf(viewModel.savedJobTitle) }
     var company by remember { mutableStateOf(viewModel.savedCompany) }
     var jobDescription by remember { mutableStateOf(viewModel.savedJobDescription) }
+    var savedRequiredSkills by remember { mutableStateOf(viewModel.savedRequiredSkills) }
+    var savedPreferredSkills by remember { mutableStateOf(viewModel.savedPreferredSkills) }
+    var savedEducationRequired by remember { mutableStateOf(viewModel.savedEducationRequired) }
     var urlInput by remember { mutableStateOf("") }
     var showUrlInput by remember { mutableStateOf(false) }
     var isExtracting by remember { mutableStateOf(false) }
@@ -87,6 +90,9 @@ fun CompatibilityInputScreen(
     LaunchedEffect(jobTitle) { viewModel.savedJobTitle = jobTitle }
     LaunchedEffect(company) { viewModel.savedCompany = company }
     LaunchedEffect(jobDescription) { viewModel.savedJobDescription = jobDescription }
+    LaunchedEffect(savedRequiredSkills) { viewModel.savedRequiredSkills = savedRequiredSkills }
+    LaunchedEffect(savedPreferredSkills) { viewModel.savedPreferredSkills = savedPreferredSkills }
+    LaunchedEffect(savedEducationRequired) { viewModel.savedEducationRequired = savedEducationRequired }
 
     LaunchedEffect(uiState) {
         if (uiState is CompatibilityUiState.Success) {
@@ -133,10 +139,17 @@ fun CompatibilityInputScreen(
                         .addOnSuccessListener { result ->
                             val rawText = result.text
                             scope.launch {
-                                viewModel.extractFieldsFromText(rawText) { title, comp, desc ->
-                                    if (title != null) jobTitle = title
-                                    if (comp != null) company = comp
-                                    jobDescription = desc ?: rawText
+                                viewModel.extractFieldsFromText(rawText) { extraction ->
+                                    if (extraction != null) {
+                                        if (extraction.jobTitle != null) jobTitle = extraction.jobTitle
+                                        if (extraction.company != null) company = extraction.company
+                                        jobDescription = extraction.description
+                                        savedRequiredSkills = extraction.requiredSkills
+                                        savedPreferredSkills = extraction.preferredSkills
+                                        savedEducationRequired = extraction.educationRequired
+                                    } else {
+                                        jobDescription = rawText
+                                    }
                                     isExtracting = false
                                 }
                             }
@@ -151,10 +164,17 @@ fun CompatibilityInputScreen(
                 }
             } else {
                 if (extracted != null) {
-                    viewModel.extractFieldsFromText(extracted) { title, comp, desc ->
-                        if (title != null) jobTitle = title
-                        if (comp != null) company = comp
-                        jobDescription = desc ?: extracted
+                    viewModel.extractFieldsFromText(extracted) { extraction ->
+                        if (extraction != null) {
+                            if (extraction.jobTitle != null) jobTitle = extraction.jobTitle
+                            if (extraction.company != null) company = extraction.company
+                            jobDescription = extraction.description
+                            savedRequiredSkills = extraction.requiredSkills
+                            savedPreferredSkills = extraction.preferredSkills
+                            savedEducationRequired = extraction.educationRequired
+                        } else {
+                            jobDescription = extracted
+                        }
                         isExtracting = false
                     }
                 } else {
@@ -190,10 +210,17 @@ fun CompatibilityInputScreen(
                 }
             }
             if (result != null) {
-                viewModel.extractFieldsFromText(result) { title, comp, desc ->
-                    if (title != null) jobTitle = title
-                    if (comp != null) company = comp
-                    jobDescription = desc ?: result.take(3000)
+                viewModel.extractFieldsFromText(result) { extraction ->
+                    if (extraction != null) {
+                        if (extraction.jobTitle != null) jobTitle = extraction.jobTitle
+                        if (extraction.company != null) company = extraction.company
+                        jobDescription = extraction.description
+                        savedRequiredSkills = extraction.requiredSkills
+                        savedPreferredSkills = extraction.preferredSkills
+                        savedEducationRequired = extraction.educationRequired
+                    } else {
+                        jobDescription = result.take(3000)
+                    }
                     showUrlInput = false
                     urlInput = ""
                     isExtracting = false

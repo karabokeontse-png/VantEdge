@@ -6,6 +6,8 @@ import com.vantedge.app.data.model.JobExtractionResult
 import com.vantedge.pipeline.validation.ValidationDecision
 
 
+// Future callers must unwrap Result<ExtractionOutcome> and pass the inner
+// JobExtractionResult plus its ValidationDecision separately to adapt().
 object W5Adapter {
     fun adapt(
         profile: StructuredProfileExtraction,
