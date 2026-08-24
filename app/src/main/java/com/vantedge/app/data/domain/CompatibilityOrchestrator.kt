@@ -8,6 +8,9 @@ interface CompatibilityOrchestrator {
         profile: UserProfile,
         jobTitle: String,
         company: String,
-        jobDescription: String
+        jobDescription: String,
+        requiredSkills: List<String> = emptyList(),
+        preferredSkills: List<String> = emptyList(),
+        educationRequired: String? = null
     ): CompatibilityResult
 }
