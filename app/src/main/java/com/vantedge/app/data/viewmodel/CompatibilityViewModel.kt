@@ -80,43 +80,51 @@ class CompatibilityViewModel(
         _addedCerts.value = emptySet()
 
         viewModelScope.launch(Dispatchers.IO) {
-            when (val result = optimizationOrchestrator.runAnalysisFresh(
-                profile = profile,
-                jobTitle = jobTitle,
-                company = company,
-                jobDescription = jobDescription,
-                requiredSkills = requiredSkills,
-                preferredSkills = preferredSkills,
-                educationRequired = educationRequired
-            )) {
-                is CompatibilityResult.Failure -> {
-                    val userMessage = when (result.type) {
-                        "evidence_integrity_e4", "evidence_integrity_e3" ->
-                            "Analysis could not verify all data points. Some profile information may need review."
-                        "p2_rejection" ->
-                            "This job does not match your profile at the required confidence level."
-                        "contract_violation" ->
-                            "The analysis response did not meet structural requirements."
-                        "null_response", "no_json", "parse_error" ->
-                            "Analysis failed. Please check your connection and try again."
-                        else ->
-                            "Analysis failed. Please try again."
+            try {
+                when (val result = optimizationOrchestrator.runAnalysisFresh(
+                    profile = profile,
+                    jobTitle = jobTitle,
+                    company = company,
+                    jobDescription = jobDescription,
+                    requiredSkills = requiredSkills,
+                    preferredSkills = preferredSkills,
+                    educationRequired = educationRequired
+                )) {
+                    is CompatibilityResult.Failure -> {
+                        val userMessage = when (result.type) {
+                            "evidence_integrity_e4", "evidence_integrity_e3" ->
+                                "Analysis could not verify all data points. Some profile information may need review."
+                            "p2_rejection" ->
+                                "This job does not match your profile at the required confidence level."
+                            "contract_violation" ->
+                                "The analysis response did not meet structural requirements."
+                            "null_response", "no_json", "parse_error" ->
+                                "Analysis failed. Please check your connection and try again."
+                            else ->
+                                "Analysis failed. Please try again."
+                        }
+                        viewModelScope.launch(Dispatchers.Main) {
+                            _uiState.value = CompatibilityUiState.Error(userMessage)
+                        }
                     }
-                    viewModelScope.launch(Dispatchers.Main) {
-                        _uiState.value = CompatibilityUiState.Error(userMessage)
+                    is CompatibilityResult.Success -> {
+                        val record = result.data
+                        lastRecord = record
+
+                        viewModelScope.launch(Dispatchers.IO) {
+                            store.addRecord(record)
+                        }
+
+                        viewModelScope.launch(Dispatchers.Main) {
+                            _uiState.value = CompatibilityUiState.Success(record)
+                        }
                     }
                 }
-                is CompatibilityResult.Success -> {
-                    val record = result.data
-                    lastRecord = record
-
-                    viewModelScope.launch(Dispatchers.IO) {
-                        store.addRecord(record)
-                    }
-
-                    viewModelScope.launch(Dispatchers.Main) {
-                        _uiState.value = CompatibilityUiState.Success(record)
-                    }
+            } catch (e: Exception) {
+                viewModelScope.launch(Dispatchers.Main) {
+                    _uiState.value = CompatibilityUiState.Error(
+                        "Analysis failed. Please check your connection and try again."
+                    )
                 }
             }
         }
