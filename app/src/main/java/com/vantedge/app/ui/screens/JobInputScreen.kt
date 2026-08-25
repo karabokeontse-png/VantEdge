@@ -113,6 +113,9 @@ fun JobInputScreen(
                         if (extraction.jobTitle != null) jobTitle = extraction.jobTitle
                         if (extraction.company != null) company = extraction.company
                         jobDescription = extraction.description
+                        viewModel.savedRequiredSkills = extraction.requiredSkills
+                        viewModel.savedPreferredSkills = extraction.preferredSkills
+                        viewModel.savedEducationRequired = extraction.educationRequired
                     } else {
                         jobDescription = rawText.take(3000)
                     }
@@ -392,7 +395,10 @@ fun JobInputScreen(
                         company = company,
                         jobDescription = jobDescription,
                         mode = mode,
-                        improvementContext = viewModel.improvementContext
+                        improvementContext = viewModel.improvementContext,
+                        requiredSkills = viewModel.savedRequiredSkills,
+                        preferredSkills = viewModel.savedPreferredSkills,
+                        educationRequired = viewModel.savedEducationRequired
                     )
                 },
                 enabled = !isLoading && !isExtracting
