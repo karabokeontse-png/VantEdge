@@ -89,7 +89,7 @@ class GeminiService(
     private val baseUrl = "https://openrouter.ai/api/v1/chat/completions"
 
     companion object {
-        private const val MAX_RETRY_ATTEMPTS = 3
+        private const val MAX_RETRY_ATTEMPTS = 2
         private const val BODY_READ_TIMEOUT_MS = 90_000L
         private const val RAW_ARTIFACT_MAX_BYTES = 100 * 1024
         private const val RAW_BODY_LOG_LIMIT = 8192
@@ -110,9 +110,8 @@ class GeminiService(
     private val modelStates = ConcurrentHashMap<String, ModelCircuitState>()
 
     private val models = listOf(
-        "nvidia/nemotron-nano-9b-v2:free",
-        "openai/gpt-oss-20b:free",
-        "meta-llama/llama-3.2-3b-instruct:free"
+        "nvidia/nemotron-3-super-120b-a12b:free",
+        "cohere/north-mini-code:free"
     )
 
     private fun delayForAttempt(index: Int): Long = when {
@@ -195,7 +194,9 @@ class GeminiService(
 
         var capturedErrorType: String? = null
 
-        for (attempt in 1..MAX_RETRY_ATTEMPTS) {
+        val chainResult: String? = try {
+            withTimeout(120_000L) {
+                for (attempt in 1..MAX_RETRY_ATTEMPTS) {
             if (attempt > MAX_RETRY_ATTEMPTS) break
             val index = attempt - 1
             val model = models[index]
@@ -312,7 +313,7 @@ class GeminiService(
                     )
                 }
                 failureStreak = 0
-                return result
+                return@withTimeout result
             }
 
             val errorType = if (!modelAttempted.get()) RequestFailureType.TIMEOUT.name else capturedErrorType
@@ -413,6 +414,32 @@ class GeminiService(
                 )
                 shouldStop = true
             }
+        }
+            null
+            }
+        } catch (e: TimeoutCancellationException) {
+            Log.w("GeminiService", "[$requestId] AGGREGATE_TIMEOUT_120S elapsedMs=${SystemClock.elapsedRealtime() - requestStartElapsed}")
+            capturedErrorType = "timeout"
+            onModelResult(
+                ModelAttemptResult(
+                    requestId = requestId,
+                    model = "aggregate-ceiling",
+                    attempt = 0,
+                    failureType = "timeout",
+                    httpCode = null,
+                    durationMs = SystemClock.elapsedRealtime() - requestStartElapsed,
+                    latencyMs = null,
+                    bodyPreview = null,
+                    detail = "AGGREGATE_TIMEOUT_120S",
+                    cancelReason = null
+                )
+            )
+            shouldStop = true
+            null
+        }
+
+        if (chainResult != null) {
+            return chainResult
         }
 
         val lastCanonicalFailure = capturedErrorType ?: RequestFailureType.TIMEOUT.name
