@@ -3,6 +3,7 @@ package com.vantedge.app
 import android.app.Application
 import android.util.Log
 import com.vantedge.app.util.LogFileProvider
+import com.vantedge.app.util.LogSink
 import com.vantedge.app.w5.scoring.ExtractionValidator
 import com.vantedge.app.w5.scoring.SkillTaxonomyProvider
 import com.vantedge.pipeline.validation.P2ValidationEngine
@@ -11,6 +12,7 @@ class VantEdgeApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         LogFileProvider.bind(this)
+        LogSink.truncateTrace()
         P2ValidationEngine.initialize(this)
         ExtractionValidator.init(this)
         SkillTaxonomyProvider.load(this)

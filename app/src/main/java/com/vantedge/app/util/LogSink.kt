@@ -2,6 +2,7 @@ package com.vantedge.app.util
 
 import android.util.Log
 import java.io.File
+import java.io.RandomAccessFile
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -41,6 +42,26 @@ object LogSink {
                 file.appendText(line + System.lineSeparator(), Charsets.UTF_8)
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to write trace: ${e.message}")
+            }
+        }
+    }
+
+    internal fun truncateTrace() {
+        val file = try {
+            LogFileProvider.file()
+        } catch (e: Exception) {
+            Log.e(TAG, "LogFileProvider not bound: ${e.message}")
+            return
+        }
+        lock.withLock {
+            try {
+                if (file.exists()) {
+                    RandomAccessFile(file, "rw").use { it.setLength(0) }
+                } else {
+                    file.createNewFile()
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to truncate trace: ${e.message}")
             }
         }
     }

@@ -1,5 +1,6 @@
 package com.vantedge.app.data.viewmodel
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.vantedge.app.data.model.DesignConfig
@@ -48,6 +49,9 @@ class CycleViewModel(
     var savedJobTitle: String = ""
     var savedCompany: String = ""
     var savedJobDescription: String = ""
+    var savedRequiredSkills: List<String> = emptyList()
+    var savedPreferredSkills: List<String> = emptyList()
+    var savedEducationRequired: String? = null
 
     var improvementContext: String? = null
         private set
@@ -259,8 +263,12 @@ class CycleViewModel(
         company: String,
         jobDescription: String,
         mode: GenerationMode,
-        improvementContext: String? = null
+        improvementContext: String? = null,
+        requiredSkills: List<String> = emptyList(),
+        preferredSkills: List<String> = emptyList(),
+        educationRequired: String? = null
     ) {
+        Log.w("CycleViewModel", "TD-RELIABILITY-002: Extracted skills received but not yet forwarded to orchestrator. TODO: wire to runPipeline.")
         runPipeline(
             profile = profile,
             jobTitle = jobTitle,
