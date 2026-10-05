@@ -98,7 +98,7 @@ OUTPUT BOUNDARY:
             systemPrompt = AI_SYSTEM_PROMPT,
             userPrompt = userPrompt,
             temperature = 0.0,
-            maxTokens = 4096
+            maxTokens = 8192
         )
 
         val response = aiGateway.generate("job_extraction", request, 120_000L)
