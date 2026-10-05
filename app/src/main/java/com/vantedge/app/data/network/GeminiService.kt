@@ -152,6 +152,7 @@ class GeminiService(
 
     suspend fun generate(
         requestId: String,
+        pipeline: String = "",
         request: AiRequest,
         onProgress: (String) -> Unit = {},
         onModelResult: (ModelAttemptResult) -> Unit = {},
@@ -159,11 +160,12 @@ class GeminiService(
     ): String? {
         val requestStartElapsed = SystemClock.elapsedRealtime()
         val blacklistedModels = mutableSetOf<String>()
-        return tryChain(requestId, request, onProgress, onModelResult, blacklistedModels, requestStartElapsed, budgetDeadlineMs)
+        return tryChain(requestId, pipeline, request, onProgress, onModelResult, blacklistedModels, requestStartElapsed, budgetDeadlineMs)
     }
 
     private suspend fun tryChain(
         requestId: String,
+        pipeline: String,
         request: AiRequest,
         onProgress: (String) -> Unit,
         onModelResult: (ModelAttemptResult) -> Unit,
@@ -251,7 +253,7 @@ class GeminiService(
             httpAttemptCounter++
             val transportAttempt = "HTTP-$httpAttemptCounter"
 
-            val result = tryModel(requestId, model, index, request, metrics, transportAttempt, requestStartElapsed) { result ->
+            val result = tryModel(requestId, pipeline, model, index, request, metrics, transportAttempt, requestStartElapsed) { result ->
                 modelAttempted.set(true)
                 capturedErrorType = result.failureType
                 onModelResult(result)
@@ -330,10 +332,12 @@ class GeminiService(
                         stage = "gemini_service",
                         issue = "TIMEOUT_FAILURE_STREAK",
                         details = mapOf(
+                            "requestId" to requestId,
                             "failureStreak" to failureStreak,
                             "threshold" to 2,
                             "action" to if (failureStreak >= 2) "shouldStop=true" else "continue"
-                        )
+                        ),
+                        correlationId = requestId
                     )
                     if (failureStreak >= 2) {
                         shouldStop = true
@@ -462,6 +466,7 @@ class GeminiService(
 
     private suspend fun tryModel(
         requestId: String,
+        pipeline: String,
         model: String,
         attemptIndex: Int,
         aiRequest: AiRequest,
@@ -878,19 +883,61 @@ class GeminiService(
                                 .getJSONObject("message")
                                 .getString("content")
 
-                            val extracted = extractContent(raw)
+                            val extracted = when (pipeline) {
+                                "cover_letter" -> {
+                                    PipelineTrace.dataQuality(
+                                        stage = "gemini_service",
+                                        issue = "COVER_LETTER_RAW_PASSTHROUGH",
+                                        details = mapOf("requestId" to requestId, "rawLength" to raw.length),
+                                        correlationId = requestId
+                                    )
+                                    ExtractionResult(
+                                        content = raw,
+                                        strategy = "raw_passthrough",
+                                        success = true,
+                                        failureReason = null,
+                                        repairTrail = emptyList()
+                                    )
+                                }
+                                "job_extraction", "compatibility", "profile_extraction", "cv", "cv_docx" -> {
+                                    extractContent(raw)
+                                }
+                                else -> {
+                                    PipelineTrace.dataQuality(
+                                        stage = "gemini_service",
+                                        issue = "UNLISTED_PIPELINE_DEFAULTING_TO_JSON",
+                                        details = mapOf("requestId" to requestId),
+                                        correlationId = requestId
+                                    )
+                                    extractContent(raw)
+                                }
+                            }
 
                             if (!extracted.success) {
                                 PipelineTrace.dataQuality(
                                     stage = "gemini_service",
                                     issue = "MODEL_EXTRACTION_QUARANTINE",
                                     details = mapOf(
+                                        "requestId" to requestId,
                                         "strategy" to extracted.strategy,
                                         "failureReason" to (extracted.failureReason ?: "unknown"),
                                         "repairTrail" to extracted.repairTrail.joinToString(";"),
                                         "action" to "abort_no_resume"
-                                    )
+                                    ),
+                                    correlationId = requestId
                                 )
+                                onModelResult(ModelAttemptResult(
+                                    requestId = requestId,
+                                    model = model,
+                                    attempt = attemptIndex + 1,
+                                    failureType = "MODEL_EXTRACTION_QUARANTINE",
+                                    httpCode = if (metrics.httpCode != 0) metrics.httpCode else null,
+                                    durationMs = SystemClock.elapsedRealtime() - attemptStart,
+                                    latencyMs = if (metrics.firstCallbackMs != 0L) metrics.firstCallbackMs - attemptStart else null,
+                                    bodyPreview = null,
+                                    detail = "MODEL_EXTRACTION_QUARANTINE ${extracted.failureReason ?: "unknown"}",
+                                    cancelReason = null
+                                ))
                                 result = null
                             } else {
                                 PipelineTrace.dataQuality(

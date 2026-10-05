@@ -70,6 +70,7 @@ class AiGateway(
         val budgetDeadlineMs = SystemClock.elapsedRealtime() + effectiveBudget
         val result = geminiService.generate(
             requestId = requestId,
+            pipeline = pipeline,
             request = request,
             onModelResult = onModelResult,
             budgetDeadlineMs = budgetDeadlineMs

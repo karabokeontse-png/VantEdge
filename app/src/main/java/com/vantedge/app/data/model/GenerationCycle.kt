@@ -19,6 +19,7 @@ data class GenerationCycle(
     val design: DesignConfig? = null,
     val cvContent: String? = null,
     val coverLetterContent: String? = null,
+    val coverLetterHtml: String? = null,
     val cvErrorMessage: String? = null,
     val coverLetterErrorMessage: String? = null
 )

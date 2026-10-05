@@ -41,6 +41,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.navigation.NavController
+import com.vantedge.app.data.engine.CVTemplate
 import com.vantedge.app.data.model.CompatibilityRecord
 import com.vantedge.app.data.model.GapItem
 import com.vantedge.app.data.model.GenerationCycle
@@ -281,7 +282,17 @@ fun ResultScreen(
                     }
                     hasDocuments && selectedTab == 1 -> {
                         val content = coverLetterContent
-                        if (content.isBlank()) {
+                        val htmlContent = cycle.coverLetterHtml ?: cycle.design?.let { design ->
+                            CVTemplate.renderCoverLetter(
+                                profile = cycle.profileSnapshot,
+                                jobTitle = cycle.jobTitle,
+                                company = cycle.company,
+                                content = content,
+                                designId = design.templateId,
+                                schemeId = design.colorScheme
+                            )
+                        }
+                        if (content.isBlank() || htmlContent == null) {
                             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                 Text("No content available.", color = Color.Gray)
                             }
@@ -303,7 +314,7 @@ fun ResultScreen(
                                     }
                                 },
                                 update = { wv ->
-                                    wv.loadDataWithBaseURL(null, content, "text/html", "UTF-8", null)
+                                    wv.loadDataWithBaseURL(null, htmlContent, "text/html", "UTF-8", null)
                                 },
                                 modifier = Modifier
                                     .fillMaxSize()

@@ -437,7 +437,7 @@ $jobDescription
             val previousCycles = historyStore.getCyclesForJob(cycle.jobTitle, cycle.company)
             val version = previousCycles.count { it.design != null } + 1
             val (cvHtml, coverLetterHtml) = generatorEngine.applyDesignToContent(profile = cycle.profileSnapshot, jobTitle = cycle.jobTitle, company = cycle.company, matchedKeywordsJson = "{\"matchedKeywords\":${cycle.matchedKeywords.joinToString(prefix = "[", postfix = "]", separator = ",") { "\"$it\"" }}}", coverLetterBody = cycle.coverLetterContent ?: "", designId = design.templateId, schemeId = design.colorScheme)
-            val fullCycle = cycle.copy(compatibility = compatibility, cvContent = cvHtml, coverLetterContent = coverLetterHtml, design = design, version = version, title = null, isVisibleInHistory = true)
+            val fullCycle = cycle.copy(compatibility = compatibility, cvContent = cvHtml, coverLetterContent = cycle.coverLetterContent, coverLetterHtml = coverLetterHtml, design = design, version = version, title = null, isVisibleInHistory = true)
             historyStore.saveCycle(fullCycle)
             val durationMs = System.currentTimeMillis() - startMs
             PipelineTrace.exit("apply_design", durationMs, mapOf("correlationId" to correlationId, "status" to "success", "version" to version))

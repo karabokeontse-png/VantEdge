@@ -50,19 +50,19 @@ fun EditProfileScreen(
     var summary by remember { mutableStateOf(initialProfile?.summary ?: "") }
 
     var skills by remember {
-        mutableStateOf(initialProfile?.skills?.toMutableList() ?: mutableListOf())
+        mutableStateOf<MutableList<String>>(initialProfile?.skills?.toMutableList() ?: mutableListOf())
     }
     var languages by remember {
-        mutableStateOf(initialProfile?.languages?.toMutableList() ?: mutableListOf())
+        mutableStateOf<MutableList<String>>(initialProfile?.languages?.toMutableList() ?: mutableListOf())
     }
     var education by remember {
-        mutableStateOf(initialProfile?.education?.toMutableList() ?: mutableListOf())
+        mutableStateOf<MutableList<String>>(initialProfile?.education?.toMutableList() ?: mutableListOf())
     }
     var workHistory by remember {
-        mutableStateOf(initialProfile?.workHistory?.toMutableList() ?: mutableListOf())
+        mutableStateOf<MutableList<WorkExperience>>(initialProfile?.workHistory?.toMutableList() ?: mutableListOf())
     }
     var certifications by remember {
-        mutableStateOf(initialProfile?.certifications?.toMutableList() ?: mutableListOf())
+        mutableStateOf<MutableList<Certification>>(initialProfile?.certifications?.toMutableList() ?: mutableListOf())
     }
 
     // Continue is enabled once minimum fields are filled

@@ -1,6 +1,7 @@
 package com.vantedge.app.data.engine
 
 import com.vantedge.app.data.model.UserProfile
+import org.json.JSONObject
 
 object CVTemplate {
 
@@ -32,6 +33,7 @@ object CVTemplate {
     ): String {
         val colors = getColors(schemeId)
         val font = if (designId == "executive") "Georgia, serif" else "Arial, sans-serif"
+        val bodyHtml = renderCoverLetterBody(content)
         return """
 <!DOCTYPE html>
 <html>
@@ -50,10 +52,53 @@ p { margin: 0 0 12px 0; }
 <div class="name">${profile.name}</div>
 <div class="contact">${profile.email} | ${profile.phone} | ${profile.location}</div>
 </div>
-$content
+${bodyHtml}
 </body>
 </html>
         """.trimIndent()
+    }
+
+    private fun renderCoverLetterBody(content: String): String {
+        val json = try {
+            JSONObject(content)
+        } catch (e: Exception) {
+            return "<p>" + escapeHtml(content) + "</p>"
+        }
+        val sb = StringBuilder()
+        val subject = json.optString("subject", "").trim()
+        val greeting = json.optString("greeting", "").trim()
+        val closing = json.optString("closing", "").trim()
+        val signature = json.optString("signature", "").trim()
+        val bodyArray = json.optJSONArray("body")
+
+        if (subject.isNotEmpty()) {
+            sb.append("<h2 class=\"subject\">").append(escapeHtml(subject)).append("</h2>")
+        }
+        if (greeting.isNotEmpty()) {
+            sb.append("<p class=\"greeting\">").append(escapeHtml(greeting)).append("</p>")
+        }
+        if (bodyArray != null) {
+            for (i in 0 until bodyArray.length()) {
+                val paragraph = bodyArray.optString(i, "").trim()
+                if (paragraph.isNotEmpty()) {
+                    sb.append("<p>").append(escapeHtml(paragraph)).append("</p>")
+                }
+            }
+        }
+        if (closing.isNotEmpty()) {
+            sb.append("<p class=\"closing\">").append(escapeHtml(closing)).append("</p>")
+        }
+        if (signature.isNotEmpty()) {
+            sb.append("<p class=\"signature\">").append(escapeHtml(signature)).append("</p>")
+        }
+        return sb.toString()
+    }
+
+    private fun escapeHtml(text: String): String {
+        return text
+            .replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
     }
 
     private data class Colors(
