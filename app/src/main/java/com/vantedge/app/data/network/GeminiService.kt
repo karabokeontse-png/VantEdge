@@ -495,6 +495,11 @@ class GeminiService(
             put("max_tokens", aiRequest.maxTokens)
             put("temperature", aiRequest.temperature)
             put("top_p", 0.8)
+            put("reasoning", JSONObject().apply {
+                put("enabled", false)
+                put("max_tokens", 0)
+                put("exclude", true)
+            })
         }
 
         val request = Request.Builder()
@@ -522,6 +527,7 @@ class GeminiService(
                     "requestId" to requestId,
                     "transportAttempt" to transportAttempt,
                     "model" to model,
+                    "reasoningDisabled" to true,
                     "elapsedMs" to (SystemClock.elapsedRealtime() - requestStartElapsed)
                 ),
                 correlationId = requestId
