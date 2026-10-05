@@ -989,7 +989,7 @@ class GeminiService(
                                         "requestId" to requestId,
                                         "model" to model,
                                         "strategy" to extracted.strategy,
-                                        "rawLength" to raw.length,
+                                        "rawLength" to (raw?.length ?: 0),
                                         "extractedLength" to extracted.content.length,
                                         "transportAttempt" to transportAttempt
                                     ),
