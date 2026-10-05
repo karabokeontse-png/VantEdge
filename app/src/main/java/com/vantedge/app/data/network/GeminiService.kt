@@ -877,13 +877,49 @@ class GeminiService(
                         result = null
                     } else {
                         try {
-                            val raw = payload
+                            val message = payload
                                 .getJSONArray("choices")
                                 .getJSONObject(0)
                                 .getJSONObject("message")
-                                .getString("content")
 
-                            val extracted = when (pipeline) {
+                            val raw = if (!message.has("content") || message.isNull("content")) {
+                                null
+                            } else {
+                                message.getString("content")
+                            }
+
+                            val extracted = if (raw == null) {
+                                PipelineTrace.dataQuality(
+                                    stage = "gemini_service",
+                                    issue = "MODEL_EMPTY_CONTENT",
+                                    details = mapOf(
+                                        "requestId" to requestId,
+                                        "model" to model,
+                                        "httpCode" to httpCode,
+                                        "finishReason" to payload.getJSONArray("choices").getJSONObject(0).optString("finish_reason", "")
+                                    ),
+                                    correlationId = requestId
+                                )
+                                onModelResult(ModelAttemptResult(
+                                    requestId = requestId,
+                                    model = model,
+                                    attempt = attemptIndex + 1,
+                                    failureType = RequestFailureType.EMPTY_BODY.name,
+                                    httpCode = httpCode,
+                                    durationMs = SystemClock.elapsedRealtime() - attemptStart,
+                                    latencyMs = if (metrics.firstCallbackMs != 0L) metrics.firstCallbackMs - attemptStart else null,
+                                    bodyPreview = null,
+                                    detail = "EMPTY_CONTENT reasoning-only response (message.content null)",
+                                    cancelReason = null
+                                ))
+                                ExtractionResult(
+                                    content = "",
+                                    strategy = "failed",
+                                    success = false,
+                                    failureReason = "EMPTY_CONTENT",
+                                    repairTrail = listOf("message.content:null")
+                                )
+                            } else when (pipeline) {
                                 "cover_letter" -> {
                                     PipelineTrace.dataQuality(
                                         stage = "gemini_service",
