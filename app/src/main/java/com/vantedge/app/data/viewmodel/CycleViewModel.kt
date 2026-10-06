@@ -235,6 +235,9 @@ class CycleViewModel(
                             jobDescription = jobDescription,
                             mode = mode,
                             improvementContext = improvementContext,
+                            requiredSkills = savedRequiredSkills,
+                            preferredSkills = savedPreferredSkills,
+                            educationRequired = savedEducationRequired,
                             onProgress = { step ->
                                 _uiState.value = UiState.Loading(step)
                             }
