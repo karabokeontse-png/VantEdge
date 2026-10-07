@@ -1,5 +1,6 @@
 package com.vantedge.pipeline.evidence
 
+import com.vantedge.app.data.model.CompatibilityAnalysisSource
 import com.vantedge.app.data.model.CompatibilityRecord
 import com.vantedge.app.w5.scoring.FabricationDetector
 
@@ -50,24 +51,56 @@ object EvidenceIntegrityDetector {
         return ValidationReport(entries, correlationId)
     }
 
+    /**
+     * Phase D: provenance-aware score validation.
+     *
+     * Range validation is UNCHANGED and always active - a deterministic score outside
+     * [0,100] is still MISMATCH and still blocks.
+     *
+     * Provenance recognition is NOT a bypass. A record carrying
+     * CompatibilityAnalysisSource.DETERMINISTIC_W5 was produced by W5ScoreEngine and is
+     * therefore no longer classified THIN ("in range but unevidenced").
+     *
+     * `analysisSource == null` is LEGACY/UNKNOWN and deliberately follows the ORIGINAL
+     * THIN branch. Null provenance is never silently promoted to deterministic.
+     */
     private fun validateScore(record: CompatibilityRecord): ValidationReportEntry {
         val inRange = record.score in 0..100
+        val deterministic = record.analysisSource == CompatibilityAnalysisSource.DETERMINISTIC_W5
         return ValidationReportEntry(
             fieldPath = "score",
-            violationType = if (inRange) ViolationType.THIN else ViolationType.MISMATCH,
-            expectedEvidence = "Computed: integer in [0, 100]",
-            actualEvidence = "score=${record.score}",
+            violationType = when {
+                !inRange -> ViolationType.MISMATCH
+                deterministic -> ViolationType.VALID
+                else -> ViolationType.THIN
+            },
+            expectedEvidence = if (deterministic)
+                "Computed deterministically by W5ScoreEngine: integer in [0, 100]"
+            else
+                "Computed: integer in [0, 100]",
+            actualEvidence = "score=${record.score}, analysisSource=${record.analysisSource}",
             detail = if (!inRange) "Score ${record.score} out of range [0, 100]" else null
         )
     }
 
+    /**
+     * Phase D: same provenance recognition as [validateScore]; range validation unchanged.
+     */
     private fun validateVacancyScore(record: CompatibilityRecord): ValidationReportEntry {
         val inRange = record.vacancyScore in 0..100
+        val deterministic = record.analysisSource == CompatibilityAnalysisSource.DETERMINISTIC_W5
         return ValidationReportEntry(
             fieldPath = "vacancyScore",
-            violationType = if (inRange) ViolationType.THIN else ViolationType.MISMATCH,
-            expectedEvidence = "Computed: integer in [0, 100]",
-            actualEvidence = "vacancyScore=${record.vacancyScore}",
+            violationType = when {
+                !inRange -> ViolationType.MISMATCH
+                deterministic -> ViolationType.VALID
+                else -> ViolationType.THIN
+            },
+            expectedEvidence = if (deterministic)
+                "Computed deterministically from W5 axis scores: integer in [0, 100]"
+            else
+                "Computed: integer in [0, 100]",
+            actualEvidence = "vacancyScore=${record.vacancyScore}, analysisSource=${record.analysisSource}",
             detail = if (!inRange) "VacancyScore ${record.vacancyScore} out of range [0, 100]" else null
         )
     }

@@ -1,43 +1,17 @@
 {
   "compatibility": {
+    "_phase_d_note": "Analytical rules removed. score/vacancyScore/relevancyItems/profileStats are DISCARDED by the deterministic W5 path; validating them let AI-authored data veto W5. Narrative rules are WARNING (non-blocking) so AI absence never blocks deterministic analysis.",
     "rules": [
       {
-        "name": "score_range",
-        "field": "score",
-        "type": "int_range",
-        "params": { "min": 0, "max": 100 },
-        "severity": "BLOCKER"
-      },
-      {
-        "name": "vacancy_score_range",
-        "field": "vacancyScore",
-        "type": "int_range",
-        "params": { "min": 0, "max": 100 },
-        "severity": "BLOCKER"
-      },
-      {
-        "name": "role_summary_required",
+        "name": "role_summary_present",
         "field": "roleSummary",
         "type": "non_blank_string",
-        "severity": "BLOCKER"
-      },
-      {
-        "name": "eligibility_summary_required",
-        "field": "eligibilitySummary",
-        "type": "non_blank_string",
-        "severity": "BLOCKER"
-      },
-      {
-        "name": "relevancy_items_array",
-        "field": "relevancyItems",
-        "type": "non_empty_array",
         "severity": "WARNING"
       },
       {
-        "name": "match_percent_range",
-        "field": "relevancyItems[].matchPercent",
-        "type": "int_range",
-        "params": { "min": 0, "max": 100 },
+        "name": "eligibility_summary_present",
+        "field": "eligibilitySummary",
+        "type": "non_blank_string",
         "severity": "WARNING"
       }
     ]

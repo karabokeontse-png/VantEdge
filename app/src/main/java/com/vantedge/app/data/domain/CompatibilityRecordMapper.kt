@@ -164,7 +164,8 @@ class CompatibilityRecordMapper {
             qualificationRatio = qualificationRatio,
             relevancyItems = relevancyItems,
             gaps = gaps,
-            criticalGapCount = criticalGapCount
+            criticalGapCount = criticalGapCount,
+            analysisSource = CompatibilityAnalysisSource.DETERMINISTIC_W5
         )
 
         val durationMs = System.currentTimeMillis() - startMs

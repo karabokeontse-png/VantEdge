@@ -159,14 +159,12 @@ class ContractValidator {
         }
     }
 
-    private val vacancyScoringBoundaryRules = listOf<SchemaBoundaryRule>(
-        SchemaBoundaryRule.IntRange("score", 0, 100),
-        SchemaBoundaryRule.IntRange("vacancyScore", 0, 100),
-        SchemaBoundaryRule.SubFieldNonNegative(
-            "profileStats",
-            listOf("yearsExperience", "certificationCount", "skillCount", "matchedCount", "gapCount")
-        )
-    )
+    // Phase D: the AI no longer authors any analytical field for VACANCY_SCORING.
+    // Phase B made the deterministic W5 chain the sole analytical authority, so
+    // score/vacancyScore/profileStats boundary rules applied to DISCARDED AI values.
+    // No boundary rules remain for this job type: only narrative fields are requested,
+    // and narrative absence must never block deterministic analysis.
+    private val vacancyScoringBoundaryRules = emptyList<SchemaBoundaryRule>()
 
     // -------------------------------------------------------------------------
     // Schema resolver
@@ -194,30 +192,18 @@ class ContractValidator {
         //   Field presence, nullability, type correctness
         // ---------------------------------------------------------------------
 
-        val required = linkedMapOf<String, (JsonNode) -> Boolean>(
-            "score" to { it.isInt },
-            "vacancyScore" to { it.isInt },
-            "roleSummary" to { it.isTextual && it.asText().isNotBlank() },
-            "eligibilitySummary" to { it.isTextual && it.asText().isNotBlank() },
-            "profileStats" to { it.isObject },
-            "relevancyItems" to { it.isArray }
-        )
-
-        val missing = required.keys.filter { name ->
-            !node.has(name) || node.get(name).isNull
-        }
-
-        if (missing.isNotEmpty()) {
-            return failure(
-                reason = ContractFailureReason.MissingRequiredFields,
-                details = "Missing required fields: ${missing.joinToString()}",
-                payload = payload
-            )
-        }
-
-        val typeErrors = required.mapNotNull { (name, check) ->
-            if (!check(node.get(name))) name else null
-        }
+        // Phase D: analytical fields (score, vacancyScore, profileStats, relevancyItems,
+        // gaps, criticalGapCount) are DISCARDED by the deterministic W5 path and are
+        // therefore neither required nor type-checked here. Only narrative is requested.
+        //
+        // Narrative is ALSO non-blocking: an absent or malformed AI narrative must not
+        // prevent deterministic compatibility analysis. runAnalysisFresh() degrades
+        // narrative absence to empty strings and continues into W5.
+        //
+        // We still require the payload itself to be a JSON object, so downstream code can
+        // safely read narrative fields off it.
+        val typeErrors = mutableListOf<String>()
+        if (!node.isObject) typeErrors.add("<root>")
 
         if (typeErrors.isNotEmpty()) {
             return failure(
