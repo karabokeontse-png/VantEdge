@@ -25,6 +25,10 @@ import com.vantedge.pipeline.validation.EvidenceSummary
 import com.vantedge.pipeline.validation.P2ValidationEngine
 import com.vantedge.pipeline.validation.ValidationDecision
 import com.vantedge.app.w5.scoring.ProfileSanitizer
+import com.vantedge.app.w5.scoring.DeterministicCompatibilityEngine
+import com.vantedge.app.w5.scoring.SkillTaxonomyProvider
+import com.vantedge.app.w5.scoring.W5AssetLoader
+import com.vantedge.app.w5.scoring.W5ScoreEngine
 import com.vantedge.app.w5.scoring.NormalizedProfile
 import com.vantedge.pipeline.evidence.VantEdgeEvidenceRegistry
 import com.vantedge.pipeline.evidence.EvidenceIntegrityDetector
@@ -45,6 +49,20 @@ class OptimizationOrchestrator(
     private val generatorEngine: GeneratorEngine,
     private val historyStore: HistoryStore
 ) : CompatibilityOrchestrator {
+    /**
+     * Phase B: the single production construction path for the deterministic W5
+     * chain. Explicit dependencies, no DI framework. W5AssetLoader and
+     * SkillTaxonomyProvider are process-scoped singletons initialised in
+     * VantEdgeApplication.onCreate().
+     */
+    private val deterministicCompatibilityEngine: DeterministicCompatibilityEngine by lazy {
+        DeterministicCompatibilityEngine(
+            w5ScoreEngine = W5ScoreEngine(W5AssetLoader.getAssets()),
+            compatibilityRecordMapper = CompatibilityRecordMapper(),
+            skillTaxonomy = SkillTaxonomyProvider.getTaxonomy(),
+            stopWords = W5AssetLoader.getAssets().stopWords
+        )
+    }
 
     suspend fun runAnalysisOnly(
         profile: UserProfile, jobTitle: String, company: String, jobDescription: String,
@@ -226,96 +244,45 @@ $jobDescription
 
         return when (val validation = contractValidator.validate(JobType.VACANCY_SCORING, payload)) {
             is ContractValidationResult.Success -> {
-                var record = compatibilityEngine.analyze(
-                    node = validation.validatedObject.node,
+                // Phase B: the deterministic W5 chain is the sole analytical authority.
+                // The AI contributes narrative text ONLY. Every analytical field on the
+                // record below is computed by W5ScoreEngine / CompatibilityRecordMapper
+                // from validated deterministic inputs (Phase A supplied requirements).
+                val aiNode = validation.validatedObject.node
+                val aiRoleSummary = aiNode.path("roleSummary").asText("")
+                val aiEligibilitySummary = aiNode.path("eligibilitySummary").asText("")
+
+                val deterministicResult = deterministicCompatibilityEngine.analyze(
+                    profile = profile,
+                    normalizedProfile = normalizedProfile,
                     jobTitle = jobTitle,
                     company = company,
-                    jobDescription = jobDescription
+                    jobDescription = jobDescription,
+                    roleSummary = aiRoleSummary,
+                    eligibilitySummary = aiEligibilitySummary,
+                    requiredSkills = requiredSkills,
+                    preferredSkills = preferredSkills,
+                    educationRequired = educationRequired,
+                    correlationId = correlationId
                 )
-
-                // TD-COMPATIBILITY-001: Deterministic override of simple counts (previously verified).
-                record = record.copy(
-                    profileStats = record.profileStats.copy(
-                        skillCount = normalizedProfile.skills.size,
-                        certificationCount = normalizedProfile.certifications.size
-                    )
-                )
-
-                // TD-COMPATIBILITY-001 ESCALATION: Deterministic filtering of hallucinated 
-                // relevancy items to eliminate E3 HALT. Aggregate scoring fields (matchedCount, 
-                // gapCount, qualificationRatio) are preserved to avoid scope creep into TD-COMPATIBILITY-002.
-                val validProfileAssets = (normalizedProfile.skills.map { it.lowercase().trim() } + 
-                                          normalizedProfile.certifications.map { it.lowercase().trim() }).toSet()
-                
-                val filteredRelevancyItems = record.relevancyItems.filter { item ->
-                    val isValid = validProfileAssets.contains(item.name.lowercase().trim())
-                    if (!isValid) {
-                        PipelineTrace.dataQuality(
-                            stage = "OptimizationOrchestrator",
-                            issue = "HALLUCINATED_RELEVANCY_ITEM_REMOVED",
-                            details = mapOf("itemName" to item.name, "itemType" to item.type),
-                            correlationId = correlationId
-                        )
-                    }
-                    isValid
-                }
-
-                val removedCount = record.relevancyItems.size - filteredRelevancyItems.size
-                val baseNote = record.dataIntegrityNote ?: ""
-                val integrityNote = if (removedCount > 0) {
-                    "System removed $removedCount hallucinated relevancy items to ensure data integrity. $baseNote".trim()
-                } else {
-                    baseNote
-                }
-
-                record = record.copy(
-                    relevancyItems = filteredRelevancyItems,
-                    dataIntegrityNote = integrityNote
-                )
+                val record = deterministicResult.record
 
                 PipelineTrace.dataQuality(
                     stage = "OptimizationOrchestrator",
-                    issue = "DETERMINISTIC_OVERRIDE",
+                    issue = "DETERMINISTIC_AUTHORITY",
                     details = mapOf(
                         "correlationId" to correlationId,
-                        "skillCount" to normalizedProfile.skills.size,
-                        "certificationCount" to normalizedProfile.certifications.size,
-                        "removedHallucinatedItems" to removedCount
+                        "score" to record.score,
+                        "vacancyScore" to record.vacancyScore,
+                        "matchedCount" to record.profileStats.matchedCount,
+                        "gapCount" to record.profileStats.gapCount,
+                        "criticalGapCount" to record.criticalGapCount,
+                        "relevancyItemCount" to record.relevancyItems.size,
+                        "structuredRequiredCount" to requiredSkills.size,
+                        "aiSuppliedFields" to "roleSummary,eligibilitySummary"
                     ),
                     correlationId = correlationId
                 )
-
-                // TD-COMPATIBILITY-002: Deterministic Aggregate Reconciliation
-                val deterministicMatched = filteredRelevancyItems.count { it.matchPercent > 0 }
-                val deterministicGapCount = record.gaps.size
-                val deterministicCritical = record.gaps.count { it.importance == "MANDATORY" }
-                val deterministicRatio = QualificationRatio(
-                    matched = deterministicMatched,
-                    total = deterministicMatched + deterministicGapCount,
-                    gaps = deterministicGapCount
-                )
-
-                val mismatches = mutableListOf<String>()
-                if (record.profileStats.matchedCount != deterministicMatched) mismatches.add("matchedCount: LLM ${record.profileStats.matchedCount} -> $deterministicMatched")
-                if (record.profileStats.gapCount != deterministicGapCount) mismatches.add("gapCount: LLM ${record.profileStats.gapCount} -> $deterministicGapCount")
-                if (record.criticalGapCount != deterministicCritical) mismatches.add("criticalGapCount: LLM ${record.criticalGapCount} -> $deterministicCritical")
-                if (record.qualificationRatio != deterministicRatio) mismatches.add("qualificationRatio: LLM ${record.qualificationRatio} -> $deterministicRatio")
-
-                if (mismatches.isNotEmpty()) {
-                    val reconciliationNote = "Aggregate reconciliation: " + mismatches.joinToString("; ")
-                    val existingNote = record.profileStats.dataIntegrityNote
-                    val newNote = if (existingNote.isBlank()) reconciliationNote else "$existingNote | $reconciliationNote"
-
-                    record = record.copy(
-                        profileStats = record.profileStats.copy(
-                            matchedCount = deterministicMatched,
-                            gapCount = deterministicGapCount,
-                            dataIntegrityNote = newNote
-                        ),
-                        criticalGapCount = deterministicCritical,
-                        qualificationRatio = deterministicRatio
-                    )
-                }
 
                 val evidenceRegistry = VantEdgeEvidenceRegistry(
                     normalizedProfile = normalizedProfile,

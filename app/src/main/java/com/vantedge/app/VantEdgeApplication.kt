@@ -6,6 +6,7 @@ import com.vantedge.app.util.LogFileProvider
 import com.vantedge.app.util.LogSink
 import com.vantedge.app.w5.scoring.ExtractionValidator
 import com.vantedge.app.w5.scoring.SkillTaxonomyProvider
+import com.vantedge.app.w5.scoring.W5AssetLoader
 import com.vantedge.pipeline.validation.P2ValidationEngine
 
 class VantEdgeApplication : Application() {
@@ -16,6 +17,7 @@ class VantEdgeApplication : Application() {
         P2ValidationEngine.initialize(this)
         ExtractionValidator.init(this)
         SkillTaxonomyProvider.load(this)
+        W5AssetLoader.load(this)
         Log.i(
             "VantEdge",
             "STARTUP version=${BuildConfig.VERSION_NAME} " +
