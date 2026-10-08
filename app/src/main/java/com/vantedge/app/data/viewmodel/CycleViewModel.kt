@@ -190,7 +190,10 @@ class CycleViewModel(
         company: String,
         jobDescription: String,
         mode: GenerationMode,
-        improvementContext: String? = null
+        improvementContext: String? = null,
+        requiredSkills: List<String> = emptyList(),
+        preferredSkills: List<String> = emptyList(),
+        educationRequired: String? = null
     ) {
         pipelineJob?.cancel()
         currentMode = mode
@@ -206,7 +209,10 @@ class CycleViewModel(
                             jobTitle = jobTitle,
                             company = company,
                             jobDescription = jobDescription,
-                            improvementContext = improvementContext
+                            improvementContext = improvementContext,
+                            requiredSkills = requiredSkills,
+                            preferredSkills = preferredSkills,
+                            educationRequired = educationRequired
                         )
                         _currentCycle.value = cycle
                         _uiState.value = UiState.Idle
@@ -235,9 +241,9 @@ class CycleViewModel(
                             jobDescription = jobDescription,
                             mode = mode,
                             improvementContext = improvementContext,
-                            requiredSkills = savedRequiredSkills,
-                            preferredSkills = savedPreferredSkills,
-                            educationRequired = savedEducationRequired,
+                            requiredSkills = requiredSkills,
+                            preferredSkills = preferredSkills,
+                            educationRequired = educationRequired,
                             onProgress = { step ->
                                 _uiState.value = UiState.Loading(step)
                             }
@@ -271,14 +277,16 @@ class CycleViewModel(
         preferredSkills: List<String> = emptyList(),
         educationRequired: String? = null
     ) {
-        Log.w("CycleViewModel", "TD-RELIABILITY-002: Extracted skills received but not yet forwarded to orchestrator. TODO: wire to runPipeline.")
         runPipeline(
             profile = profile,
             jobTitle = jobTitle,
             company = company,
             jobDescription = jobDescription,
             mode = mode,
-            improvementContext = improvementContext
+            improvementContext = improvementContext,
+            requiredSkills = requiredSkills,
+            preferredSkills = preferredSkills,
+            educationRequired = educationRequired
         )
     }
 
