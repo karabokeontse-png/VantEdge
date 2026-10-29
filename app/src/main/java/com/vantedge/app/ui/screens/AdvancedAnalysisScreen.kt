@@ -154,10 +154,14 @@ private fun SkillsMatchContent(compatibility: CompatibilityRecord) {
     ) {
         if (compatibility.relevancyItems.isEmpty()) {
             item {
-                val (icon, message) = when {
-                    compatibility.score >= 80 ->
+                val (icon, message) = when (ScorePresentation.skillsMatchEmptyState(compatibility)) {
+                    SkillsMatchEmptyState.INCOMPLETE ->
+                        "ℹ" to "Evaluation incomplete — requirements could not all be assessed."
+                    SkillsMatchEmptyState.CONFIRMED_GAPS ->
+                        "⚠" to "Confirmed gaps remain — review the Gap Analysis tab before treating this as a full eligibility result."
+                    SkillsMatchEmptyState.EXCEED ->
                         "⚡" to "You exceed what this role requires — every skill you have is relevant."
-                    else ->
+                    SkillsMatchEmptyState.MEET ->
                         "✓" to "You meet the requirements for this role."
                 }
                 Card(
