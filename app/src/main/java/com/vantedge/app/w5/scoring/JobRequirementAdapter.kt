@@ -44,6 +44,7 @@ object JobRequirementAdapter {
 
     fun adapt(
         jobDescription: String,
+        jobTitle: String,
         requiredSkills: List<String> = emptyList(),
         preferredSkills: List<String> = emptyList(),
         educationRequired: String? = null,
@@ -117,7 +118,7 @@ object JobRequirementAdapter {
             summary = summary
         )
 
-        val validatedJob = toValidatedJob(adaptedInput, "", correlationId)
+        val validatedJob = toValidatedJob(adaptedInput, jobTitle, correlationId)
 
         PipelineTrace.dataQuality(
             stage = "JobRequirementAdapter.adapt",
@@ -412,7 +413,7 @@ object JobRequirementAdapter {
             "unmappedCount" to jobInput.unmappedRequirements.size
         ))
 
-        val seniorityLevel = SeniorityDeriver.derive(jobTitle, jobInput.requiredYears)
+        val seniorityLevel = SeniorityDeriver.derive(null, jobInput.requiredYears)
         val completedFields = mutableSetOf<String>()
         if (jobInput.requiredSkills.isNotEmpty()) completedFields.add("requiredSkills")
         if (jobTitle.isNotEmpty()) completedFields.add("title")

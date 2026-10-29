@@ -89,20 +89,17 @@ fun ResultScreen(
     val context = LocalContext.current
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
     val currentDocContent = if (selectedTab == 0) cvContent else coverLetterContent
+    val complete = compatibility?.evaluationComplete == true
     val score = compatibility?.score ?: 0
     val scoreColor = when {
+        !complete -> Color.Gray
         score >= 75 -> Color(0xFF4CAF50)
         score >= 50 -> RAmber
         else -> Color(0xFFE53935)
     }
-    val scoreLabel = when {
-        score >= 80 -> "Strong match"
-        score >= 60 -> "Decent match"
-        score >= 40 -> "Partial match"
-        else -> "Weak match"
-    }
+    val scoreLabel = compatibility?.let { ScorePresentation.scoreLabel(it) } ?: "—"
     val previousScore = viewModel.getPreviousScore(cycle)
-    val delta = if (previousScore != null) score - previousScore else null
+    val delta = if (complete && previousScore != null) score - previousScore else null
 
     fun savePdf(label: String) {
         val webView = webViewRef ?: run {
@@ -438,8 +435,9 @@ private fun AnalysisTab(
     scoreLabel: String,
     delta: Int?
 ) {
+    val complete = ScorePresentation.isAuthoritative(compatibility)
     val sweep by animateFloatAsState(
-        targetValue = (compatibility.score / 100f) * 270f,
+        targetValue = ScorePresentation.sweepDegrees(compatibility),
         animationSpec = tween(1000),
         label = ""
     )
@@ -483,7 +481,7 @@ private fun AnalysisTab(
                         )
                     }
                     Text(
-                        "${compatibility.score}%",
+                        ScorePresentation.scoreText(compatibility),
                         color = scoreColor,
                         fontSize = 26.sp,
                         fontWeight = FontWeight.Bold
@@ -535,11 +533,11 @@ private fun AnalysisTab(
             }
         }
         // ── How you fit ───────────────────────────────────────────────
-        if (compatibility.eligibilitySummary.isNotBlank()) {
+        if (compatibility.eligibilitySummary.isNotBlank() || !complete) {
             item {
                 AnalysisSectionCard(
-                    heading = "How you fit",
-                    body = compatibility.eligibilitySummary
+                    heading = ScorePresentation.eligibilityHeading(compatibility),
+                    body = ScorePresentation.eligibilityBody(compatibility)
                 )
                 Spacer(modifier = Modifier.height(12.dp))
             }

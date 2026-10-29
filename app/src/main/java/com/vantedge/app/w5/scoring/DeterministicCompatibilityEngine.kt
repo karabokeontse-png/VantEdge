@@ -55,6 +55,7 @@ class DeterministicCompatibilityEngine(
 
         val adaptationResult = JobRequirementAdapter.adapt(
             jobDescription = jobDescription,
+            jobTitle = jobTitle,
             requiredSkills = requiredSkills,
             preferredSkills = preferredSkills,
             educationRequired = educationRequired,

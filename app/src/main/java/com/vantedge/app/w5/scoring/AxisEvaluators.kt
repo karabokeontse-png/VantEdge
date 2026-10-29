@@ -13,8 +13,8 @@ object AxisEvaluators {
         return jaccard(filteredProfile, filteredJob)
     }
 
-    fun experienceAlignment(profile: ValidatedProfile, job: ValidatedJob): Double {
-        val required = job.requiredYears ?: return 0.0
+    fun experienceAlignment(profile: ValidatedProfile, job: ValidatedJob): Double? {
+        val required = job.requiredYears ?: return null
         if (required == 0) return 1.0
         return min(profile.experienceYears.toDouble() / required, 1.0)
     }
@@ -31,8 +31,8 @@ object AxisEvaluators {
         return jaccard(filteredProfile, filteredJob)
     }
 
-    fun keywordCoverage(profile: ValidatedProfile, job: ValidatedJob, assets: ValidationAssets): Double {
-        if (job.keywords.isEmpty()) return 1.0
+    fun keywordCoverage(profile: ValidatedProfile, job: ValidatedJob, assets: ValidationAssets): Double? {
+        if (job.keywords.isEmpty()) return null
         val profileTokens = profile.skills.flatMap { tokenize(it, emptySet()) }.toSet()
         val expandedProfile = expand(profileTokens, assets.keywordDictionary)
         val filteredProfile = expandedProfile.filter { it !in assets.stopWords }.toSet()
@@ -45,10 +45,13 @@ object AxisEvaluators {
         return matched.toDouble() / job.keywords.size
     }
 
-    fun seniorityFit(profile: ValidatedProfile, job: ValidatedJob): Double {
+    fun seniorityFit(profile: ValidatedProfile, job: ValidatedJob): Double =
+        seniorityFitMeasured(profile, job) ?: 0.0
+
+    fun seniorityFitMeasured(profile: ValidatedProfile, job: ValidatedJob): Double? {
         val profileIndex = SeniorityDeriver.toIndex(profile.seniorityLevel)
         val jobIndex = SeniorityDeriver.toIndex(job.seniorityLevel)
-        if (profileIndex == null || jobIndex == null) return 0.0
+        if (profileIndex == null || jobIndex == null) return null
         val maxDistance = (SeniorityDeriver.levelCount - 1).toDouble()
         return 1.0 - kotlin.math.abs(profileIndex - jobIndex) / maxDistance
     }

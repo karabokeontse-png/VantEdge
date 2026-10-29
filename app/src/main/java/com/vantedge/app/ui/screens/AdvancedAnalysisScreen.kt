@@ -154,6 +154,7 @@ private fun SkillsMatchContent(compatibility: CompatibilityRecord) {
     ) {
         if (compatibility.relevancyItems.isEmpty()) {
             item {
+                val complete = ScorePresentation.isAuthoritative(compatibility)
                 val (icon, message) = when (ScorePresentation.skillsMatchEmptyState(compatibility)) {
                     SkillsMatchEmptyState.INCOMPLETE ->
                         "ℹ" to "Evaluation incomplete — requirements could not all be assessed."
@@ -169,7 +170,7 @@ private fun SkillsMatchContent(compatibility: CompatibilityRecord) {
                         .fillMaxWidth()
                         .padding(16.dp),
                     colors = CardDefaults.cardColors(
-                        containerColor = AppColors.Analysis.copy(alpha = 0.08f)
+                        containerColor = (if (complete) AppColors.Analysis else AppColors.Warning).copy(alpha = 0.08f)
                     ),
                     shape = RoundedCornerShape(10.dp)
                 ) {
@@ -307,7 +308,13 @@ private fun GapAnalysisContent(compatibility: CompatibilityRecord) {
     ) {
         if (compatibility.gaps.isEmpty()) {
             item {
+                val complete = compatibility.evaluationComplete == true
                 val (icon, title, message) = when {
+                    !complete -> Triple(
+                        "ℹ",
+                        "Evaluation incomplete",
+                        "Some requirements could not be assessed, so this result is not authoritative."
+                    )
                     compatibility.score >= 80 -> Triple(
                         "⚡",
                         "You're overqualified for this role",
@@ -324,7 +331,7 @@ private fun GapAnalysisContent(compatibility: CompatibilityRecord) {
                         .fillMaxWidth()
                         .padding(16.dp),
                     colors = CardDefaults.cardColors(
-                        containerColor = AppColors.Success.copy(alpha = 0.08f)
+                        containerColor = (if (complete) AppColors.Success else AppColors.Warning).copy(alpha = 0.08f)
                     ),
                     shape = RoundedCornerShape(10.dp)
                 ) {
@@ -336,7 +343,7 @@ private fun GapAnalysisContent(compatibility: CompatibilityRecord) {
                             Text(icon, fontSize = 20.sp)
                             Text(
                                 title,
-                                color = AppColors.Success,
+                                color = if (complete) AppColors.Success else AppColors.Warning,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 14.sp
                             )

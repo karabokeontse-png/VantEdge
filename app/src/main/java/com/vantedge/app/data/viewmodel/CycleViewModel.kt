@@ -130,22 +130,11 @@ class CycleViewModel(
         }
     }
 
-    fun getPreviousScore(cycle: GenerationCycle): Int? {
-        val currentVersion = cycle.version ?: return null
-        if (currentVersion <= 1) return null
-        return historyStore.cyclesFlow.value
-            .filter { other ->
-                other.id != cycle.id &&
-                other.jobTitle.equals(cycle.jobTitle, ignoreCase = true) &&
-                other.company.equals(cycle.company, ignoreCase = true) &&
-                other.version == currentVersion - 1
-            }
-            .mapNotNull { other -> other.compatibility?.score }
-            .firstOrNull()
-    }
+    fun getPreviousScore(cycle: GenerationCycle): Int? =
+        CycleScoreAggregation.previousScore(historyStore.cyclesFlow.value, cycle)
 
     fun getScoreForCycle(cycle: GenerationCycle): Int? =
-        cycle.compatibility?.score
+        CycleScoreAggregation.completeScore(cycle)
 
     fun getGapsForCycle(cycle: GenerationCycle): List<String> =
         cycle.compatibility?.gaps?.map { it.skill } ?: emptyList()
@@ -153,23 +142,17 @@ class CycleViewModel(
     fun totalSavedApplications(): Int =
         historyStore.cyclesFlow.value.count { it.isVisibleInHistory }
 
-    fun averageScore(): Int? {
-        val scores = historyStore.cyclesFlow.value
-            .filter { it.isVisibleInHistory }
-            .mapNotNull { getScoreForCycle(it) }
-        return if (scores.isEmpty()) null else scores.average().toInt()
-    }
+    fun averageScore(): Int? =
+        CycleScoreAggregation.averageScore(historyStore.cyclesFlow.value)
 
     fun bestScoringRole(): String? =
-        historyStore.cyclesFlow.value
-            .filter { it.isVisibleInHistory }
-            .maxByOrNull { getScoreForCycle(it) ?: 0 }
-            ?.jobTitle
+        CycleScoreAggregation.bestScoringRole(historyStore.cyclesFlow.value)
+
+    fun incompleteScoreCount(): Int =
+        CycleScoreAggregation.incompleteScoreCount(historyStore.cyclesFlow.value)
 
     fun improvedApplicationsCount(): Int =
-        historyStore.cyclesFlow.value.count {
-            it.isVisibleInHistory && (it.version ?: 0) >= 2
-        }
+        CycleScoreAggregation.improvedApplicationsCount(historyStore.cyclesFlow.value)
 
     fun findExistingCycleForJob(
         jobTitle: String,

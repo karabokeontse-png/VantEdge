@@ -50,7 +50,8 @@ class CompatibilityRecordMapper {
         val score = (scoreResult.totalScore.coerceIn(0.0, 1.0) * 100).toInt()
 
         val skillMatch = scoreResult.axisScores.first { it.axisName == "SkillMatch" }.score
-        val experienceAlignment = scoreResult.axisScores.first { it.axisName == "ExperienceAlignment" }.score
+        val experienceAlignmentAxis = scoreResult.axisScores.first { it.axisName == "ExperienceAlignment" }
+        val experienceAlignment = experienceAlignmentAxis.score
         val constraintCompliance = scoreResult.axisScores.first { it.axisName == "ConstraintCompliance" }.score
         val vacancyScore = (
             (skillMatch * 0.5) + (experienceAlignment * 0.3) + (constraintCompliance * 0.2)
@@ -58,18 +59,10 @@ class CompatibilityRecordMapper {
 
         val w5Evidence = W5Evidence(
             skillMatch = skillMatch,
-            experienceAlignment = experienceAlignment,
+            experienceAlignment = experienceAlignmentAxis.takeIf { it.isMeasured }?.score,
             constraintCompliance = constraintCompliance,
             confidence = scoreResult.confidence
         )
-
-        val gaps = gapAnalysis.missing.map {
-            GapItem(skill = it, importance = "MANDATORY", description = "", experienceGap = false, platformGap = false, courses = emptyList())
-        } + gapAnalysis.weak.map {
-            GapItem(skill = it, importance = "IMPORTANT", description = "", experienceGap = false, platformGap = false, courses = emptyList())
-        }
-
-        val criticalGapCount = gaps.count { it.importance == "MANDATORY" }
 
         val relevancyItems = gapAnalysis.matched.map {
             RelevancyItem(
@@ -107,25 +100,47 @@ class CompatibilityRecordMapper {
             "Derived from deterministic profile evidence"
         }
 
-        val matchedQualifications = validatedJob.requiredQualifications.filter { jobReq ->
-            validatedProfile.qualifications.any { profileQual ->
-                profileQual.category == jobReq.category &&
-                jaccard(
-                    tokenize(profileQual.originalText, emptySet()).toSet(),
-                    tokenize(jobReq.originalText, emptySet()).toSet()
-                ) > 0.3
+        val qualificationRequirementsPresent = validatedJob.requiredQualifications.isNotEmpty()
+        val profileQualificationsAssessed = validatedProfile.qualifications.isNotEmpty()
+        val qualificationsAssessed = !qualificationRequirementsPresent || profileQualificationsAssessed
+
+        val matchedQualifications = if (qualificationsAssessed) {
+            validatedJob.requiredQualifications.filter { jobReq ->
+                validatedProfile.qualifications.any { profileQual ->
+                    profileQual.category == jobReq.category &&
+                    jaccard(
+                        tokenize(profileQual.originalText, emptySet()).toSet(),
+                        tokenize(jobReq.originalText, emptySet()).toSet()
+                    ) > 0.3
+                }
             }
+        } else {
+            emptyList()
         }
 
-        val missingQualifications = validatedJob.requiredQualifications.filterNot { jobReq ->
-            validatedProfile.qualifications.any { profileQual ->
-                profileQual.category == jobReq.category &&
-                jaccard(
-                    tokenize(profileQual.originalText, emptySet()).toSet(),
-                    tokenize(jobReq.originalText, emptySet()).toSet()
-                ) > 0.3
+        val missingQualifications = if (qualificationsAssessed) {
+            validatedJob.requiredQualifications.filterNot { jobReq ->
+                validatedProfile.qualifications.any { profileQual ->
+                    profileQual.category == jobReq.category &&
+                    jaccard(
+                        tokenize(profileQual.originalText, emptySet()).toSet(),
+                        tokenize(jobReq.originalText, emptySet()).toSet()
+                    ) > 0.3
+                }
             }
+        } else {
+            emptyList()
         }
+
+        val gaps = gapAnalysis.missing.map {
+            GapItem(skill = it, importance = "MANDATORY", description = "", experienceGap = false, platformGap = false, courses = emptyList())
+        } + gapAnalysis.weak.map {
+            GapItem(skill = it, importance = "IMPORTANT", description = "", experienceGap = false, platformGap = false, courses = emptyList())
+        } + missingQualifications.map {
+            GapItem(skill = "${it.category}: ${it.originalText}", importance = "MANDATORY", description = "", experienceGap = false, platformGap = false, courses = emptyList())
+        }
+
+        val criticalGapCount = gaps.count { it.importance == "MANDATORY" }
 
         val qualificationNote = when {
             missingQualifications.isNotEmpty() && matchedQualifications.isNotEmpty() -> {
@@ -165,7 +180,8 @@ class CompatibilityRecordMapper {
             relevancyItems = relevancyItems,
             gaps = gaps,
             criticalGapCount = criticalGapCount,
-            analysisSource = CompatibilityAnalysisSource.DETERMINISTIC_W5
+            analysisSource = CompatibilityAnalysisSource.DETERMINISTIC_W5,
+            evaluationComplete = scoreResult.isComplete && qualificationsAssessed
         )
 
         val durationMs = System.currentTimeMillis() - startMs

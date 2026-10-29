@@ -2,6 +2,10 @@ package com.vantedge.app.w5.scoring
 
 object GapAnalyzer {
     fun analyze(profile: ValidatedProfile, job: ValidatedJob, assets: ValidationAssets): GapAnalysis {
+        if (profile.skills.isEmpty()) {
+            return GapAnalysis(emptyList(), emptyList(), emptyList())
+        }
+
         val missing = mutableListOf<String>()
         val weak = mutableListOf<String>()
         val matched = mutableListOf<MatchEvidence>()

@@ -46,12 +46,16 @@ data class ScoreResult(
     val breakdown: ScoreBreakdown,
     val gapAnalysis: GapAnalysis,
     val hints: RecommendationHints,
-    val trace: W5TraceContext
-)
+    val trace: W5TraceContext,
+    val unknownAxes: List<String> = emptyList()
+) {
+    val isComplete: Boolean get() = unknownAxes.isEmpty()
+}
 
 data class AxisScore(
     val axisName: String,
-    val score: Double
+    val score: Double,
+    val isMeasured: Boolean = true
 )
 
 data class ScoreBreakdown(

@@ -164,7 +164,10 @@ class W5ScoreEngineTest {
 
         val trace = W5TraceContext("dz-001", "", 1000L)
         val result = engine.evaluate(profile, job, trace)
-        assertEquals(0.0, result.axisScores.find { it.axisName == "ExperienceAlignment" }!!.score, 0.0)
+        val axis = result.axisScores.find { it.axisName == "ExperienceAlignment" }!!
+        assertFalse(axis.isMeasured)
+        assertTrue(result.unknownAxes.contains("ExperienceAlignment"))
+        assertFalse(result.isComplete)
     }
 
     @Test
@@ -195,7 +198,10 @@ class W5ScoreEngineTest {
 
         val trace = W5TraceContext("dz-002", "", 1000L)
         val result = engine.evaluate(profile, job, trace)
-        assertEquals(1.0, result.axisScores.find { it.axisName == "KeywordCoverage" }!!.score, 0.0)
+        val axis = result.axisScores.find { it.axisName == "KeywordCoverage" }!!
+        assertFalse(axis.isMeasured)
+        assertTrue(result.unknownAxes.contains("KeywordCoverage"))
+        assertFalse(result.isComplete)
     }
 
     @Test
@@ -348,9 +354,9 @@ class W5ScoreEngineTest {
             completedFields = setOf("requiredSkills", "requiredYears"), isAccepted = true, isDegraded = false
         )
 
-        assertEquals(0.4, AxisEvaluators.experienceAlignment(underqualified, job), 0.001)
-        assertEquals(1.0, AxisEvaluators.experienceAlignment(qualified, job), 0.001)
-        assertEquals(1.0, AxisEvaluators.experienceAlignment(overqualified, job), 0.001)
+        assertEquals(0.4, AxisEvaluators.experienceAlignment(underqualified, job)!!, 0.001)
+        assertEquals(1.0, AxisEvaluators.experienceAlignment(qualified, job)!!, 0.001)
+        assertEquals(1.0, AxisEvaluators.experienceAlignment(overqualified, job)!!, 0.001)
     }
 
     @Test
@@ -387,7 +393,7 @@ class W5ScoreEngineTest {
             completedFields = setOf("keywords"), isAccepted = true, isDegraded = false
         )
 
-        val score = AxisEvaluators.keywordCoverage(profile, job, assets)
+        val score = AxisEvaluators.keywordCoverage(profile, job, assets)!!
         assertEquals(2.0 / 3.0, score, 0.001)
     }
 
@@ -865,5 +871,80 @@ class W5ScoreEngineTest {
                 narrativeDensity = 0.7f
             )
         )
+    }
+
+    @Test
+    fun `unknown required axes are flagged and not treated as measured zero`() {
+        val profile = ValidatedProfile(
+            correlationId = "unknown-001",
+            skills = listOf("Kotlin"),
+            roles = listOf("Developer"),
+            currentTitle = "Developer",
+            experienceYears = 5,
+            seniorityLevel = null,
+            completedFields = setOf("skills", "roles", "currentTitle", "experienceYears"),
+            isAccepted = true,
+            isDegraded = false
+        )
+
+        val job = ValidatedJob(
+            correlationId = "unknown-001",
+            requiredSkills = listOf("Kotlin"),
+            title = "Developer",
+            keywords = emptyList(),
+            requiredYears = null,
+            seniorityLevel = null,
+            completedFields = setOf("requiredSkills", "title"),
+            isAccepted = true,
+            isDegraded = false
+        )
+
+        val result = engine.evaluate(profile, job, W5TraceContext("unknown-001", "", 0L))
+
+        assertFalse(result.isComplete)
+        assertEquals(
+            setOf("ExperienceAlignment", "KeywordCoverage", "SeniorityFit"),
+            result.unknownAxes.toSet()
+        )
+        assertEquals(7, result.axisScores.size)
+        result.axisScores.filterNot { it.isMeasured }.forEach { assertEquals(0.0, it.score, 0.0) }
+
+        val knownWeighted = result.axisScores
+            .filter { it.isMeasured }
+            .sumOf { it.score * AxisWeights.get(it.axisName) }
+        assertEquals(knownWeighted, result.totalScore, 1e-12)
+    }
+
+    @Test
+    fun `fully measured input yields a complete evaluation`() {
+        val profile = ValidatedProfile(
+            correlationId = "complete-001",
+            skills = listOf("Kotlin", "Java"),
+            roles = listOf("Backend Engineer"),
+            currentTitle = "Backend Engineer",
+            experienceYears = 6,
+            seniorityLevel = "senior",
+            completedFields = setOf("skills", "roles", "currentTitle", "experienceYears", "seniorityLevel"),
+            isAccepted = true,
+            isDegraded = false
+        )
+
+        val job = ValidatedJob(
+            correlationId = "complete-001",
+            requiredSkills = listOf("Kotlin"),
+            title = "Backend Engineer",
+            keywords = listOf("Kotlin", "Java"),
+            requiredYears = 5,
+            seniorityLevel = "senior",
+            completedFields = setOf("requiredSkills", "title", "keywords", "requiredYears", "seniorityLevel"),
+            isAccepted = true,
+            isDegraded = false
+        )
+
+        val result = engine.evaluate(profile, job, W5TraceContext("complete-001", "", 0L))
+
+        assertTrue(result.isComplete)
+        assertTrue(result.unknownAxes.isEmpty())
+        assertTrue(result.axisScores.all { it.isMeasured })
     }
 }

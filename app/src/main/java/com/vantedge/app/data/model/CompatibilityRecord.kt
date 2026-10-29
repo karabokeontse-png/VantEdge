@@ -36,5 +36,11 @@ data class CompatibilityRecord(
      * never deterministic. See [CompatibilityAnalysisSource].
      */
     val analysisSource: CompatibilityAnalysisSource? = null,
+    /**
+     * Nullable by design: plain Gson does not apply Kotlin defaults, so records
+     * persisted before this field existed deserialize to null. null means
+     * UNKNOWN/LEGACY and must never be treated as complete.
+     */
+    val evaluationComplete: Boolean? = null,
     val createdAt: Long = System.currentTimeMillis()
 )

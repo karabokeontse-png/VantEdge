@@ -103,11 +103,20 @@ class JobExtractionOrchestrator(
                         PipelineTrace.warn("JobExtractionOrchestrator", "Retry requested: ${decision.reason}", correlationId)
                     }
                     is ExtractionDecision.UserReview -> {
-                        val reviewFields = decision.fields.joinToString(", ") { "${it.fieldName}=${"%.2f".format(it.confidence.overallConfidence)}" }
+                        val reviewFields = decision.fields.joinToString(", ") { "${it.fieldName}=${it.confidence.overallConfidence?.let { v -> "%.2f".format(v) } ?: "unknown"}" }
                         PipelineTrace.warn("JobExtractionOrchestrator", "User review needed: ${decision.fields.size} fields [$reviewFields]", correlationId)
                     }
                     is ExtractionDecision.Failure -> {
                         PipelineTrace.error("JobExtractionOrchestrator", "Extraction failed: ${decision.reason}", correlationId = correlationId)
+                        PipelineTrace.exit("JobExtractionOrchestrator", durMs, mapOf(
+                            "status" to "REJECTED_EXTRACTION_DECISION_FAILURE",
+                            "reason" to decision.reason,
+                            "method" to extractionMethod,
+                            "correlationId" to correlationId
+                        ))
+                        return Result.success(
+                            ExtractionOutcome.Rejected("EXTRACTION_DECISION_FAILURE: ${decision.reason}", correlationId)
+                        )
                     }
                 }
 
@@ -116,6 +125,19 @@ class JobExtractionOrchestrator(
                 val description = llmResult.description ?: buildFallbackDescription(structuredDoc.blocks.joinToString("\n") { it.text })
 
                 val overallConf = confidenceResult.overallConfidence
+                if (overallConf == null) {
+                    PipelineTrace.exit("JobExtractionOrchestrator", durMs, mapOf(
+                        "status" to "REJECTED_CONFIDENCE_UNKNOWN",
+                        "method" to extractionMethod,
+                        "correlationId" to correlationId
+                    ))
+                    return Result.success(
+                        ExtractionOutcome.Rejected(
+                            "CONFIDENCE_UNKNOWN: no measured confidence evidence",
+                            correlationId
+                        )
+                    )
+                }
 
                 val result = buildJobExtractionResult(
                     title = title,

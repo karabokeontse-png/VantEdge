@@ -199,7 +199,7 @@ fun AnalysisResultScreen(
             }
 
             // How you fit
-            if (compatibility.eligibilitySummary.isNotBlank()) {
+            if (compatibility.eligibilitySummary.isNotBlank() || compatibility.evaluationComplete != true) {
                 item {
                     Card(
                         modifier = Modifier
@@ -210,14 +210,14 @@ fun AnalysisResultScreen(
                     ) {
                         Column(modifier = Modifier.padding(16.dp)) {
                             Text(
-                                "How you fit",
+                                ScorePresentation.eligibilityHeading(compatibility),
                                 color = AppColors.Analysis,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 12.sp
                             )
                             Spacer(modifier = Modifier.height(8.dp))
                             Text(
-                                compatibility.eligibilitySummary,
+                                ScorePresentation.eligibilityBody(compatibility),
                                 color = AppColors.OnBackground,
                                 fontSize = 13.sp,
                                 lineHeight = 20.sp
@@ -229,7 +229,10 @@ fun AnalysisResultScreen(
 
             // Gap signal banner
             item {
+                val complete = compatibility.evaluationComplete == true
                 val gapMessage = when {
+                    !complete ->
+                        "Evaluation incomplete — some requirements could not be assessed. This score is not authoritative."
                     compatibility.gaps.isEmpty() && compatibility.score >= 80 ->
                         "You exceed the requirements for this role — you're overqualified."
                     compatibility.gaps.isEmpty() ->
@@ -240,12 +243,14 @@ fun AnalysisResultScreen(
                         "You have ${compatibility.gaps.size} gap${if (compatibility.gaps.size > 1) "s" else ""} worth reviewing before applying."
                 }
                 val gapColor = when {
+                    !complete -> AppColors.Warning
                     compatibility.gaps.isEmpty() && compatibility.score >= 80 -> AppColors.Warning
                     compatibility.gaps.isEmpty() -> AppColors.Success
                     compatibility.criticalGapCount > 0 -> AppColors.Destructive
                     else -> AppColors.Warning
                 }
                 val icon = when {
+                    !complete -> "ℹ"
                     compatibility.gaps.isEmpty() && compatibility.score >= 80 -> "⚡"
                     compatibility.gaps.isEmpty() -> "✓"
                     compatibility.criticalGapCount > 0 -> "⚠"
@@ -343,7 +348,22 @@ fun AnalysisResultScreen(
 
             // Tab content — Gap Analysis
             if (selectedTab == 1) {
-                if (compatibility.gaps.isEmpty()) {
+                if (compatibility.gaps.isEmpty() && compatibility.evaluationComplete != true) {
+                    item {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(32.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                "Evaluation incomplete — some requirements could not be assessed.",
+                                color = AppColors.Warning,
+                                fontSize = 13.sp
+                            )
+                        }
+                    }
+                } else if (compatibility.gaps.isEmpty()) {
                     item {
                         Box(
                             modifier = Modifier
@@ -543,19 +563,16 @@ private fun GapCard(gap: GapItem, context: android.content.Context) {
 
 @Composable
 private fun ScoreCircle(compatibility: CompatibilityRecord) {
+    val complete = ScorePresentation.isAuthoritative(compatibility)
     val scoreColor = when {
+        !complete -> AppColors.Subtle
         compatibility.score >= 75 -> AppColors.Success
         compatibility.score >= 50 -> AppColors.Warning
         else -> AppColors.Destructive
     }
-    val scoreLabel = when {
-        compatibility.score >= 80 -> "Strong match"
-        compatibility.score >= 60 -> "Decent match"
-        compatibility.score >= 40 -> "Partial match"
-        else -> "Weak match"
-    }
+    val scoreLabel = ScorePresentation.scoreLabel(compatibility)
     val sweep by animateFloatAsState(
-        targetValue = (compatibility.score / 100f) * 270f,
+        targetValue = ScorePresentation.sweepDegrees(compatibility),
         animationSpec = tween(1000),
         label = "score"
     )
@@ -591,12 +608,12 @@ private fun ScoreCircle(compatibility: CompatibilityRecord) {
             }
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(
-                    "${compatibility.score}%",
+                    ScorePresentation.scoreText(compatibility),
                     color = scoreColor,
                     fontSize = 26.sp,
                     fontWeight = FontWeight.Bold
                 )
-                Text("Match", color = AppColors.Subtle, fontSize = 11.sp)
+                Text(if (complete) "Match" else "Incomplete", color = AppColors.Subtle, fontSize = 11.sp)
             }
         }
         Spacer(modifier = Modifier.height(8.dp))

@@ -13,12 +13,12 @@ object HintBuilder {
         }
 
         val experienceAxis = axisScores.find { it.axisName == "ExperienceAlignment" }
-        if (experienceAxis != null && experienceAxis.score < 0.5) {
+        if (experienceAxis?.isMeasured == true && experienceAxis.score < 0.5) {
             hints.add("Increase exposure to target domain based on ExperienceAlignment")
         }
 
         val seniorityAxis = axisScores.find { it.axisName == "SeniorityFit" }
-        if (seniorityAxis != null && seniorityAxis.score < 0.5) {
+        if (seniorityAxis?.isMeasured == true && seniorityAxis.score < 0.5) {
             hints.add("Re-evaluate trajectory based on SeniorityFit")
         }
 
