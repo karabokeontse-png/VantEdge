@@ -42,5 +42,8 @@ data class CompatibilityRecord(
      * UNKNOWN/LEGACY and must never be treated as complete.
      */
     val evaluationComplete: Boolean? = null,
-    val createdAt: Long = System.currentTimeMillis()
+    val createdAt: Long = System.currentTimeMillis(),
+    val provisionalScore: Int? = null,
+    val provisionalVacancyScore: Int? = null,
+    val requirementAssessments: List<RequirementAssessment>? = null
 )

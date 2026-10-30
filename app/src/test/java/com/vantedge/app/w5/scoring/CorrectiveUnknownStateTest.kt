@@ -1,6 +1,7 @@
 package com.vantedge.app.w5.scoring
 
 import com.vantedge.app.data.domain.CompatibilityRecordMapper
+import com.vantedge.app.data.model.RequirementAssessmentState
 import com.vantedge.app.data.model.UserProfile
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -176,4 +177,14 @@ class CorrectiveUnknownStateTest {
         assertTrue(result.unknownAxes.contains("RoleRelevance"))
         assertFalse(result.isComplete)
     }
+    @Test
+    fun `empty skills preserve mapped requirements as unassessed inventory`() {
+        val mapped = map(profile(skills = emptyList()), job())
+
+        val assessment = mapped.record.requirementAssessments!!.first { it.text == "Kotlin" }
+        assertEquals(RequirementAssessmentState.UNASSESSED, assessment.state)
+        assertEquals("PROFILE_SKILL_EVIDENCE_ABSENT", assessment.reason)
+        assertFalse(mapped.record.evaluationComplete!!)
+    }
+
 }

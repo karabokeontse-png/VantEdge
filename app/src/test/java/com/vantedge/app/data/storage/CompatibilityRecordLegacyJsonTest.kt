@@ -3,9 +3,11 @@ package com.vantedge.app.data.storage
 import com.google.gson.Gson
 import com.vantedge.app.data.domain.ScoreCompleteness
 import com.vantedge.app.data.model.CompatibilityRecord
+import com.vantedge.app.data.model.RequirementAssessmentState
 import com.vantedge.app.ui.screens.ScorePresentation
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -110,4 +112,65 @@ class CompatibilityRecordLegacyJsonTest {
         assertNull(roundTripped.evaluationComplete)
         assertFalse(ScoreCompleteness.isAuthoritative(roundTripped))
     }
+    @Test
+    fun `missing coverage fields deserialize to unknown`() {
+        val record = gson.fromJson(legacyJson(), CompatibilityRecord::class.java)
+
+        assertNull(record.requirementAssessments)
+        assertNull(record.provisionalScore)
+        assertNull(record.provisionalVacancyScore)
+    }
+
+    @Test
+    fun `recorded coverage and provisional values round trip`() {
+        val record = gson.fromJson(
+            legacyJson(
+                "\"provisionalScore\": 72, \"provisionalVacancyScore\": 68, " +
+                    "\"requirementAssessments\": [" +
+                    "{\"text\": \"Kotlin\", \"state\": \"MATCHED\", \"canonical\": \"Kotlin\", \"importance\": \"MANDATORY\"}" +
+                    "]"
+            ),
+            CompatibilityRecord::class.java
+        )
+
+        assertNotNull(record.requirementAssessments)
+        assertEquals(1, record.requirementAssessments!!.size)
+        assertEquals(RequirementAssessmentState.MATCHED, record.requirementAssessments!!.first().state)
+        assertEquals(72, record.provisionalScore)
+        assertEquals(68, record.provisionalVacancyScore)
+
+        val roundTripped = gson.fromJson(gson.toJson(record), CompatibilityRecord::class.java)
+        assertNotNull(roundTripped.requirementAssessments)
+        assertEquals(RequirementAssessmentState.MATCHED, roundTripped.requirementAssessments!!.first().state)
+        assertEquals(72, roundTripped.provisionalScore)
+    }
+
+    @Test
+    fun `unassessed reason survives serialization`() {
+        val record = gson.fromJson(
+            legacyJson(
+                "\"requirementAssessments\": [" +
+                    "{\"text\": \"Data Protection\", \"state\": \"UNASSESSED\", \"reason\": \"TAXONOMY_MISS\", \"importance\": \"MANDATORY\"}" +
+                    "]"
+            ),
+            CompatibilityRecord::class.java
+        )
+
+        val roundTripped = gson.fromJson(gson.toJson(record), CompatibilityRecord::class.java)
+        val assessment = roundTripped.requirementAssessments!!.first()
+        assertEquals(RequirementAssessmentState.UNASSESSED, assessment.state)
+        assertEquals("TAXONOMY_MISS", assessment.reason)
+    }
+
+    @Test
+    fun `recorded empty inventory stays distinct from unknown coverage`() {
+        val record = gson.fromJson(
+            legacyJson("\"requirementAssessments\": []"),
+            CompatibilityRecord::class.java
+        )
+
+        assertNotNull(record.requirementAssessments)
+        assertTrue(record.requirementAssessments!!.isEmpty())
+    }
+
 }

@@ -45,6 +45,7 @@ import com.vantedge.app.data.engine.CVTemplate
 import com.vantedge.app.data.model.CompatibilityRecord
 import com.vantedge.app.data.model.GapItem
 import com.vantedge.app.data.model.GenerationCycle
+import com.vantedge.app.data.model.RequirementAssessment
 import com.vantedge.app.data.viewmodel.CycleViewModel
 import kotlinx.coroutines.launch
 import java.io.File
@@ -542,6 +543,40 @@ private fun AnalysisTab(
                 Spacer(modifier = Modifier.height(12.dp))
             }
         }
+        // ── Unassessed requirements ───────────────────────────────────
+        val coverageKnown = ScorePresentation.hasRecordedCoverage(compatibility)
+        val unassessed = ScorePresentation.unassessedRequirements(compatibility)
+        if (!coverageKnown) {
+            item {
+                AnalysisSectionCard(
+                    heading = "Coverage not recorded",
+                    body = "This saved analysis predates structured requirement coverage. " +
+                        "Unassessed requirements cannot be reconstructed for it."
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+            }
+        } else if (unassessed.isNotEmpty()) {
+            item {
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    "Not assessed (${unassessed.size})",
+                    color = RAmber,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 12.sp,
+                    modifier = Modifier.padding(start = 16.dp, bottom = 4.dp)
+                )
+                Text(
+                    "These requirements could not be assessed from your profile. " +
+                        "They are neither matches nor confirmed gaps.",
+                    color = Color.Gray,
+                    fontSize = 11.sp,
+                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 4.dp)
+                )
+            }
+            items(unassessed) { item ->
+                UnassessedCard(item)
+            }
+        }
         // ── Advanced toggle ───────────────────────────────────────────
         item {
             Divider(
@@ -867,6 +902,33 @@ private fun RelevancyCard(
         }
     }
 }
+@Composable
+private fun UnassessedCard(item: RequirementAssessment) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+        color = RCard,
+        shape = RoundedCornerShape(8.dp),
+        border = BorderStroke(1.dp, RAmber.copy(alpha = 0.35f))
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Text(
+                item.text,
+                color = ROnBg,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                ScorePresentation.unassessedReasonLabel(item.reason),
+                color = RAmber,
+                fontSize = 11.sp
+            )
+        }
+    }
+}
+
 /* ============================================================
    APPEND-ONLY EXTENSION BLOCK (SAFE - NO EXISTING MODIFICATION)
    ============================================================ */

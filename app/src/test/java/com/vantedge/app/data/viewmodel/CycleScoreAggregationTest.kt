@@ -10,7 +10,7 @@ import org.junit.Test
 
 class CycleScoreAggregationTest {
 
-    private fun record(score: Int, complete: Boolean?) = CompatibilityRecord(
+    private fun record(score: Int, complete: Boolean?, provisional: Int? = null) = CompatibilityRecord(
         jobTitle = "Developer",
         company = "Acme",
         jobDescription = "Developer",
@@ -21,7 +21,8 @@ class CycleScoreAggregationTest {
         relevancyItems = emptyList(),
         gaps = emptyList(),
         criticalGapCount = 0,
-        evaluationComplete = complete
+        evaluationComplete = complete,
+        provisionalScore = provisional
     )
 
     private fun cycle(
@@ -29,6 +30,7 @@ class CycleScoreAggregationTest {
         title: String,
         score: Int,
         complete: Boolean?,
+        provisional: Int? = null,
         version: Int? = null,
         visible: Boolean = true
     ) = GenerationCycle(
@@ -39,7 +41,7 @@ class CycleScoreAggregationTest {
         profileSnapshot = UserProfile(),
         version = version,
         isVisibleInHistory = visible,
-        compatibility = record(score, complete)
+        compatibility = record(score, complete, provisional)
     )
 
     @Test
@@ -172,4 +174,26 @@ class CycleScoreAggregationTest {
         val completeV3 = cycle("v3", "Engineer", 95, true, version = 3)
         assertEquals(0, CycleScoreAggregation.improvedApplicationsCount(listOf(incompleteV2, completeV3)))
     }
+    @Test
+    fun `authoritative aggregates ignore provisional scores`() {
+        val cycles = listOf(
+            cycle("a", "Engineer A", 80, true, provisional = 100),
+            cycle("b", "Engineer B", 60, true, provisional = 10)
+        )
+
+        assertEquals(70, CycleScoreAggregation.averageScore(cycles))
+        assertEquals("Engineer A", CycleScoreAggregation.bestScoringRole(cycles))
+    }
+
+    @Test
+    fun `incomplete record with provisional score is still excluded`() {
+        val cycles = listOf(
+            cycle("a", "Engineer A", 80, true, provisional = 80),
+            cycle("b", "Engineer B", 100, false, provisional = 100)
+        )
+
+        assertEquals(80, CycleScoreAggregation.averageScore(cycles))
+        assertEquals(1, CycleScoreAggregation.incompleteScoreCount(cycles))
+    }
+
 }

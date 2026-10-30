@@ -47,6 +47,23 @@ class W5ScoreEngine(private val assets: ValidationAssets) {
             axis.score * AxisWeights.get(axis.axisName)
         }
 
+        val evidenceAxes = setOf(
+            "SkillMatch",
+            "ExperienceAlignment",
+            "RoleRelevance",
+            "KeywordCoverage",
+            "SeniorityFit"
+        )
+        val measuredAxes = axisScores.filter { it.isMeasured }
+        val hasMeasuredEvidenceAxis = measuredAxes.any { it.axisName in evidenceAxes }
+        val measuredWeight = measuredAxes.sumOf { AxisWeights.get(it.axisName) }
+        val provisionalTotalScore = when {
+            !hasMeasuredEvidenceAxis || measuredWeight <= 1e-9 -> null
+            unknownAxes.isEmpty() -> totalScore
+            else -> (measuredAxes.sumOf { it.score * AxisWeights.get(it.axisName) } / measuredWeight)
+                .coerceIn(0.0, 1.0)
+        }
+
         val profileCompleteness = profile.completedFields.intersect(RequiredProfileFields.fields).size.toDouble() / RequiredProfileFields.fields.size
         val jobCompleteness = job.completedFields.intersect(RequiredJobFields.fields).size.toDouble() / RequiredJobFields.fields.size
         val completenessRatio = (profileCompleteness + jobCompleteness) / 2.0
@@ -95,6 +112,7 @@ class W5ScoreEngine(private val assets: ValidationAssets) {
                 "experienceAlignment" to (experienceAlignment ?: "unknown"),
                 "constraintCompliance" to constraintCompliance,
                 "unknownAxes" to unknownAxes.joinToString(","),
+                "provisionalTotalScore" to (provisionalTotalScore ?: "unknown"),
                 "missingCount" to gapAnalysis.missing.size,
                 "weakCount" to gapAnalysis.weak.size,
                 "matchedCount" to gapAnalysis.matched.size
@@ -117,7 +135,8 @@ class W5ScoreEngine(private val assets: ValidationAssets) {
             gapAnalysis = gapAnalysis,
             hints = hints,
             trace = trace,
-            unknownAxes = unknownAxes
+            unknownAxes = unknownAxes,
+            provisionalTotalScore = provisionalTotalScore
         )
     }
 }

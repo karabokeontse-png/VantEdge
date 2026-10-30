@@ -3,6 +3,8 @@ package com.vantedge.app.ui.screens
 import com.vantedge.app.data.model.CompatibilityRecord
 import com.vantedge.app.data.model.GapItem
 import com.vantedge.app.data.model.ProfileStats
+import com.vantedge.app.data.model.RequirementAssessment
+import com.vantedge.app.data.model.RequirementAssessmentState
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -175,4 +177,24 @@ class ScorePresentationTest {
         assertEquals("Incomplete evaluation", ScorePresentation.historyScoreText(record(85, null)))
         assertEquals("85%", ScorePresentation.historyScoreText(record(85, true)))
     }
+    @Test
+    fun `coverage helpers distinguish legacy from recorded inventories`() {
+        val legacy = record(score = 85, complete = false)
+        assertFalse(ScorePresentation.hasRecordedCoverage(legacy))
+        assertEquals(null, ScorePresentation.unassessedCount(legacy))
+
+        val recorded = legacy.copy(
+            requirementAssessments = listOf(
+                RequirementAssessment(
+                    text = "Kotlin",
+                    state = RequirementAssessmentState.UNASSESSED,
+                    reason = "TAXONOMY_MISS"
+                )
+            )
+        )
+        assertTrue(ScorePresentation.hasRecordedCoverage(recorded))
+        assertEquals(1, ScorePresentation.unassessedCount(recorded))
+        assertEquals(listOf("Kotlin"), ScorePresentation.unassessedRequirements(recorded).map { it.text })
+    }
+
 }

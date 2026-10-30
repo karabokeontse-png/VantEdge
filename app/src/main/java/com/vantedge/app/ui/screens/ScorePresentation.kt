@@ -2,6 +2,8 @@ package com.vantedge.app.ui.screens
 
 import com.vantedge.app.data.domain.ScoreCompleteness
 import com.vantedge.app.data.model.CompatibilityRecord
+import com.vantedge.app.data.model.RequirementAssessment
+import com.vantedge.app.data.model.RequirementAssessmentState
 
 enum class SkillsMatchEmptyState {
     INCOMPLETE,
@@ -56,5 +58,25 @@ object ScorePresentation {
         !eligibilityClaimAllowed(record) -> SkillsMatchEmptyState.CONFIRMED_GAPS
         record.score >= 80 -> SkillsMatchEmptyState.EXCEED
         else -> SkillsMatchEmptyState.MEET
+    }
+
+    fun hasRecordedCoverage(record: CompatibilityRecord): Boolean =
+        record.requirementAssessments != null
+
+    fun unassessedCount(record: CompatibilityRecord): Int? =
+        record.requirementAssessments?.count { it.state == RequirementAssessmentState.UNASSESSED }
+
+    fun unassessedRequirements(record: CompatibilityRecord): List<RequirementAssessment> =
+        record.requirementAssessments
+            ?.filter { it.state == RequirementAssessmentState.UNASSESSED }
+            ?: emptyList()
+
+    fun unassessedReasonLabel(reason: String?): String = when (reason) {
+        "PROFILE_SKILL_EVIDENCE_ABSENT" -> "No skill evidence in your profile"
+        "PROFILE_QUALIFICATION_EVIDENCE_ABSENT" -> "No qualification evidence in your profile"
+        "TAXONOMY_MISS" -> "Not in the assessed requirement list"
+        "UNSUPPORTED_CATEGORY" -> "This requirement type is not assessed yet"
+        "PREFERENCE_NOT_ASSESSED" -> "Preferred item, not assessed"
+        else -> "Could not be assessed"
     }
 }

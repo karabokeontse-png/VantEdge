@@ -947,4 +947,46 @@ class W5ScoreEngineTest {
         assertTrue(result.unknownAxes.isEmpty())
         assertTrue(result.axisScores.all { it.isMeasured })
     }
+    @Test
+    fun `provisional score excludes unmeasured axes and matches legacy when complete`() {
+        val completeProfile = ValidatedProfile(
+            correlationId = "provisional-001",
+            skills = listOf("Kotlin"),
+            roles = listOf("Developer"),
+            currentTitle = "Developer",
+            experienceYears = 5,
+            seniorityLevel = "senior",
+            completedFields = setOf("skills", "roles", "currentTitle", "experienceYears", "seniorityLevel"),
+            isAccepted = true,
+            isDegraded = false
+        )
+        val completeJob = ValidatedJob(
+            correlationId = "provisional-001",
+            requiredSkills = listOf("Kotlin"),
+            title = "Developer",
+            keywords = listOf("Kotlin"),
+            requiredYears = 5,
+            seniorityLevel = "senior",
+            completedFields = setOf("requiredSkills", "title", "keywords", "requiredYears", "seniorityLevel"),
+            isAccepted = true,
+            isDegraded = false
+        )
+
+        val complete = engine.evaluate(completeProfile, completeJob, W5TraceContext("provisional-001", "", 0L))
+        assertTrue(complete.isComplete)
+        assertEquals(complete.totalScore, complete.provisionalTotalScore!!, 1e-12)
+
+        val partial = engine.evaluate(
+            completeProfile,
+            completeJob.copy(title = "", keywords = emptyList(), requiredYears = null, seniorityLevel = null),
+            W5TraceContext("provisional-001", "", 0L)
+        )
+        assertFalse(partial.isComplete)
+        val measured = partial.axisScores.filter { it.isMeasured }
+        val expected = measured.sumOf { it.score * AxisWeights.get(it.axisName) } /
+            measured.sumOf { AxisWeights.get(it.axisName) }
+        assertEquals(expected, partial.provisionalTotalScore!!, 1e-12)
+        assertNotEquals(partial.totalScore, partial.provisionalTotalScore!!, 1e-12)
+    }
+
 }
