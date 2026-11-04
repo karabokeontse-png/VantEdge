@@ -5,6 +5,7 @@ import com.vantedge.app.data.model.RequirementAssessmentState
 import com.vantedge.app.data.model.UserProfile
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -123,6 +124,10 @@ class CorrectiveUnknownStateTest {
         val assessed = profile().copy(qualifications = listOf(degree("Master of Business")))
         val mapped = map(assessed, job(degree("Bachelor of Science")))
 
+        val assessment = mapped.record.requirementAssessments!!
+            .first { it.text == "Bachelor of Science" }
+        assertEquals(RequirementAssessmentState.CONFIRMED_GAP, assessment.state)
+        assertNull(assessment.reason)
         assertEquals(true, mapped.record.evaluationComplete)
         assertTrue(mapped.record.gaps.any { it.skill == "DEGREE: Bachelor of Science" && it.importance == "MANDATORY" })
     }

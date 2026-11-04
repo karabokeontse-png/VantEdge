@@ -240,4 +240,228 @@ class RequirementCoverageTest {
         assertNull(legacy.provisionalScore)
         assertNull(legacy.provisionalVacancyScore)
     }
+
+    private fun preferredSkill(text: String, canonical: String? = text) = RequirementEvidence(
+        originalText = text,
+        category = RequirementCategory.SKILL,
+        classificationStatus = ClassificationStatus.NORMALIZED,
+        matchedTaxonomySkill = canonical,
+        importance = "PREFERRED"
+    )
+
+    @Test
+    fun `preferred skill with matching profile evidence is matched`() {
+        val mapped = map(
+            profile(skills = listOf("Kotlin", "Docker")),
+            job(requiredSkills = listOf("Kotlin")),
+            listOf(skill("Kotlin"), preferredSkill("Docker"))
+        )
+
+        val assessments = mapped.record.requirementAssessments!!
+        val preferred = assessments.first { it.text == "Docker" }
+        assertEquals(RequirementAssessmentState.MATCHED, preferred.state)
+        assertEquals("PREFERRED", preferred.importance)
+        assertTrue(mapped.record.gaps.isEmpty())
+    }
+
+    @Test
+    fun `preferred skill without matching profile evidence stays unassessed and is not a gap`() {
+        val mapped = map(
+            profile(skills = listOf("Kotlin")),
+            job(requiredSkills = listOf("Kotlin")),
+            listOf(skill("Kotlin"), preferredSkill("Docker"))
+        )
+
+        val assessments = mapped.record.requirementAssessments!!
+        val preferred = assessments.first { it.text == "Docker" }
+        assertEquals(RequirementAssessmentState.UNASSESSED, preferred.state)
+        assertEquals("PREFERENCE_NOT_ASSESSED", preferred.reason)
+        assertTrue(mapped.record.gaps.isEmpty())
+    }
+
+    @Test
+    fun `reconciliation failure is distinct from absent profile evidence`() {
+        val failure = map(
+            profile(skills = listOf("Kotlin")),
+            job(requiredSkills = listOf("Kotlin")),
+            listOf(skill("Kotlin"), skill("Unmapped Inventory Item", canonical = "Unmapped Inventory Item"))
+        )
+        val failureAssessment = failure.record.requirementAssessments!!
+            .first { it.text == "Unmapped Inventory Item" }
+        assertEquals(RequirementAssessmentState.UNASSESSED, failureAssessment.state)
+        assertEquals("UNRECONCILED", failureAssessment.reason)
+
+        val absent = map(
+            profile(skills = emptyList()),
+            job(requiredSkills = listOf("Kotlin")),
+            listOf(skill("Kotlin"))
+        )
+        val absentAssessment = absent.record.requirementAssessments!!
+            .first { it.text == "Kotlin" }
+        assertEquals(RequirementAssessmentState.UNASSESSED, absentAssessment.state)
+        assertEquals("PROFILE_SKILL_EVIDENCE_ABSENT", absentAssessment.reason)
+    }
+
+    @Test
+    fun `inventory entries differing in classification status remain distinct`() {
+        val mapped = map(
+            profile(skills = listOf("Kotlin")),
+            job(requiredSkills = listOf("Kotlin")),
+            listOf(
+                skill("Kotlin", status = ClassificationStatus.NORMALIZED),
+                skill("Kotlin", status = ClassificationStatus.UNSUPPORTED)
+            )
+        )
+
+        val assessments = mapped.record.requirementAssessments!!
+        assertEquals(2, assessments.count { it.text == "Kotlin" })
+    }
+
+    @Test
+    fun `every gap has exactly one confirmed gap assessment`() {
+        val mapped = map(
+            profile(),
+            job(requiredSkills = listOf("Kotlin", "Kubernetes")),
+            listOf(skill("Kotlin"), skill("Kubernetes"))
+        )
+
+        val gapNames = mapped.record.gaps.map { it.skill }
+        assertEquals(listOf("Kubernetes"), gapNames)
+        val confirmed = mapped.record.requirementAssessments!!
+            .filter { it.state == RequirementAssessmentState.CONFIRMED_GAP }
+        assertEquals(1, confirmed.size)
+        assertEquals("Kubernetes", confirmed.single().canonical)
+    }
+
+    @Test
+    fun `every matched required skill has exactly one matched assessment`() {
+        val mapped = map(
+            profile(),
+            job(requiredSkills = listOf("Kotlin")),
+            listOf(skill("Kotlin"))
+        )
+
+        val matchedNames = mapped.record.relevancyItems.map { it.name }
+        assertEquals(listOf("Kotlin"), matchedNames)
+        val matched = mapped.record.requirementAssessments!!
+            .filter { it.state == RequirementAssessmentState.MATCHED }
+        assertEquals(1, matched.size)
+        assertEquals("Kotlin", matched.single().canonical)
+    }
+
+    @Test
+    fun `no eligible measured component yields a null provisional vacancy score`() {
+        val noEvidenceJob = job(requiredSkills = emptyList(), requiredYears = null).copy(
+            title = "",
+            keywords = emptyList(),
+            seniorityLevel = null,
+            completedFields = emptySet()
+        )
+        val mapped = map(profile(skills = emptyList()), noEvidenceJob, emptyList())
+
+        assertNull(mapped.record.provisionalVacancyScore)
+    }
+
+    @Test
+    fun `experience-only partial measurement normalizes measured vacancy components`() {
+        val experienceJob = job(requiredSkills = emptyList(), requiredYears = 5).copy(
+            title = "",
+            keywords = emptyList(),
+            seniorityLevel = null
+        )
+        val validatedProfile = profile(skills = emptyList())
+        val mapped = map(validatedProfile, experienceJob, emptyList())
+        val scoreResult = W5ScoreEngine(assets).evaluate(
+            validatedProfile,
+            experienceJob,
+            W5TraceContext("coverage", "", 0L)
+        )
+
+        val experience = scoreResult.axisScores.first { it.axisName == "ExperienceAlignment" }.score
+        val constraint = scoreResult.axisScores.first { it.axisName == "ConstraintCompliance" }.score
+        val expected = (((experience * 0.3) + (constraint * 0.2)) / 0.5 * 100).toInt()
+        assertEquals(expected, mapped.record.provisionalVacancyScore)
+    }
+
+    @Test
+    fun `inventory order is preserved`() {
+        val mapped = map(
+            profile(),
+            job(
+                requiredSkills = listOf("Kotlin"),
+                qualifications = listOf(degree("Bachelor of Science"))
+            ),
+            listOf(skill("Kubernetes"), skill("Kotlin"), degree("Bachelor of Science"))
+        )
+
+        val assessments = mapped.record.requirementAssessments!!
+        assertEquals(
+            listOf("Kubernetes", "Kotlin", "Bachelor of Science"),
+            assessments.map { it.text }
+        )
+    }
+
+    @Test
+    fun `fallback inventory keeps required requirements and does not invent preferred`() {
+        val mapped = map(
+            profile(),
+            job(requiredSkills = listOf("Kotlin")),
+            emptyList()
+        )
+
+        val assessments = mapped.record.requirementAssessments!!
+        assertEquals(listOf("Kotlin"), assessments.map { it.text })
+        assertTrue(assessments.none { it.importance == "PREFERRED" })
+        assertTrue(mapped.record.evaluationComplete!!)
+    }
+
+    @Test
+    fun `job required qualification with matching profile evidence is matched`() {
+        val mapped = map(
+            profile(qualifications = listOf(degree("Bachelor of Science"))),
+            job(
+                requiredSkills = listOf("Kotlin"),
+                qualifications = listOf(degree("Bachelor of Science"))
+            ),
+            listOf(skill("Kotlin"))
+        )
+
+        val assessment = mapped.record.requirementAssessments!!
+            .first { it.text == "Bachelor of Science" }
+        assertEquals(RequirementAssessmentState.MATCHED, assessment.state)
+        assertTrue(mapped.record.evaluationComplete!!)
+    }
+
+    @Test
+    fun `profile qualification not required by the job is not unreconciled and does not block completeness`() {
+        val mapped = map(
+            profile(qualifications = listOf(degree("Bachelor of Science"))),
+            job(requiredSkills = listOf("Kotlin"), qualifications = emptyList()),
+            listOf(skill("Kotlin"), degree("Bachelor of Science"))
+        )
+
+        val assessments = mapped.record.requirementAssessments!!
+        assertTrue(assessments.none { it.text == "Bachelor of Science" })
+        assertTrue(assessments.none { it.reason == "UNRECONCILED" })
+        assertTrue(mapped.record.gaps.none { it.skill.startsWith("DEGREE:") })
+        assertTrue(mapped.record.evaluationComplete!!)
+    }
+
+    @Test
+    fun `missing job required qualification is reconciled and blocks false completeness`() {
+        val mapped = map(
+            profile(qualifications = emptyList()),
+            job(
+                requiredSkills = listOf("Kotlin"),
+                qualifications = listOf(degree("Bachelor of Science"))
+            ),
+            listOf(skill("Kotlin"))
+        )
+
+        val assessment = mapped.record.requirementAssessments!!
+            .first { it.text == "Bachelor of Science" }
+        assertEquals(RequirementAssessmentState.UNASSESSED, assessment.state)
+        assertEquals("PROFILE_QUALIFICATION_EVIDENCE_ABSENT", assessment.reason)
+        assertFalse(mapped.record.evaluationComplete!!)
+    }
 }

@@ -163,6 +163,28 @@ class CompatibilityRecordLegacyJsonTest {
     }
 
     @Test
+    fun `confirmed gap and preferred assessment round trip`() {
+        val record = gson.fromJson(
+            legacyJson(
+                "\"requirementAssessments\": [" +
+                    "{\"text\": \"Kubernetes\", \"state\": \"CONFIRMED_GAP\", \"canonical\": \"Kubernetes\", \"importance\": \"MANDATORY\"}," +
+                    "{\"text\": \"Docker\", \"state\": \"UNASSESSED\", \"reason\": \"PREFERENCE_NOT_ASSESSED\", \"importance\": \"PREFERRED\"}," +
+                    "{\"text\": \"Legacy Skill\", \"state\": \"UNASSESSED\", \"reason\": \"UNRECONCILED\", \"importance\": \"MANDATORY\"}" +
+                    "]"
+            ),
+            CompatibilityRecord::class.java
+        )
+
+        val roundTripped = gson.fromJson(gson.toJson(record), CompatibilityRecord::class.java)
+        val assessments = roundTripped.requirementAssessments!!
+        assertEquals(3, assessments.size)
+        assertEquals(RequirementAssessmentState.CONFIRMED_GAP, assessments[0].state)
+        assertEquals("PREFERRED", assessments[1].importance)
+        assertEquals("PREFERENCE_NOT_ASSESSED", assessments[1].reason)
+        assertEquals("UNRECONCILED", assessments[2].reason)
+    }
+
+    @Test
     fun `recorded empty inventory stays distinct from unknown coverage`() {
         val record = gson.fromJson(
             legacyJson("\"requirementAssessments\": []"),

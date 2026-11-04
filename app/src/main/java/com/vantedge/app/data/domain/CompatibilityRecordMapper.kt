@@ -197,7 +197,8 @@ class CompatibilityRecordMapper {
             gapAnalysis = gapAnalysis,
             matchedQualifications = matchedQualifications,
             missingQualifications = missingQualifications,
-            qualificationsAssessed = qualificationsAssessed
+            qualificationsAssessed = qualificationsAssessed,
+            profileSkills = validatedProfile.skills
         )
         val blockingUnassessed = requirementAssessments.any {
             it.state == RequirementAssessmentState.UNASSESSED && it.importance != "PREFERRED"
@@ -218,6 +219,9 @@ class CompatibilityRecordMapper {
             gaps = gaps,
             criticalGapCount = criticalGapCount,
             analysisSource = CompatibilityAnalysisSource.DETERMINISTIC_W5,
+            // preferredReconstructable is informational: false means preferred requirements could not be
+            // reconstructed from the fallback source, not that the full inventory was reconstructed.
+            // Preferred requirements are non-blocking; required unassessed/unreconciled items still block this gate.
             evaluationComplete = scoreResult.isComplete && qualificationsAssessed && !blockingUnassessed,
             provisionalScore = provisionalScore,
             provisionalVacancyScore = provisionalVacancyScore,
@@ -238,6 +242,8 @@ class CompatibilityRecordMapper {
                 "dataIntegrityNote" to record.dataIntegrityNote,
                 "unmappedRequirementCount" to evidenceReport.summary.totalUnmapped,
                 "classificationWarningCount" to evidenceReport.diagnostics.size,
+                "inventorySource" to if (diagnostics.inventory.isNotEmpty()) "DIAGNOSTICS" else "SYNTHESIZED",
+                "preferredReconstructable" to diagnostics.inventory.isNotEmpty().toString(),
                 "provisionalScore" to (record.provisionalScore ?: "unknown"),
                 "provisionalVacancyScore" to (record.provisionalVacancyScore ?: "unknown"),
                 "unassessedRequirementCount" to requirementAssessments.count {
@@ -273,21 +279,44 @@ class CompatibilityRecordMapper {
         gapAnalysis: GapAnalysis,
         matchedQualifications: List<RequirementEvidence>,
         missingQualifications: List<RequirementEvidence>,
-        qualificationsAssessed: Boolean
+        qualificationsAssessed: Boolean,
+        profileSkills: List<String>
     ): List<RequirementAssessment> {
         val source = if (inventory.isNotEmpty()) {
             inventory
         } else {
             synthesizeRequirementInventory(validatedJob)
         }
+        val distinctSource = source.distinctBy {
+            listOf(
+                it.originalText,
+                it.category.name,
+                it.matchedTaxonomySkill,
+                it.importance,
+                it.classificationStatus.name
+            )
+        }
+        val requiredQualificationKeys = validatedJob.requiredQualifications
+            .map { it.category to it.originalText }
+            .toSet()
+        val assessmentSource = distinctSource.filter { evidence ->
+            evidence.category !in qualificationCategories ||
+                (evidence.category to evidence.originalText) in requiredQualificationKeys
+        }
         val matchedSkills = gapAnalysis.matched.map { it.name }.toSet()
         val weakSkills = gapAnalysis.weak.toSet()
         val missingSkills = gapAnalysis.missing.toSet()
 
-        return source.map { evidence ->
+        val assessments = assessmentSource.map { evidence ->
             when {
                 evidence.category == RequirementCategory.SKILL ->
-                    assessSkill(evidence, matchedSkills, weakSkills, missingSkills)
+                    assessSkill(
+                        evidence,
+                        matchedSkills,
+                        weakSkills,
+                        missingSkills,
+                        profileSkills
+                    )
                 evidence.category in qualificationCategories ->
                     assessQualification(
                         evidence,
@@ -300,19 +329,62 @@ class CompatibilityRecordMapper {
                 else ->
                     unassessed(evidence, UnassessedReason.UNSUPPORTED_CATEGORY)
             }
-        }.distinctBy {
-            listOf(it.text, it.category, it.canonical, it.importance)
         }
+        val qualificationCategoryNames = qualificationCategories.map { it.name }.toSet()
+        val assessedQualificationKeys = assessments
+            .filter { it.category in qualificationCategoryNames }
+            .map { it.category to it.text }
+            .toSet()
+        val reconciledQualifications = validatedJob.requiredQualifications
+            .filter { (it.category.name to it.originalText) !in assessedQualificationKeys }
+            .map { qualification ->
+                assessQualification(
+                    qualification,
+                    matchedQualifications,
+                    missingQualifications,
+                    qualificationsAssessed
+                )
+            }
+        return assessments + reconciledQualifications
+    }
+
+    private fun hasProfileEvidence(
+        evidence: RequirementEvidence,
+        profileSkills: List<String>
+    ): Boolean = profileSkills.any { skill ->
+        skill.equals(evidence.matchedTaxonomySkill, ignoreCase = true) ||
+            skill.equals(evidence.originalText, ignoreCase = true)
     }
 
     private fun assessSkill(
         evidence: RequirementEvidence,
         matchedSkills: Set<String>,
         weakSkills: Set<String>,
-        missingSkills: Set<String>
+        missingSkills: Set<String>,
+        profileSkills: List<String>
     ): RequirementAssessment {
         val canonical = evidence.matchedTaxonomySkill
-            ?: return unassessed(
+        val matchedByGap = canonical?.let { it in matchedSkills } == true ||
+            evidence.originalText in matchedSkills
+        val matchedByProfile = evidence.importance == "PREFERRED" &&
+            hasProfileEvidence(evidence, profileSkills)
+
+        if (matchedByGap || matchedByProfile) {
+            return RequirementAssessment(
+                text = evidence.originalText,
+                state = RequirementAssessmentState.MATCHED,
+                canonical = canonical,
+                category = evidence.category.name,
+                importance = evidence.importance ?: "MANDATORY"
+            )
+        }
+
+        if (evidence.importance == "PREFERRED") {
+            return unassessed(evidence, UnassessedReason.PREFERENCE_NOT_ASSESSED)
+        }
+
+        if (canonical == null) {
+            return unassessed(
                 evidence,
                 if (evidence.classificationStatus == ClassificationStatus.UNSUPPORTED) {
                     UnassessedReason.UNSUPPORTED_CATEGORY
@@ -320,23 +392,12 @@ class CompatibilityRecordMapper {
                     UnassessedReason.TAXONOMY_MISS
                 }
             )
-
-        if (evidence.importance == "PREFERRED") {
-            return unassessed(evidence, UnassessedReason.PREFERENCE_NOT_ASSESSED)
         }
 
-        val matched = canonical in matchedSkills || evidence.originalText in matchedSkills
         val weak = canonical in weakSkills || evidence.originalText in weakSkills
         val missing = canonical in missingSkills || evidence.originalText in missingSkills
 
         return when {
-            matched -> RequirementAssessment(
-                text = evidence.originalText,
-                state = RequirementAssessmentState.MATCHED,
-                canonical = canonical,
-                category = evidence.category.name,
-                importance = evidence.importance ?: "MANDATORY"
-            )
             weak -> RequirementAssessment(
                 text = evidence.originalText,
                 state = RequirementAssessmentState.CONFIRMED_GAP,
@@ -351,7 +412,14 @@ class CompatibilityRecordMapper {
                 category = evidence.category.name,
                 importance = "MANDATORY"
             )
-            else -> unassessed(evidence, UnassessedReason.PROFILE_SKILL_EVIDENCE_ABSENT)
+            else -> unassessed(
+                evidence,
+                if (profileSkills.isNotEmpty()) {
+                    UnassessedReason.UNRECONCILED
+                } else {
+                    UnassessedReason.PROFILE_SKILL_EVIDENCE_ABSENT
+                }
+            )
         }
     }
 
@@ -401,7 +469,7 @@ class CompatibilityRecordMapper {
                 text = evidence.originalText,
                 state = RequirementAssessmentState.UNASSESSED,
                 canonical = canonical,
-                reason = UnassessedReason.PROFILE_QUALIFICATION_EVIDENCE_ABSENT.name,
+                reason = UnassessedReason.UNRECONCILED.name,
                 category = evidence.category.name,
                 importance = importance
             )

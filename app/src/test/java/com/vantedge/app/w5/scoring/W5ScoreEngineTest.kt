@@ -974,7 +974,7 @@ class W5ScoreEngineTest {
 
         val complete = engine.evaluate(completeProfile, completeJob, W5TraceContext("provisional-001", "", 0L))
         assertTrue(complete.isComplete)
-        assertEquals(complete.totalScore, complete.provisionalTotalScore!!, 1e-12)
+        assertEquals(complete.totalScore, complete.provisionalTotalScore!!, 0.0)
 
         val partial = engine.evaluate(
             completeProfile,

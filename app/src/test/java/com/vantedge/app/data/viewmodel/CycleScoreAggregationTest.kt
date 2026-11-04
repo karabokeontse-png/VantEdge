@@ -196,4 +196,15 @@ class CycleScoreAggregationTest {
         assertEquals(1, CycleScoreAggregation.incompleteScoreCount(cycles))
     }
 
+    @Test
+    fun `provisional values do not affect previous score or improvement`() {
+        val previous = cycle("p", "Engineer", 60, true, provisional = 100, version = 1)
+        val current = cycle("c", "Engineer", 90, true, provisional = 10, version = 2)
+
+        assertEquals(
+            60,
+            CycleScoreAggregation.previousScore(listOf(previous, current), current)
+        )
+        assertEquals(1, CycleScoreAggregation.improvedApplicationsCount(listOf(previous, current)))
+    }
 }
