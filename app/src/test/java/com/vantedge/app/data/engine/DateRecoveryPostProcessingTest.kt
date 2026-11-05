@@ -1,132 +1,156 @@
 package com.vantedge.app.data.engine
 
-import org.junit.Assert.*
+import android.content.ContextWrapper
+import com.vantedge.app.data.model.AiRawResponseArtifact
+import com.vantedge.app.data.model.WorkExperience
+import com.vantedge.app.data.network.AiGateway
+import com.vantedge.app.data.network.GeminiService
+import com.vantedge.app.data.storage.AiRawResponseArtifactDao
+import com.vantedge.app.util.TelemetryCollector
+import com.vantedge.app.w5.scoring.computeYearsExperience
+import java.io.File
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import org.json.JSONArray
+import org.json.JSONObject
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Test
 
 /**
- * TD-PROFILE-002a: Deterministic date recovery test.
- * Verifies the post-processing fallback logic for startDate recovery
- * from structured dates/period fields, and confirms description mining is NOT performed.
+ * Production-path date-authority tests.
+ *
+ * These tests call the real ProfileExtractionEngine.normalizeRootKeys() used by
+ * production ingestion. They intentionally do not simulate or duplicate the
+ * production normalization logic.
  */
 class DateRecoveryPostProcessingTest {
 
-    private val yearRegex = Regex("""\b(19|20)\d{2}\b""")
-
-    /**
-     * Simulates the enhanced post-processing logic from ProfileExtractionEngine.kt:
-     * 1. Primary fallback: use combined dates field if startDate is blank
-     * 2. Secondary fallback: if startDate still lacks a 4-digit year, recover from dates field
-     */
-    private fun simulatePostProcessing(
-        startDate: String,
-        endDate: String,
-        dates: String
-    ): Pair<String, String> {
-        var resultStart = startDate
-        var resultEnd = endDate
-
-        if (dates.isNotBlank() && resultStart.isBlank()) {
-            resultStart = dates
-            resultEnd = ""
+    private val engine: ProfileExtractionEngine by lazy {
+        val context = object : ContextWrapper(null) {
+            override fun getCacheDir(): File = File(System.getProperty("java.io.tmpdir") ?: "/tmp")
         }
-
-        if (yearRegex.find(resultStart) == null && dates.isNotBlank()) {
-            yearRegex.find(dates)?.value?.let { year ->
-                resultStart = year
-            }
+        val dao = object : AiRawResponseArtifactDao {
+            override suspend fun insert(artifact: AiRawResponseArtifact): Long = 0L
+            override suspend fun deleteOldestBeyondLimit(limit: Int) {}
+            override suspend fun getAll(): List<AiRawResponseArtifact> = emptyList()
         }
-
-        return resultStart to resultEnd
+        val geminiService = GeminiService(dao, CoroutineScope(Dispatchers.Unconfined))
+        ProfileExtractionEngine(context, AiGateway(geminiService), TelemetryCollector(context))
     }
 
-    // --- Positive Tests: dates fallback ---
-
-    @Test
-    fun `dates fallback recovers year when startDate is blank`() {
-        val (start, end) = simulatePostProcessing(
-            startDate = "",
-            endDate = "",
-            dates = "2020-2024"
-        )
-        assertEquals("2020", start)
-        assertEquals("", end)
+    private fun normalizeWork(entry: JSONObject): JSONObject {
+        val root = JSONObject().apply { put("workHistory", JSONArray().apply { put(entry) }) }
+        return engine.normalizeRootKeys(root).getJSONArray("workHistory").getJSONObject(0)
     }
 
-    @Test
-    fun `dates fallback recovers year when startDate is unparseable`() {
-        val (start, end) = simulatePostProcessing(
-            startDate = "Recent",
-            endDate = "Current",
-            dates = "2018-2022"
-        )
-        assertEquals("2018", start)
-        assertEquals("Current", end)
+    private fun work(
+        startDate: String? = null,
+        endDate: String? = null,
+        dates: String? = null,
+        period: String? = null,
+        description: String? = null
+    ): JSONObject = JSONObject().apply {
+        put("jobTitle", "Engineer")
+        put("company", "Acme")
+        startDate?.let { put("startDate", it) }
+        endDate?.let { put("endDate", it) }
+        dates?.let { put("dates", it) }
+        period?.let { put("period", it) }
+        description?.let { put("description", it) }
     }
 
     @Test
-    fun `primary fallback uses dates field when startDate is blank`() {
-        val (start, end) = simulatePostProcessing(
-            startDate = "",
-            endDate = "",
-            dates = "Jan 2020 - Present"
-        )
-        assertEquals("Jan 2020", start)
-        assertEquals("", end)
+    fun `blank canonical dates remain blank when only dates is supplied`() {
+        val out = normalizeWork(work(startDate = "", endDate = "", dates = "2020-2024"))
+
+        assertEquals("", out.optString("startDate"))
+        assertEquals("", out.optString("endDate"))
+        assertFalse(out.has("dates"))
+        assertFalse(out.has("period"))
     }
 
     @Test
-    fun `secondary fallback extracts year from dates when primary gives unparseable`() {
-        val (start, end) = simulatePostProcessing(
-            startDate = "N/A",
-            endDate = "",
-            dates = "2015"
-        )
-        assertEquals("2015", start)
-        assertEquals("", end)
+    fun `blank canonical dates remain blank when only period is supplied`() {
+        val out = normalizeWork(work(startDate = "", endDate = "", period = "Jan 2020 - Present"))
+
+        assertEquals("", out.optString("startDate"))
+        assertEquals("", out.optString("endDate"))
+        assertFalse(out.has("dates"))
+        assertFalse(out.has("period"))
     }
 
-    // --- Negative Tests: description guard ---
+    @Test
+    fun `blank startDate keeps explicit endDate when dates is supplied`() {
+        val out = normalizeWork(work(startDate = "", endDate = "2022", dates = "2020-2024"))
+
+        assertEquals("", out.optString("startDate"))
+        assertEquals("2022", out.optString("endDate"))
+    }
 
     @Test
-    fun `description field is NEVER mined for dates`() {
-        // Verify simulatePostProcessing does NOT accept description parameter.
-        // startDate is blank, dates is blank — only description has years.
-        // If the function signature were expanded to include description,
-        // this would be a compilation error (tests would not compile).
-        val (start, _) = simulatePostProcessing(
-            startDate = "",
-            endDate = "",
-            dates = ""
+    fun `blank startDate keeps explicit endDate when period is supplied`() {
+        val out = normalizeWork(work(startDate = "", endDate = "2022", period = "Jan 2020 - Present"))
+
+        assertEquals("", out.optString("startDate"))
+        assertEquals("2022", out.optString("endDate"))
+    }
+
+    @Test
+    fun `nonblank canonical dates remain unchanged when conflicting compatibility fields are present`() {
+        val out = normalizeWork(
+            work(
+                startDate = "Jan 2020",
+                endDate = "Present",
+                dates = "2015-2018",
+                period = "2019-2021"
+            )
         )
-        // startDate must remain blank — description years are NOT used
+
+        assertEquals("Jan 2020", out.optString("startDate"))
+        assertEquals("Present", out.optString("endDate"))
+        assertFalse(out.has("dates"))
+        assertFalse(out.has("period"))
+    }
+
+    @Test
+    fun `valid canonical dates are copied independently and unchanged`() {
+        val out = normalizeWork(work(startDate = "2018", endDate = "2021"))
+
+        assertEquals("2018", out.optString("startDate"))
+        assertEquals("2021", out.optString("endDate"))
+    }
+
+    @Test
+    fun `completed combined range cannot become an open-ended canonical employment period`() {
+        val out = normalizeWork(work(startDate = "", endDate = "", dates = "2020-2024"))
+        val start = out.optString("startDate")
+        val end = out.optString("endDate")
+
         assertEquals("", start)
-        // Confirm description contains parseable years (proving the risk exists)
-        val description = "Company founded in 1998, project completed 2015"
-        val yearsInDescription = yearRegex.findAll(description).map { it.value }.toList()
-        assertEquals(2, yearsInDescription.size)
-        assertEquals("1998", yearsInDescription[0])
-        assertEquals("2015", yearsInDescription[1])
-    }
-
-    @Test
-    fun `startDate remains unchanged when dates field is also blank`() {
-        val (start, end) = simulatePostProcessing(
-            startDate = "Recent",
-            endDate = "",
-            dates = ""
-        )
-        assertEquals("Recent", start)
         assertEquals("", end)
+
+        // Focused W5 regression: the actual normalized canonical values above are
+        // passed into the existing experience calculation path. They must not be
+        // interpreted as a 2020..2026 open-ended employment interval.
+        val years = computeYearsExperience(
+            listOf(WorkExperience("Engineer", "Acme", start, end, "")),
+            2026
+        )
+        assertEquals(0, years)
     }
 
     @Test
-    fun `startDate with existing year is not overwritten`() {
-        val (start, end) = simulatePostProcessing(
-            startDate = "Jan 2020",
-            endDate = "Present",
-            dates = "2015-2018"
+    fun `description years are not mined into canonical dates`() {
+        val out = normalizeWork(
+            work(
+                startDate = "",
+                endDate = "",
+                description = "Company founded in 1998, project completed 2015"
+            )
         )
-        assertEquals("Jan 2020", start)
-        assertEquals("Present", end)
+
+        assertEquals("", out.optString("startDate"))
+        assertEquals("", out.optString("endDate"))
     }
 }
