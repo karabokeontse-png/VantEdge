@@ -598,7 +598,7 @@ STRICT RULES:
     // NORMALIZATION LAYER
     // ==========================================
 
-    private fun normalizeRootKeys(json: JSONObject): JSONObject {
+    internal fun normalizeRootKeys(json: JSONObject): JSONObject {
         val n = JSONObject()
 
         n.put("name", json.optString("name", json.optString("fullName", "")))
@@ -621,14 +621,8 @@ STRICT RULES:
             nw.put("jobTitle", w.optString("jobTitle", w.optString("position", w.optString("role", ""))))
             nw.put("company", w.optString("company", w.optString("employer", w.optString("organization", ""))))
 
-            val dates = w.optString("dates", w.optString("period", ""))
-            if (dates.isNotBlank() && w.optString("startDate").isBlank()) {
-                nw.put("startDate", dates)
-                nw.put("endDate", "")
-            } else {
-                nw.put("startDate", w.optString("startDate", ""))
-                nw.put("endDate", w.optString("endDate", ""))
-            }
+            nw.put("startDate", w.optString("startDate", ""))
+            nw.put("endDate", w.optString("endDate", ""))
 
             nw.put("description", w.optString("description",
                 w.optString("responsibilities", w.optString("duties", ""))))
