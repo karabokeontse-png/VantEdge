@@ -1,0 +1,39 @@
+=== eight-path post-edit status/hashes ===
+ M app/src/main/java/com/vantedge/app/data/domain/CompatibilityRecordMapper.kt
+  app/src/main/java/com/vantedge/app/data/domain/CompatibilityRecordMapper.kt
+  sha256=bf34c26a16dcad1281553a20966171bc46a1f11f58491dbfa2cf6d9ab4b240c2
+ M app/src/main/java/com/vantedge/app/w5/scoring/W5Types.kt
+  app/src/main/java/com/vantedge/app/w5/scoring/W5Types.kt
+  sha256=19d880dbb7bb64bb7d741e2ae214e12ed5cd38922a2b02edcfe616e6721f6964
+ M app/src/test/java/com/vantedge/app/w5/scoring/RequirementCoverageTest.kt
+  app/src/test/java/com/vantedge/app/w5/scoring/RequirementCoverageTest.kt
+  sha256=9db3e123c05ef5ab3cf9e9f0f57b5c54d5327862c829fbaf52fdfc6237cb4f92
+ M app/src/test/java/com/vantedge/app/w5/scoring/CorrectiveUnknownStateTest.kt
+  app/src/test/java/com/vantedge/app/w5/scoring/CorrectiveUnknownStateTest.kt
+  sha256=21db7689eaa692e46e3c007f02bd0b3b0c04b66b037cf503f3a9188c188ee215
+ M app/src/test/java/com/vantedge/app/w5/scoring/ProvisionalScoreTest.kt
+  app/src/test/java/com/vantedge/app/w5/scoring/ProvisionalScoreTest.kt
+  sha256=87dca7ba65d289e2f51cdaa01835ed0e9b5a558feb5d430589aff4e423fa0e64
+ M app/src/test/java/com/vantedge/app/w5/scoring/W5ScoreEngineTest.kt
+  app/src/test/java/com/vantedge/app/w5/scoring/W5ScoreEngineTest.kt
+  sha256=d4a5e03a3ceb4cd66b588f86b904a3b598fd8dd73b8c13a4ace7a3c0f7c9cb20
+ M app/src/test/java/com/vantedge/app/data/storage/CompatibilityRecordLegacyJsonTest.kt
+  app/src/test/java/com/vantedge/app/data/storage/CompatibilityRecordLegacyJsonTest.kt
+  sha256=c8273440c10bbec6ffacc8cddc6eac51d48e7d917d24c230f4ff9e42abe81087
+ M app/src/test/java/com/vantedge/app/data/viewmodel/CycleScoreAggregationTest.kt
+  app/src/test/java/com/vantedge/app/data/viewmodel/CycleScoreAggregationTest.kt
+  sha256=6707548bfbd8207b39c147729cd8df8d5d8f746a8b95e7c2a51e70ccbeb2d3f5
+
+=== changed allowlisted paths count ===
+changed_allowlisted_paths=8
+
+=== diffstat ===
+ .../app/data/domain/CompatibilityRecordMapper.kt   | 110 ++++++++--
+ .../java/com/vantedge/app/w5/scoring/W5Types.kt    |   3 +-
+ .../storage/CompatibilityRecordLegacyJsonTest.kt   |  22 ++
+ .../data/viewmodel/CycleScoreAggregationTest.kt    |  11 +
+ .../app/w5/scoring/CorrectiveUnknownStateTest.kt   |   5 +
+ .../app/w5/scoring/ProvisionalScoreTest.kt         |  84 +++++++-
+ .../app/w5/scoring/RequirementCoverageTest.kt      | 224 +++++++++++++++++++++
+ .../vantedge/app/w5/scoring/W5ScoreEngineTest.kt   |   2 +-
+ 8 files changed, 433 insertions(+), 28 deletions(-)

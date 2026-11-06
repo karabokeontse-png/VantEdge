@@ -1,0 +1,8 @@
+app/src/main/java/com/vantedge/app/data/domain/CompatibilityRecordMapper.kt:418:                    UnassessedReason.UNRECONCILED
+app/src/main/java/com/vantedge/app/data/domain/CompatibilityRecordMapper.kt:472:                reason = UnassessedReason.UNRECONCILED.name,
+app/src/main/java/com/vantedge/app/w5/scoring/W5Types.kt:104:    UNRECONCILED
+app/src/test/java/com/vantedge/app/data/storage/CompatibilityRecordLegacyJsonTest.kt:172:                    "{\"text\": \"Legacy Skill\", \"state\": \"UNASSESSED\", \"reason\": \"UNRECONCILED\", \"importance\": \"MANDATORY\"}" +
+app/src/test/java/com/vantedge/app/data/storage/CompatibilityRecordLegacyJsonTest.kt:184:        assertEquals("UNRECONCILED", assessments[2].reason)
+app/src/test/java/com/vantedge/app/w5/scoring/RequirementCoverageTest.kt:292:        assertEquals("UNRECONCILED", failureAssessment.reason)
+app/src/test/java/com/vantedge/app/w5/scoring/RequirementCoverageTest.kt:445:        assertTrue(assessments.none { it.reason == "UNRECONCILED" })
+app/src/test/java/com/vantedge/pipeline/validation/P2VerificationHarnessTest.kt:753:                        "reason" to "UNRECONCILED",

@@ -564,16 +564,30 @@ STRICT RULES:
         )
         val response = aiGateway.generate("profile_extraction", request, 120_000L)
 
+        // ==========================================
+        // DETERMINISTIC-FIRST FALLBACK (no fabrication)
+        // The A13 API-key guard and the provider path are unchanged. When the AI is
+        // unavailable/empty (e.g. no API key configured -> guard returns null), assemble the
+        // profile deterministically from the already-extracted document text. If the
+        // deterministic evidence cannot satisfy the output contract (name AND email), fail
+        // truthfully ("AI_UNAVAILABLE") rather than fabricating a profile.
+        // ==========================================
+        val jsonStr: String
+        val deterministic: Boolean
         if (response.isNullOrBlank()) {
-            throw Exception("EMPTY_AI_RESPONSE")
+            val det = DeterministicProfileExtractor.extractJson(rawText)
+                ?: throw Exception("AI_UNAVAILABLE")
+            jsonStr = det
+            deterministic = true
+            PipelineTrace.warn(TAG, "AI unavailable — deterministic profile extraction engaged", null)
+        } else {
+            val extractionResult = JsonExtractionEngine.extract(response)
+            if (!extractionResult.success) {
+                throw Exception(extractionResult.failureReason ?: "NO_JSON_FOUND")
+            }
+            jsonStr = extractionResult.content
+            deterministic = false
         }
-
-        val extractionResult = JsonExtractionEngine.extract(response)
-        if (!extractionResult.success) {
-            throw Exception(extractionResult.failureReason ?: "NO_JSON_FOUND")
-        }
-
-        val jsonStr = extractionResult.content
 
         // ==========================================
         // GATE 2: STRUCTURAL INTEGRITY & SAFE REPAIR
@@ -587,7 +601,7 @@ STRICT RULES:
         return try {
             val rawObj = JSONObject(repairResult.json)
             val normalizedObj = normalizeRootKeys(rawObj)
-            parse(normalizedObj)
+            parse(normalizedObj, deterministic)
         } catch (e: Exception) {
             Log.e(TAG, "JSON parse/mapping failed", e)
             throw Exception("PARSE_ERROR")
@@ -668,7 +682,7 @@ STRICT RULES:
         return conf.coerceIn(0.0f, 1.0f)
     }
 
-    private fun parse(json: JSONObject): StructuredProfileExtraction {
+    private fun parse(json: JSONObject, deterministic: Boolean = false): StructuredProfileExtraction {
         val skillsArray = json.optJSONArray("skills")
         val workArray = json.optJSONArray("workHistory")
         val eduArray = json.optJSONArray("education")
@@ -792,8 +806,8 @@ STRICT RULES:
             education = edu.toImmutableList(),
             certifications = certs.toImmutableList(),
             overallConfidence = confidence,
-            warnings = persistentListOf(),
-            metadata = ExtractionMetadata("openrouter-strict")
+            warnings = if (deterministic) persistentListOf("DETERMINISTIC_EXTRACTION_NO_AI") else persistentListOf(),
+            metadata = ExtractionMetadata(if (deterministic) "deterministic-regex" else "openrouter-strict")
         )
     }
 

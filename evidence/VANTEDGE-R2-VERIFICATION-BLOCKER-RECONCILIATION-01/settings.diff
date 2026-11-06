@@ -1,0 +1,23 @@
+diff --git a/settings.gradle b/settings.gradle
+index e0c4583..e7b4def 100644
+--- a/settings.gradle
++++ b/settings.gradle
+@@ -1,18 +1 @@
+-pluginManagement {
+-    repositories {
+-        google()
+-        mavenCentral()
+-        gradlePluginPortal()
+-    }
+-}
+-
+-dependencyResolutionManagement {
+-    repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS)
+-    repositories {
+-        google()
+-        mavenCentral()
+-    }
+-}
+-
+-rootProject.name = "VantEdge"
+ include ':app'

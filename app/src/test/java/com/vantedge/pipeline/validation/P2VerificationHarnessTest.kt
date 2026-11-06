@@ -736,4 +736,50 @@ class P2VerificationHarnessTest {
         assertTrue("A10: single validation cycle per request — verified structurally",
             true)
     }
+
+    @Test
+    fun `T13 requirement coverage metadata does not affect P2 validation`() {
+        val correlationId = "T13-coverage-independence"
+        val plain = contractResultNode()
+        val enriched = contractResultNode(
+            mapOf(
+                "provisionalScore" to 99,
+                "provisionalVacancyScore" to 98,
+                "evaluationComplete" to false,
+                "requirementAssessments" to listOf(
+                    mapOf(
+                        "text" to "Kotlin",
+                        "state" to "UNASSESSED",
+                        "reason" to "UNRECONCILED",
+                        "importance" to "MANDATORY"
+                    )
+                )
+            )
+        )
+
+        val plainResult = P2ValidationEngine.validateContractResult(plain, correlationId)
+        val enrichedResult = P2ValidationEngine.validateContractResult(enriched, correlationId)
+
+        assertEquals(decisionName(plainResult.decision), decisionName(enrichedResult.decision))
+        assertEquals(failureCodes(plainResult.decision), failureCodes(enrichedResult.decision))
+        assertEquals(plainResult.confidencePenaltyPercent, enrichedResult.confidencePenaltyPercent)
+        assertEquals(traceOf(plainResult.decision).rules, traceOf(enrichedResult.decision).rules)
+        assertEquals(plain, plainResult.validated)
+        assertEquals(enriched, enrichedResult.validated)
+    }
+
+    @Test
+    fun `T14 P2 contract entrypoint has no requirement coverage parameter`() {
+        val method = P2ValidationEngine::class.java.methods.first {
+            it.name == "validateContractResult"
+        }
+
+        assertTrue(
+            "T14: P2 must not accept requirement coverage metadata",
+            method.parameterTypes.none { type ->
+                type.name.contains("RequirementAssessment") ||
+                    type.name.contains("CompatibilityRecord")
+            }
+        )
+    }
 }

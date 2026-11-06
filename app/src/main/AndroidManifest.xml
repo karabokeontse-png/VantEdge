@@ -8,7 +8,9 @@
 
     <application
         android:name=".VantEdgeApplication"
-        android:allowBackup="true"
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
         android:hasCode="true"
         android:icon="@mipmap/ic_launcher"
         android:label="VantEdge"

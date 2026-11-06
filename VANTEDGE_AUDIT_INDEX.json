@@ -1,0 +1,295 @@
+{
+ "audit": "VantEdge technical audit",
+ "date": "2026-10-15",
+ "repo": "karabokeontse-png/VantEdge",
+ "branch": "verification/ced-p0-authority",
+ "head": "5609322",
+ "totals": {
+  "findings": 145,
+  "P0": 15,
+  "P1": 53,
+  "P2": 55,
+  "P3": 22
+ },
+ "index_scope": "P0+P1 (46). P2/P3 enumerated in the full doc's subsystem sections.",
+ "full_doc": "VANTEDGE_TECHNICAL_AUDIT.md",
+ "drill_down": "grep the full doc for the finding id, e.g. `grep -n 'A1' VANTEDGE_TECHNICAL_AUDIT.md`",
+ "findings": [
+  {
+   "id": "A1",
+   "severity": "P0",
+   "finding": "RoleRelevance axis is identically 0.0 \u2014 15 % of the score is dead and max achievable score is 83",
+   "location": "JobRequirementAdapter.kt:120"
+  },
+  {
+   "id": "A2",
+   "severity": "P0",
+   "finding": "ConstraintCompliance is a tautology (isAccepted && isAccepted, both hardcoded true) and is double-counted; vacancyScore gets a free constant +20",
+   "location": "AxisEvaluators.kt:62-64"
+  },
+  {
+   "id": "A3",
+   "severity": "P0",
+   "finding": "P0-A is inert: structured requirements are extracted, validated, then dropped at the orchestrator boundary. DESCRIPTION_FALLBACK is 100 % of production traffic",
+   "location": "JobExtractionOrchestrator.kt:120-128, 220-251"
+  },
+  {
+   "id": "A4",
+   "severity": "P0",
+   "finding": "ExtractionDecision is computed, exhaustively matched, and then ignored \u2014 Failure still yields Accepted",
+   "location": "JobExtractionOrchestrator.kt:91-128"
+  },
+  {
+   "id": "A5",
+   "severity": "P0",
+   "finding": "ProfileSanitizer silently rewrites valid skills: REST\u2192rust, CI/CD\u2192c#, Redux\u2192redis",
+   "location": "ProfileSanitizer.kt:96-115"
+  },
+  {
+   "id": "A6",
+   "severity": "P0",
+   "finding": "DocumentPreprocessor destroys legitimate words: Client\u2192Dient, Ireland\u2192lreland, learn\u2192leam",
+   "location": "DocumentPreprocessor.kt:69-78"
+  },
+  {
+   "id": "A7",
+   "severity": "P0",
+   "finding": "Deterministic W5 is sequentially gated behind a 120 s AI call; an AI transport exception is still fatal",
+   "location": "OptimizationOrchestrator.kt:222-298"
+  },
+  {
+   "id": "A8",
+   "severity": "P0",
+   "finding": "Full PII (model output = the candidate's CV) written to logcat; also written and then discarded",
+   "location": "AiGateway.kt:144, GeneratorEngine.kt:172"
+  },
+  {
+   "id": "A9",
+   "severity": "P0",
+   "finding": "allowBackup=\"true\" with no backup rules exfiltrates the entire CV database + profile to Google Drive",
+   "location": "AndroidManifest.xml:11"
+  },
+  {
+   "id": "A10",
+   "severity": "P0",
+   "finding": "inputSnapshotHash is hardcoded \"\" \u2014 the observability subsystem's core reproducibility claim is not implemented",
+   "location": "ObservabilityTraceModel.kt"
+  },
+  {
+   "id": "A11",
+   "severity": "P0",
+   "finding": "P2VerificationHarnessTest fabricates the rule set by reflection and mislabels it as validation_rules.json; T02/T03 assert behaviour the product does not have",
+   "location": "P2VerificationHarnessTest.kt:91-111"
+  },
+  {
+   "id": "A12",
+   "severity": "P0",
+   "finding": "cv_design stub discards the selected design \u2014 applyDesign is unreachable from the UI",
+   "location": "Navigation.kt / CVDesignScreen.kt"
+  },
+  {
+   "id": "A13",
+   "severity": "P0",
+   "finding": "OpenRouter key is a plaintext constant compiled into the APK; buildConfigField is fed an unquoted value so the key path has never actually built",
+   "location": "build.gradle:29-31"
+  },
+  {
+   "id": "A14",
+   "severity": "P1",
+   "finding": "Unknown seniority string \u21d2 seniorityFit = 0.0 \u2014 \"Staff Engineer\" scores zero on seniority fit",
+   "location": "AxisEvaluators.kt:51, W5Utils.kt:134-136"
+  },
+  {
+   "id": "A15",
+   "severity": "P1",
+   "finding": "Unknown years requirement \u21d2 experienceAlignment = 0.0 (20 % of score) rather than neutral",
+   "location": "AxisEvaluators.kt:17"
+  },
+  {
+   "id": "A16",
+   "severity": "P1",
+   "finding": "Wall-clock year is a scoring input \u2014 the same CV scores differently on 1 Jan vs 31 Dec",
+   "location": "DeterministicCompatibilityEngine.kt:36"
+  },
+  {
+   "id": "A17",
+   "severity": "P1",
+   "finding": "12 sites use locale-default lowercase(); on a Turkish-locale device Gate 0 rejects valid CVs and skills drop out of the taxonomy",
+   "location": "12 sites, \u00a74.5"
+  },
+  {
+   "id": "A18",
+   "severity": "P1",
+   "finding": "W5Utils.tokenize strips all non-ASCII \u2014 a non-Latin CV scores 0 on skillMatch and roleRelevance (40 %)",
+   "location": "W5Utils.kt:9"
+  },
+  {
+   "id": "A19",
+   "severity": "P1",
+   "finding": "Every W5 test runs against fabricated assets; the test keyword_dictionary is structurally different from production",
+   "location": "W5ScoreEngineTest.kt:16-29"
+  },
+  {
+   "id": "A20",
+   "severity": "P1",
+   "finding": "4 tests are literally assertTrue(\"...\", true); 2 of them are not disclosed in the class KDoc",
+   "location": "P2VerificationHarnessTest.kt:453,673,689,737"
+  },
+  {
+   "id": "A21",
+   "severity": "P1",
+   "finding": "WorkManagerInitializer removed from the manifest with no Configuration.Provider \u2014 WorkManager.getInstance() always throws; deadline reminders can never fire",
+   "location": "AndroidManifest.xml:38-42"
+  },
+  {
+   "id": "A22",
+   "severity": "P1",
+   "finding": "TelemetryCollector writes cacheDir/telemetry.log; TelemetryStorage reads filesDir/telemetry.log \u2014 telemetry is 100 % non-functional",
+   "location": "TelemetryCollector.kt:26 vs TelemetryStorage.kt:19"
+  },
+  {
+   "id": "A23",
+   "severity": "P1",
+   "finding": "Telemetry export is broken by a FileProvider authority mismatch (.fileprovider vs .provider) and fails silently",
+   "location": "TelemetryExportService.kt:23"
+  },
+  {
+   "id": "A24",
+   "severity": "P1",
+   "finding": "One-shot navigation driven by LaunchedEffect(uiState) with no reset \u21d2 user is trapped in a navigation loop",
+   "location": "CompatibilityInputScreen.kt:97-101"
+  },
+  {
+   "id": "A25",
+   "severity": "P1",
+   "finding": "currentCycle is a plain get() read inside a @Composable \u2014 no snapshot subscription \u21d2 permanently blank screen",
+   "location": "Navigation.kt:389-398"
+  },
+  {
+   "id": "A26",
+   "severity": "P1",
+   "finding": "cv_docx routes into the JSON extractor while its prompt demands plain prose \u21d2 DOCX generation fails 100 % of the time",
+   "location": "GeminiService.kt:944"
+  },
+  {
+   "id": "A27",
+   "severity": "P1",
+   "finding": "Budget timeout cannot interrupt an in-flight attempt; AiBudgetPolicy is dead code \u2014 all 6 call sites hardcode 120_000L",
+   "location": "GeminiService.kt:199-221"
+  },
+  {
+   "id": "A28",
+   "severity": "P1",
+   "finding": "429 ignores Retry-After; backoff is a flat 1 s with no jitter (index can never exceed 1)",
+   "location": "GeminiService.kt:117-129"
+  },
+  {
+   "id": "A29",
+   "severity": "P1",
+   "finding": "substring_scan returns the largest parsable JSON block as success \u2014 an injection-controllable \"fail to success\" path",
+   "location": "JsonExtractionEngine.kt:117-127"
+  },
+  {
+   "id": "A30",
+   "severity": "P1",
+   "finding": "bold/italic regex corrupts model output inside JSON string values \u2014 and the cv_docx prompt asks for bold",
+   "location": "JsonExtractionEngine.kt:74-75"
+  },
+  {
+   "id": "A31",
+   "severity": "P1",
+   "finding": "Cover letter bypasses the entire extraction/validation pipeline \u2014 raw unvalidated model text is persisted",
+   "location": "GeneratorEngine.kt:163-174"
+  },
+  {
+   "id": "A32",
+   "severity": "P1",
+   "finding": "GeneratorEngine swallows a P2 Reject and returns Success",
+   "location": "GeneratorEngine.kt:85-98"
+  },
+  {
+   "id": "A33",
+   "severity": "P1",
+   "finding": "CORRECT enforcement action corrects nothing (identical branch to ANNOTATE); REGENERATE is unreachable dead code",
+   "location": "OptimizationOrchestrator.kt:330-372"
+  },
+  {
+   "id": "A34",
+   "severity": "P1",
+   "finding": "Fatal re-throw on matchedKeywords parse aborts the whole pipeline and discards a successful analysis",
+   "location": "OptimizationOrchestrator.kt:149"
+  },
+  {
+   "id": "A35",
+   "severity": "P1",
+   "finding": "ExportSchema = false, no schema JSONs, no 1\u21922 migration and no destructive fallback \u21d2 any future forgotten migration bricks the app",
+   "location": "VantEdgeDatabase.kt:11-15"
+  },
+  {
+   "id": "A36",
+   "severity": "P1",
+   "finding": "OnboardingDraftStore.saveDraft is documented \"ATOMIC WRITE\" and performs two separate transactions",
+   "location": "OnboardingDraftStore.kt:16-35"
+  },
+  {
+   "id": "A37",
+   "severity": "P1",
+   "finding": "CycleViewModel.init reads a StateFlow that has not emitted \u21d2 cycles are never restored on cold start; also corrupts the version counter",
+   "location": "CycleViewModel.kt:40-44"
+  },
+  {
+   "id": "A38",
+   "severity": "P1",
+   "finding": "Export fails silently on API 24\u201328 (no WRITE_EXTERNAL_STORAGE, no runtime request); defect duplicated into 3 live paths",
+   "location": "MediaStoreExporter.kt:26-31 + 2 screens"
+  },
+  {
+   "id": "A39",
+   "severity": "P1",
+   "finding": "Entire object graph (14 services incl. GeminiService and a never-cancelled CoroutineScope) is constructed with remember {} inside a @Composable",
+   "location": "Navigation.kt:99-142"
+  },
+  {
+   "id": "A40",
+   "severity": "P1",
+   "finding": "Form input in remember not rememberSaveable \u2014 rotation destroys the user's work on 5 screens",
+   "location": "EditProfileScreen.kt:45-66 + 4"
+  },
+  {
+   "id": "A41",
+   "severity": "P1",
+   "finding": "WebView reloaded on every recomposition via AndroidView's update lambda \u2014 a reload loop that destroys scroll/zoom",
+   "location": "ResultScreen.kt:258-281"
+  },
+  {
+   "id": "A42",
+   "severity": "P1",
+   "finding": "GeneratorViewModel.generate uses a blocking CountDownLatch on a coroutine dispatcher + unsynchronised captured vars + no re-entrancy guard",
+   "location": "GeneratorViewModel.kt:49-92"
+  },
+  {
+   "id": "A43",
+   "severity": "P1",
+   "finding": "Room schema advanced 2\u21923 without a versionCode bump (versionCode is still 1)",
+   "location": "build.gradle:26-27"
+  },
+  {
+   "id": "A44",
+   "severity": "P1",
+   "finding": "No CI workflow triggers on verification/ \u2014 the three P0 commits have run no workflow at all",
+   "location": ".github/workflows/.yml"
+  },
+  {
+   "id": "A45",
+   "severity": "P1",
+   "finding": "ci.yml is the only workflow that runs pipeline tests and it fails on a clean checkout (committed absolute aapt2 path, no sed repair)",
+   "location": "gradle.properties:22"
+  },
+  {
+   "id": "A46",
+   "severity": "P1",
+   "finding": "h3-corrupted-ocr-test.yml targets a class that exists only as a .kt.bak \u21d2 permanently broken",
+   "location": "h3-corrupted-ocr-test.yml:29"
+  }
+ ]
+}

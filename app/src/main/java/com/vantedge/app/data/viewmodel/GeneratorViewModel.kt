@@ -10,10 +10,15 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.vantedge.app.data.engine.DocxBuilder
 import com.vantedge.app.data.engine.EngineResult
+import com.vantedge.app.data.engine.ReviewedJobRequirements
 import com.vantedge.app.data.domain.OptimizationOrchestrator
 import com.vantedge.app.data.model.ApplicationRecord
+import com.vantedge.app.data.model.JobExtractionResult
 import com.vantedge.app.data.model.UserProfile
+import com.vantedge.app.domain.extraction.ExtractionOutcome
+import com.vantedge.app.domain.extraction.ExtractionReview
 import com.vantedge.app.data.storage.HistoryStore
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -24,7 +29,8 @@ import java.util.concurrent.TimeUnit
 
 class GeneratorViewModel(
     private val historyStore: HistoryStore,
-    private val orchestrator: OptimizationOrchestrator
+    private val orchestrator: OptimizationOrchestrator,
+    private val workerDispatcher: CoroutineDispatcher = Dispatchers.IO
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow<GeneratorUiState>(GeneratorUiState.Idle)
@@ -42,7 +48,33 @@ class GeneratorViewModel(
     var prefilledCompany: String = ""
     var prefilledJobDescription: String = ""
 
+    private val extractionReviewController = ExtractionReviewController()
+    val pendingExtractionReview: StateFlow<ExtractionReview?> = extractionReviewController.review
+
+    var reviewedRequirements: ReviewedJobRequirements? = null
+        private set
+
+    fun presentExtractionOutcome(outcome: ExtractionOutcome) {
+        reviewedRequirements = null
+        extractionReviewController.present(outcome)
+    }
+
+    fun acknowledgeExtractionReview(corrected: JobExtractionResult) {
+        extractionReviewController.acknowledge(corrected)
+        reviewedRequirements = ReviewedJobRequirements(
+            requiredSkills = corrected.requiredSkills,
+            preferredSkills = corrected.preferredSkills,
+            educationRequired = corrected.educationRequired
+        )
+    }
+
+    fun clearExtractionReview() {
+        reviewedRequirements = null
+        extractionReviewController.clear()
+    }
+
     fun resetState() {
+        reviewedRequirements = null
         _uiState.value = GeneratorUiState.Idle
     }
 
@@ -56,21 +88,27 @@ class GeneratorViewModel(
         schemeId: String = "navy",
         context: Context? = null
     ) {
+        val acknowledgedRequirements = reviewedRequirements
         currentMode = mode
         _uiState.value = GeneratorUiState.Loading
         Log.d("GeneratorViewModel", "generate: ENTRY mode=$mode")
 
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(workerDispatcher) {
             var cvResult: EngineResult? = null
             var coverResult: EngineResult? = null
 
             val cvLatch = java.util.concurrent.CountDownLatch(1)
 
             if (mode == "docx") {
-                orchestrator.generateCvDocx(profile, jobDescription) { result ->
-                    cvResult = result
-                    cvLatch.countDown()
-                }
+                orchestrator.generateCvDocx(
+                    profile = profile,
+                    jobDescription = jobDescription,
+                    onResult = { result ->
+                        cvResult = result
+                        cvLatch.countDown()
+                    },
+                    reviewedRequirements = acknowledgedRequirements
+                )
             } else {
                 orchestrator.generateCv(
                     profile = profile,
@@ -78,11 +116,13 @@ class GeneratorViewModel(
                     designId = designId,
                     schemeId = schemeId,
                     jobTitle = jobTitle,
-                    company = company
-                ) { result ->
-                    cvResult = result
-                    cvLatch.countDown()
-                }
+                    company = company,
+                    onResult = { result ->
+                        cvResult = result
+                        cvLatch.countDown()
+                    },
+                    reviewedRequirements = acknowledgedRequirements
+                )
             }
 
             val completed = cvLatch.await(30, TimeUnit.SECONDS)
@@ -143,11 +183,13 @@ class GeneratorViewModel(
                 designId = designId,
                 schemeId = schemeId,
                 jobTitle = jobTitle,
-                company = company
-            ) { result ->
-                coverResult = result
-                coverLatch.countDown()
-            }
+                company = company,
+                onResult = { result ->
+                    coverResult = result
+                    coverLatch.countDown()
+                },
+                reviewedRequirements = acknowledgedRequirements
+            )
 
             val coverCompleted = coverLatch.await(30, TimeUnit.SECONDS)
             if (!coverCompleted) {

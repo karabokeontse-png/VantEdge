@@ -14,7 +14,9 @@ object W6Rules {
     ): List<GapClosureAction> {
         val actions = mutableListOf<GapClosureAction>()
 
-        val skillMatchScore = score.axisScores.find { it.axisName == "SkillMatch" }?.score ?: 0.0
+        val skillMatch = score.axisScores.find { it.axisName == "SkillMatch" }
+        if (skillMatch?.isMeasured != true) return emptyList()
+        val skillMatchScore = skillMatch.score
 
         for (skill in gaps.missing) {
             val impact = computeEstimatedImpact(skillMatchScore)
@@ -54,9 +56,9 @@ object W6Rules {
     ): List<ProfileImprovement> {
         val improvements = mutableListOf<ProfileImprovement>()
 
-        val experienceScore = score.axisScores.find { it.axisName == "ExperienceAlignment" }?.score ?: 0.0
-        if (experienceScore < 1.0) {
-            val impact = computeEstimatedImpact(experienceScore)
+        val experience = score.axisScores.find { it.axisName == "ExperienceAlignment" }
+        if (experience?.isMeasured == true && experience.score < 1.0) {
+            val impact = computeEstimatedImpact(experience.score)
             improvements.add(
                 ProfileImprovement(
                     fieldName = "workHistory",
@@ -67,9 +69,9 @@ object W6Rules {
             )
         }
 
-        val seniorityScore = score.axisScores.find { it.axisName == "SeniorityFit" }?.score ?: 0.0
-        if (seniorityScore < 1.0) {
-            val impact = computeEstimatedImpact(seniorityScore)
+        val seniority = score.axisScores.find { it.axisName == "SeniorityFit" }
+        if (seniority?.isMeasured == true && seniority.score < 1.0) {
+            val impact = computeEstimatedImpact(seniority.score)
             val targetLevel = profile.seniorityLevel ?: "appropriate"
             improvements.add(
                 ProfileImprovement(
@@ -81,11 +83,11 @@ object W6Rules {
             )
         }
 
-        val structuralScore = score.axisScores.find { it.axisName == "StructuralCompleteness" }?.score ?: 0.0
-        if (structuralScore < 1.0) {
+        val structural = score.axisScores.find { it.axisName == "StructuralCompleteness" }
+        if (structural?.isMeasured == true && structural.score < 1.0) {
             val missingFields = computeMissingProfileFields(profile)
             for (field in missingFields) {
-                val impact = computeEstimatedImpact(structuralScore)
+                val impact = computeEstimatedImpact(structural.score)
                 improvements.add(
                     ProfileImprovement(
                         fieldName = field,
@@ -109,9 +111,9 @@ object W6Rules {
     ): List<JobImprovement> {
         val improvements = mutableListOf<JobImprovement>()
 
-        val roleScore = score.axisScores.find { it.axisName == "RoleRelevance" }?.score ?: 0.0
-        if (roleScore < 1.0) {
-            val impact = computeEstimatedImpact(roleScore)
+        val role = score.axisScores.find { it.axisName == "RoleRelevance" }
+        if (role?.isMeasured == true && role.score < 1.0) {
+            val impact = computeEstimatedImpact(role.score)
             improvements.add(
                 JobImprovement(
                     fieldName = "title",
@@ -134,7 +136,7 @@ object W6Rules {
         val projections = mutableListOf<ImpactProjection>()
 
         for (axisScore in score.axisScores) {
-            if (axisScore.score < 1.0) {
+            if (axisScore.isMeasured && axisScore.score < 1.0) {
                 val axisName = AxisNameMapping.fromW5AxisName(axisScore.axisName)
                 val delta = computeProjectedDelta(axisScore.score)
                 val actionType = when (axisName) {

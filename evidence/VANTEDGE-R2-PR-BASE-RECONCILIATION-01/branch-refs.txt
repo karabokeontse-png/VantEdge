@@ -1,0 +1,26 @@
+=== local branches ===
+main 16cf067da7595b3d4146d14bbbe1ea1a5cfc5f39
+verification/ced-p0-authority 06bb4ac287973dd3ca6bdab1eeb85714b4cb97c2
+verification/phase-a-requirements-forwarding 56093227307f5b4ab7d7511e14541fa3d496fc78
+
+=== remote-tracking branches ===
+origin/feature/ced-10-fallback-restoration 3e800b3762487f7f384fdb228bf481577cd9693f
+origin/feature/td-compatibility-001 965c884a2d2a5d9fc8c32b7341d7631f89151776
+origin/feature/td-telemetry-001 b56e6c7b8c0d005a245abcaafa4f863989c8c9fc
+origin/fix/p0-sanitizer-r5-skill-ocr e620278dd75ce5507d3b0bb06fcd3345cbc74e23
+origin/main b3c9d06c82a553a53bf9bca62cc521014ce4f159
+origin/recovery/main c67d003853e6a1f457896e9fd1cf0189e546293d
+origin/recovery/reconstructed 71d130de810ec79b60d80800db134eea3d3928b4
+origin/verification/ced-p0-authority b3c9d06c82a553a53bf9bca62cc521014ce4f159
+origin/verification/phase-a-requirements-forwarding 56093227307f5b4ab7d7511e14541fa3d496fc78
+
+=== remote refs via ls-remote (heads) ===
+3e800b3762487f7f384fdb228bf481577cd9693f	refs/heads/feature/ced-10-fallback-restoration
+965c884a2d2a5d9fc8c32b7341d7631f89151776	refs/heads/feature/td-compatibility-001
+b56e6c7b8c0d005a245abcaafa4f863989c8c9fc	refs/heads/feature/td-telemetry-001
+e620278dd75ce5507d3b0bb06fcd3345cbc74e23	refs/heads/fix/p0-sanitizer-r5-skill-ocr
+b3c9d06c82a553a53bf9bca62cc521014ce4f159	refs/heads/main
+c67d003853e6a1f457896e9fd1cf0189e546293d	refs/heads/recovery/main
+71d130de810ec79b60d80800db134eea3d3928b4	refs/heads/recovery/reconstructed
+b3c9d06c82a553a53bf9bca62cc521014ce4f159	refs/heads/verification/ced-p0-authority
+56093227307f5b4ab7d7511e14541fa3d496fc78	refs/heads/verification/phase-a-requirements-forwarding

@@ -14,16 +14,32 @@ import com.vantedge.app.data.model.JobExtractionMetrics
 import com.vantedge.app.data.model.JobExtractionResult
 import com.vantedge.app.data.model.JobSourceType
 import com.vantedge.app.data.model.extraction.ExtractionMethod
+import com.vantedge.app.data.model.extraction.FieldConfidence
+import com.vantedge.app.data.model.extraction.StructuredDocument
 import com.vantedge.app.data.network.AiGateway
 import com.vantedge.app.domain.PipelineTrace
 import com.vantedge.pipeline.validation.P2ValidationEngine
 import com.vantedge.pipeline.validation.ValidationDecision
 import java.util.UUID
 
-class JobExtractionOrchestrator(
-    private val aiGateway: AiGateway?
+internal typealias LlmExtractionFn = suspend (StructuredDocument, (String) -> Unit, String?) -> LlmJobExtractor.LlmFieldResult
+internal typealias DecisionEvaluator = (Map<String, FieldConfidence>, ExtractionMethod, String?) -> ExtractionDecision
+
+class JobExtractionOrchestrator internal constructor(
+    private val aiGateway: AiGateway?,
+    private val extractionFnOverride: LlmExtractionFn?,
+    private val decisionEvaluator: DecisionEvaluator
 ) {
+    constructor(aiGateway: AiGateway?) : this(aiGateway, null, DEFAULT_DECISION_EVALUATOR)
+
+    internal constructor(aiGateway: AiGateway?, extractionFnOverride: LlmExtractionFn?) :
+        this(aiGateway, extractionFnOverride, DEFAULT_DECISION_EVALUATOR)
+
     companion object {
+        private val DEFAULT_DECISION_EVALUATOR: DecisionEvaluator = { fieldConfidenceMap, source, correlationId ->
+            ExtractionDecisionCoordinator.decide(fieldConfidenceMap, source, correlationId)
+        }
+
         internal suspend fun extractJobStandalone(
             rawText: String,
             sourceType: JobSourceType,
@@ -60,12 +76,18 @@ class JobExtractionOrchestrator(
             val extractionMethod: ExtractionMethod
             val llmResult: LlmJobExtractor.LlmFieldResult?
 
-            if (aiGateway != null) {
+            val extractionFn: LlmExtractionFn? = extractionFnOverride ?: aiGateway?.let { gateway ->
+                val fn: LlmExtractionFn = { document, progress, corr ->
+                    LlmJobExtractor(gateway).extract(document, progress, corr)
+                }
+                fn
+            }
+
+            if (extractionFn != null) {
                 extractionMethod = ExtractionMethod.LLM
                 onProgress("Extracting with AI...")
 
-                val extractor = LlmJobExtractor(aiGateway)
-                llmResult = extractor.extract(structuredDoc, onProgress, correlationId)
+                llmResult = extractionFn(structuredDoc, onProgress, correlationId)
 
                 onProgress("Validating extraction...")
 
@@ -88,7 +110,7 @@ class JobExtractionOrchestrator(
                     correlationId = correlationId
                 )
 
-                val decision = ExtractionDecisionCoordinator.decide(
+                val decision = decisionEvaluator(
                     confidenceResult.fieldConfidenceMap,
                     extractionMethod,
                     correlationId
@@ -97,17 +119,38 @@ class JobExtractionOrchestrator(
                 val durMs = System.currentTimeMillis() - startMs
                 when (decision) {
                     is ExtractionDecision.Accept -> {
-                        PipelineTrace.warn("JobExtractionOrchestrator", "LLM extraction accepted", correlationId)
+                        PipelineTrace.info("JobExtractionOrchestrator", "LLM extraction accepted", correlationId)
                     }
                     is ExtractionDecision.Retry -> {
-                        PipelineTrace.warn("JobExtractionOrchestrator", "Retry requested: ${decision.reason}", correlationId)
+                        PipelineTrace.error("JobExtractionOrchestrator", "Retry requested but unsupported by this pipeline: ${decision.reason}", correlationId = correlationId)
+                        PipelineTrace.exit("JobExtractionOrchestrator", durMs, mapOf(
+                            "status" to "REJECTED_RETRY_UNSUPPORTED",
+                            "reason" to decision.reason,
+                            "method" to extractionMethod,
+                            "correlationId" to correlationId
+                        ))
+                        return Result.success(
+                            ExtractionOutcome.Rejected(
+                                "RETRY_UNSUPPORTED: retry requested (${decision.reason}) but retries are not supported by this pipeline",
+                                correlationId
+                            )
+                        )
                     }
                     is ExtractionDecision.UserReview -> {
-                        val reviewFields = decision.fields.joinToString(", ") { "${it.fieldName}=${"%.2f".format(it.confidence.overallConfidence)}" }
+                        val reviewFields = decision.fields.joinToString(", ") { "${it.fieldName}=${it.confidence.overallConfidence?.let { v -> "%.2f".format(v) } ?: "unknown"}" }
                         PipelineTrace.warn("JobExtractionOrchestrator", "User review needed: ${decision.fields.size} fields [$reviewFields]", correlationId)
                     }
                     is ExtractionDecision.Failure -> {
                         PipelineTrace.error("JobExtractionOrchestrator", "Extraction failed: ${decision.reason}", correlationId = correlationId)
+                        PipelineTrace.exit("JobExtractionOrchestrator", durMs, mapOf(
+                            "status" to "REJECTED_EXTRACTION_DECISION_FAILURE",
+                            "reason" to decision.reason,
+                            "method" to extractionMethod,
+                            "correlationId" to correlationId
+                        ))
+                        return Result.success(
+                            ExtractionOutcome.Rejected("EXTRACTION_DECISION_FAILURE: ${decision.reason}", correlationId)
+                        )
                     }
                 }
 
@@ -116,8 +159,24 @@ class JobExtractionOrchestrator(
                 val description = llmResult.description ?: buildFallbackDescription(structuredDoc.blocks.joinToString("\n") { it.text })
 
                 val overallConf = confidenceResult.overallConfidence
+                if (overallConf == null) {
+                    PipelineTrace.exit("JobExtractionOrchestrator", durMs, mapOf(
+                        "status" to "REJECTED_CONFIDENCE_UNKNOWN",
+                        "method" to extractionMethod,
+                        "correlationId" to correlationId
+                    ))
+                    return Result.success(
+                        ExtractionOutcome.Rejected(
+                            "CONFIDENCE_UNKNOWN: no measured confidence evidence",
+                            correlationId
+                        )
+                    )
+                }
 
                 val result = buildJobExtractionResult(
+                    requiredSkills = llmResult.requiredSkills,
+                    preferredSkills = llmResult.preferredSkills,
+                    educationRequired = llmResult.educationRequired,
                     title = title,
                     company = company,
                     description = description,
@@ -144,9 +203,15 @@ class JobExtractionOrchestrator(
                 }
 
                 val p2Decision = p2Result.decision
+                val extractionReview = (decision as? ExtractionDecision.UserReview)?.fields ?: emptyList()
                 val outcome = when (p2Decision) {
-                    is ValidationDecision.Accept -> ExtractionOutcome.Accepted(result, p2Decision)
-                    is ValidationDecision.Degraded -> ExtractionOutcome.ReviewRequired(result, p2Decision)
+                    is ValidationDecision.Accept ->
+                        if (extractionReview.isEmpty()) {
+                            ExtractionOutcome.Accepted(result, p2Decision)
+                        } else {
+                            ExtractionOutcome.ReviewRequired(result, p2Decision, extractionReview)
+                        }
+                    is ValidationDecision.Degraded -> ExtractionOutcome.ReviewRequired(result, p2Decision, extractionReview)
                     is ValidationDecision.Reject -> ExtractionOutcome.Rejected(p2Decision.reason, correlationId)
                 }
 
@@ -195,10 +260,13 @@ class JobExtractionOrchestrator(
         }
     }
 
-    private fun buildJobExtractionResult(
+    internal fun buildJobExtractionResult(
         title: String?,
         company: String?,
         description: String,
+        requiredSkills: List<String>,
+        preferredSkills: List<String>,
+        educationRequired: String?,
         overallConfidence: Float,
         sourceType: JobSourceType,
         startMs: Long,
@@ -223,6 +291,9 @@ class JobExtractionOrchestrator(
             jobTitle = title,
             company = company,
             description = description,
+            requiredSkills = requiredSkills,
+            preferredSkills = preferredSkills,
+            educationRequired = educationRequired,
             confidenceScore = overallConfidence,
             confidenceBreakdown = confidenceBreakdown,
             gate0Result = Gate0JobResult(

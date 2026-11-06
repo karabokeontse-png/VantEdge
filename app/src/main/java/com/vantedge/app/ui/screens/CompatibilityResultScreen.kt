@@ -52,6 +52,7 @@ fun CompatibilityResultScreen(
     var selectedTab by remember { mutableStateOf(1) }
 
     val scoreColor = when {
+        !ScorePresentation.isAuthoritative(record) -> Color.Gray
         record.score >= 75 -> Color(0xFF4CAF50)
         record.score >= 50 -> CAmber
         else -> Color(0xFFE53935)
@@ -202,9 +203,10 @@ fun CompatibilityResultScreen(
 
 @Composable
 private fun ScoreHeader(record: CompatibilityRecord, color: Color) {
+    val complete = ScorePresentation.isAuthoritative(record)
 
     val sweep by animateFloatAsState(
-        targetValue = (record.score / 100f) * 270f,
+        targetValue = ScorePresentation.sweepDegrees(record),
         animationSpec = tween(1000),
         label = ""
     )
@@ -252,17 +254,25 @@ private fun ScoreHeader(record: CompatibilityRecord, color: Color) {
                 }
 
                 Text(
-                    text = "${record.score}%",
+                    text = ScorePresentation.scoreText(record),
                     color = color,
                     fontSize = 24.sp,
                     fontWeight = FontWeight.Bold
                 )
             }
 
+            if (!complete) {
+                Text(
+                    text = "Evaluation incomplete — score not authoritative",
+                    color = Color.Gray,
+                    fontSize = 12.sp
+                )
+            }
+
             Spacer(modifier = Modifier.height(10.dp))
 
             Text(
-                text = record.eligibilitySummary,
+                text = ScorePresentation.eligibilityBody(record),
                 color = Color.Gray,
                 fontSize = 12.sp
             )

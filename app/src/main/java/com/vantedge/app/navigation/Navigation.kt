@@ -40,6 +40,8 @@ import com.vantedge.app.data.viewmodel.OnboardingViewModelFactory
 import com.vantedge.app.data.domain.OnboardingCommitService
 import com.vantedge.app.data.domain.CompatibilityOrchestrator
 import com.vantedge.app.data.domain.OptimizationOrchestrator
+import com.vantedge.app.data.domain.GenerationOutcome
+import com.vantedge.app.data.domain.ProfileEligibility
 import com.vantedge.pipeline.contract.ContractValidator
 import com.vantedge.app.domain.extraction.JobExtractionOrchestrator
 import com.vantedge.app.ui.screens.ChoosePathScreen
@@ -70,7 +72,7 @@ private fun androidx.navigation.NavHostController.navigateOnboarding(route: Stri
     }
 }
 
-private fun canEnter(
+internal fun canEnter(
     stage: OnboardingStage,
     draft: OnboardingDraft
 ): Boolean {
@@ -81,11 +83,7 @@ private fun canEnter(
         OnboardingStage.Extracting -> true
         OnboardingStage.ReviewingExtraction -> draft.extraction != null
         OnboardingStage.EditingProfile -> draft.editedProfile != null
-        OnboardingStage.FinalReview ->
-            draft.editedProfile != null &&
-            draft.editedProfile.name.isNotBlank() &&
-            draft.editedProfile.email.isNotBlank() &&
-            draft.editedProfile.skills.isNotEmpty()
+        OnboardingStage.FinalReview -> ProfileEligibility.isEligible(draft.editedProfile)
         OnboardingStage.Completed -> true
     }
 }
@@ -217,9 +215,15 @@ fun AppNavigation(userPreferences: UserPreferences) {
     val isOnboarded = profile!!.name.isNotBlank()
     val startDestination = if (isOnboarded) "dashboard" else "onboarding_welcome"
 
-    LaunchedEffect(draft.stage) {
+    LaunchedEffect(draft.stage, draft.editedProfile) {
         if (!canEnter(draft.stage, draft)) {
-            onboardingViewModel.resetToChoosePath()
+            if (draft.stage is OnboardingStage.FinalReview) {
+                // Missing mandatory data: keep the user in the review workflow to
+                // correct it; never silently discard it by resetting to ChoosePath.
+                navController.navigateOnboarding("onboarding_review")
+            } else {
+                onboardingViewModel.resetToChoosePath()
+            }
             return@LaunchedEffect
         }
         when (draft.stage) {
@@ -444,13 +448,20 @@ fun AppNavigation(userPreferences: UserPreferences) {
         }
 
         composable("cv_design") {
+            val cvDesignCycle by cycleViewModel.currentCycleFlow.collectAsState()
+            val coverLetterAvailable = cvDesignCycle?.let {
+                GenerationOutcome.coverLetterAccessible(it)
+            } == true
             CVDesignScreen(
                 onDesignSelected = { designId ->
                     navController.navigate("cv_preview")
                 },
                 onNavigateBack = {
                     navController.popBackStack()
-                }
+                },
+                onOpenCoverLetterDesign = if (coverLetterAvailable) {
+                    { navController.navigate("cover_letter_design") }
+                } else null
             )
         }
 
@@ -463,6 +474,32 @@ fun AppNavigation(userPreferences: UserPreferences) {
             ) {
                 androidx.compose.material3.Text(
                     text = "Preview (stub)",
+                    style = androidx.compose.material3.MaterialTheme.typography.headlineMedium
+                )
+            }
+        }
+
+        composable("cover_letter_design") {
+            CVDesignScreen(
+                onDesignSelected = {
+                    navController.navigate("cover_letter_preview")
+                },
+                onNavigateBack = {
+                    navController.popBackStack()
+                },
+                title = "Choose Your Cover Letter Style"
+            )
+        }
+
+        composable("cover_letter_preview") {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color(0xFFF5F5F5)),
+                contentAlignment = androidx.compose.ui.Alignment.Center
+            ) {
+                androidx.compose.material3.Text(
+                    text = "Cover letter preview (stub)",
                     style = androidx.compose.material3.MaterialTheme.typography.headlineMedium
                 )
             }
@@ -552,6 +589,9 @@ fun AppNavigation(userPreferences: UserPreferences) {
                 },
                 onNavigateToDesign = {
                     navController.navigate("cv_design")
+                },
+                onNavigateToCoverLetterDesign = {
+                    navController.navigate("cover_letter_design")
                 }
             )
         }

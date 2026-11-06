@@ -46,6 +46,7 @@ fun DashboardScreen(
     val totalSaved = cycleViewModel.totalSavedApplications()
     val bestRole = cycleViewModel.bestScoringRole()
     val avgScore = cycleViewModel.averageScore()
+    val incompleteCount = cycleViewModel.incompleteScoreCount()
     val improved = cycleViewModel.improvedApplicationsCount()
 
     Scaffold(
@@ -113,6 +114,8 @@ fun DashboardScreen(
                                         else -> Color(0xFFE53935)
                                     }
                                 )
+                            } else {
+                                InsightStat("Avg Score", "—", Color.Gray)
                             }
 
                             if (improved > 0) {
@@ -123,6 +126,22 @@ fun DashboardScreen(
                         if (bestRole != null) {
                             Spacer(modifier = Modifier.height(12.dp))
                             Text("🏆 Best role: $bestRole", color = Color.Gray, fontSize = 12.sp)
+                        } else {
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text(
+                                "Best role unavailable — no complete evaluations",
+                                color = Color.Gray,
+                                fontSize = 12.sp
+                            )
+                        }
+
+                        if (incompleteCount > 0) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                "$incompleteCount incomplete evaluation${if (incompleteCount == 1) "" else "s"} excluded from score and ranking",
+                                color = Color.Gray,
+                                fontSize = 11.sp
+                            )
                         }
                     }
                 }

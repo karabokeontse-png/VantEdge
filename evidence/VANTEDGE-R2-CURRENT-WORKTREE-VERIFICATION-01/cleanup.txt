@@ -1,0 +1,14 @@
+=== authorized cleanup start ===
+2026-11-04T07:12:10Z
+=== before cleanup ===
+282M	app/build
+7.0K	.kotlin
+774K	.gradle/configuration-cache
+=== deleting only app/build .kotlin .gradle/configuration-cache ===
+=== after cleanup ===
+2026-11-04T07:12:27Z
+REMOVED app/build
+REMOVED .kotlin
+REMOVED .gradle/configuration-cache
+=== porcelain after cleanup ===
+343e73a969ff93556909c00d906c2e8bbf693697beabc92e9fafb81daf0893e0  -

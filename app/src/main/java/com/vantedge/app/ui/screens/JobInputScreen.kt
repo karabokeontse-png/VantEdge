@@ -26,12 +26,16 @@ import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.text.PDFTextStripper
 import com.vantedge.app.domain.extraction.ExtractionOutcome
 import com.vantedge.app.domain.extraction.JobExtractionOrchestrator
+import com.vantedge.app.data.model.JobExtractionResult
 import com.vantedge.app.data.model.JobSourceType
 import com.vantedge.app.data.model.GenerationMode
+import com.vantedge.app.data.model.GenerationRequest
 import com.vantedge.app.data.model.UserProfile
 import com.vantedge.app.data.viewmodel.CycleNavEvent
+import com.vantedge.app.data.viewmodel.ImproveHandoff
 import com.vantedge.app.data.viewmodel.UiState
 import com.vantedge.app.data.viewmodel.CycleViewModel
+import com.vantedge.app.ui.components.ExtractionReviewSurface
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.TimeoutCancellationException
@@ -51,9 +55,11 @@ fun JobInputScreen(
     extractionOrchestrator: JobExtractionOrchestrator,
     onNavigateBack: () -> Unit,
     onNavigateToResult: () -> Unit,
-    onNavigateToDesign: () -> Unit
+    onNavigateToDesign: () -> Unit,
+    onNavigateToCoverLetterDesign: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val pendingReview by viewModel.pendingExtractionReview.collectAsState()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
@@ -68,6 +74,7 @@ fun JobInputScreen(
     var urlInput by remember { mutableStateOf("") }
     var showUrlInput by remember { mutableStateOf(false) }
     var isExtracting by remember { mutableStateOf(false) }
+    var extractionError by remember { mutableStateOf<String?>(null) }
 
     val isLoading = uiState is UiState.Loading
 
@@ -86,46 +93,78 @@ fun JobInputScreen(
                 }
                 is CycleNavEvent.ToDesignPicker -> onNavigateToDesign()
                 is CycleNavEvent.GenerationPartial -> {
+                    // Feedback only: never navigates to the design screen.
                     snackbar.showSnackbar(event.reason)
-                    onNavigateToDesign()
                 }
                 is CycleNavEvent.GenerationFailed -> {
                     snackbar.showSnackbar(event.reason)
                 }
+                is CycleNavEvent.ToCoverLetterDesign -> onNavigateToCoverLetterDesign()
                 else -> {}
             }
         }
     }
 
+    // Historical-Improve handoff: claim the pending handoff for this destination
+    // instance and retain the complete record (handoffId + operationId). Ownership
+    // is taken from the claimed record, never inferred from the route name or the
+    // current operation token.
+    val claimedHandoff = remember { mutableStateOf<ImproveHandoff?>(null) }
+    DisposableEffect(Unit) {
+        claimedHandoff.value = viewModel.claimImproveHandoff()
+        onDispose {
+            // Release only the matching active owner for this destination instance.
+            viewModel.releaseImproveSession(claimedHandoff.value)
+        }
+    }
+    LaunchedEffect(claimedHandoff.value?.handoffId, claimedHandoff.value?.operationId) {
+        val handoff = claimedHandoff.value ?: return@LaunchedEffect
+        viewModel.generationFeedback.collect { feedback ->
+            if (feedback != null &&
+                feedback.handoffId == handoff.handoffId &&
+                feedback.operationId == handoff.operationId
+            ) {
+                snackbar.showSnackbar(feedback.message)
+                viewModel.acknowledgeGenerationFeedback(handoff, feedback.feedbackId)
+            }
+        }
+    }
+
+    fun fillFromExtraction(extraction: JobExtractionResult) {
+        if (extraction.jobTitle != null) jobTitle = extraction.jobTitle
+        if (extraction.company != null) company = extraction.company
+        jobDescription = extraction.description
+        viewModel.savedRequiredSkills = extraction.requiredSkills
+        viewModel.savedPreferredSkills = extraction.preferredSkills
+        viewModel.savedEducationRequired = extraction.educationRequired
+    }
+
     fun extractAndFill(rawText: String) {
         isExtracting = true
+        extractionError = null
         scope.launch(Dispatchers.IO) {
             val result = extractionOrchestrator.extractJob(rawText, JobSourceType.USER_INPUT)
-            result.onSuccess { outcome ->
-                val extraction = when (outcome) {
-                    is ExtractionOutcome.Accepted -> outcome.result
-                    is ExtractionOutcome.ReviewRequired -> outcome.result
-                    is ExtractionOutcome.EmergencyFallback -> outcome.result
-                    is ExtractionOutcome.Rejected -> null
-                }
-                scope.launch(Dispatchers.Main) {
-                    if (extraction != null) {
-                        if (extraction.jobTitle != null) jobTitle = extraction.jobTitle
-                        if (extraction.company != null) company = extraction.company
-                        jobDescription = extraction.description
-                        viewModel.savedRequiredSkills = extraction.requiredSkills
-                        viewModel.savedPreferredSkills = extraction.preferredSkills
-                        viewModel.savedEducationRequired = extraction.educationRequired
-                    } else {
-                        jobDescription = rawText.take(3000)
+            withContext(Dispatchers.Main) {
+                result.onSuccess { outcome ->
+                    viewModel.presentExtractionOutcome(outcome)
+                    when (outcome) {
+                        is ExtractionOutcome.Accepted -> fillFromExtraction(outcome.result)
+                        is ExtractionOutcome.ReviewRequired -> fillFromExtraction(outcome.result)
+                        is ExtractionOutcome.EmergencyFallback -> fillFromExtraction(outcome.result)
+                        is ExtractionOutcome.Rejected -> {
+                            viewModel.savedRequiredSkills = emptyList()
+                            viewModel.savedPreferredSkills = emptyList()
+                            viewModel.savedEducationRequired = null
+                            extractionError = "Extraction rejected: ${outcome.reason}"
+                            jobDescription = rawText.take(3000)
+                        }
                     }
-                    isExtracting = false
-                }
-            }.onFailure {
-                scope.launch(Dispatchers.Main) {
+                }.onFailure { error ->
+                    viewModel.clearExtractionReview()
+                    extractionError = error.message ?: "Extraction failed"
                     jobDescription = rawText.take(3000)
-                    isExtracting = false
                 }
+                isExtracting = false
             }
         }
     }
@@ -269,10 +308,35 @@ fun JobInputScreen(
                 fontSize = 13.sp
             )
 
+            extractionError?.let { message ->
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF3A1A1A))
+                ) {
+                    Text(
+                        text = "Extraction failed: $message",
+                        color = Color(0xFFFFCDD2),
+                        fontSize = 12.sp,
+                        modifier = Modifier.padding(12.dp)
+                    )
+                }
+            }
+
+            pendingReview?.let { review ->
+                ExtractionReviewSurface(
+                    review = review,
+                    onConfirm = { corrected ->
+                        fillFromExtraction(corrected)
+                        viewModel.acknowledgeExtractionReview(corrected)
+                    }
+                )
+            }
+
             OutlinedTextField(
                 value = jobTitle,
                 onValueChange = { jobTitle = it },
                 label = { Text("Job Title") },
+                enabled = pendingReview == null,
                 modifier = Modifier.fillMaxWidth(),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedTextColor = Color.White,
@@ -288,6 +352,7 @@ fun JobInputScreen(
                 value = company,
                 onValueChange = { company = it },
                 label = { Text("Company") },
+                enabled = pendingReview == null,
                 modifier = Modifier.fillMaxWidth(),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedTextColor = Color.White,
@@ -307,7 +372,7 @@ fun JobInputScreen(
                     .fillMaxWidth()
                     .height(180.dp),
                 maxLines = Int.MAX_VALUE,
-                enabled = !isExtracting,
+                enabled = !isExtracting && pendingReview == null,
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedTextColor = Color.White,
                     unfocusedTextColor = Color.White,
@@ -387,8 +452,12 @@ fun JobInputScreen(
                 }
             }
 
-            Button(
-                onClick = {
+            val canGenerate = !isLoading && !isExtracting && pendingReview == null
+                    && jobTitle.isNotBlank()
+                    && company.isNotBlank()
+                    && jobDescription.isNotBlank()
+            val generate: (GenerationRequest) -> Unit = { request ->
+                if (pendingReview == null) {
                     viewModel.runAnalysis(
                         profile = profile,
                         jobTitle = jobTitle,
@@ -398,22 +467,50 @@ fun JobInputScreen(
                         improvementContext = viewModel.improvementContext,
                         requiredSkills = viewModel.savedRequiredSkills,
                         preferredSkills = viewModel.savedPreferredSkills,
-                        educationRequired = viewModel.savedEducationRequired
+                        educationRequired = viewModel.savedEducationRequired,
+                        request = request
                     )
-                },
-                enabled = !isLoading && !isExtracting
-                        && jobTitle.isNotBlank()
-                        && company.isNotBlank()
-                        && jobDescription.isNotBlank(),
-                modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = teal,
-                    contentColor = Color.Black,
-                    disabledContainerColor = teal.copy(alpha = 0.4f),
-                    disabledContentColor = Color.Black
-                )
-            ) {
-                Text(buttonLabel, fontWeight = FontWeight.Bold)
+                }
+            }
+            val genButtonColors = ButtonDefaults.buttonColors(
+                containerColor = teal,
+                contentColor = Color.Black,
+                disabledContainerColor = teal.copy(alpha = 0.4f),
+                disabledContentColor = Color.Black
+            )
+            if (mode == GenerationMode.QUICK_GENERATE) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Button(
+                        onClick = { generate(GenerationRequest.COVER_LETTER_ONLY) },
+                        enabled = canGenerate,
+                        modifier = Modifier.weight(1f),
+                        colors = genButtonColors
+                    ) { Text("Cover Letter", fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+                    Button(
+                        onClick = { generate(GenerationRequest.BOTH) },
+                        enabled = canGenerate,
+                        modifier = Modifier.weight(1f),
+                        colors = genButtonColors
+                    ) { Text("CV & Letter", fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+                    Button(
+                        onClick = { generate(GenerationRequest.CV_ONLY) },
+                        enabled = canGenerate,
+                        modifier = Modifier.weight(1f),
+                        colors = genButtonColors
+                    ) { Text("CV", fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+                }
+            } else {
+                Button(
+                    onClick = { generate(GenerationRequest.BOTH) },
+                    enabled = canGenerate,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = genButtonColors
+                ) {
+                    Text(buttonLabel, fontWeight = FontWeight.Bold)
+                }
             }
         }
     }

@@ -18,22 +18,50 @@ class W5ScoreEngine(private val assets: ValidationAssets) {
         val experienceAlignment = AxisEvaluators.experienceAlignment(profile, job)
         val roleRelevance = AxisEvaluators.roleRelevance(profile, job, assets)
         val keywordCoverage = AxisEvaluators.keywordCoverage(profile, job, assets)
-        val seniorityFit = AxisEvaluators.seniorityFit(profile, job)
+        val seniorityFit = AxisEvaluators.seniorityFitMeasured(profile, job)
         val structuralCompleteness = AxisEvaluators.structuralCompleteness(profile, job)
         val constraintCompliance = AxisEvaluators.constraintCompliance(profile, job)
 
         val axisScores = listOf(
-            AxisScore("SkillMatch", skillMatch),
-            AxisScore("ExperienceAlignment", experienceAlignment),
-            AxisScore("RoleRelevance", roleRelevance),
-            AxisScore("KeywordCoverage", keywordCoverage),
-            AxisScore("SeniorityFit", seniorityFit),
-            AxisScore("StructuralCompleteness", structuralCompleteness),
-            AxisScore("ConstraintCompliance", constraintCompliance)
+            AxisScore(
+                "SkillMatch",
+                skillMatch,
+                profile.skills.isNotEmpty() && job.requiredSkills.isNotEmpty()
+            ),
+            AxisScore("ExperienceAlignment", experienceAlignment ?: 0.0, experienceAlignment != null),
+            AxisScore(
+                "RoleRelevance",
+                roleRelevance,
+                (profile.roles.isNotEmpty() || !profile.currentTitle.isNullOrBlank()) &&
+                    job.title.isNotBlank()
+            ),
+            AxisScore("KeywordCoverage", keywordCoverage ?: 0.0, keywordCoverage != null),
+            AxisScore("SeniorityFit", seniorityFit ?: 0.0, seniorityFit != null),
+            AxisScore("StructuralCompleteness", structuralCompleteness, true),
+            AxisScore("ConstraintCompliance", constraintCompliance, true)
         )
+
+        val unknownAxes = axisScores.filterNot { it.isMeasured }.map { it.axisName }
 
         val totalScore = axisScores.sumOf { axis ->
             axis.score * AxisWeights.get(axis.axisName)
+        }
+
+        val evidenceAxes = setOf(
+            "SkillMatch",
+            "ExperienceAlignment",
+            "RoleRelevance",
+            "KeywordCoverage",
+            "SeniorityFit"
+        )
+        val measuredAxes = axisScores.filter { it.isMeasured }
+        val hasMeasuredEvidenceAxis = measuredAxes.any { it.axisName in evidenceAxes }
+        val measuredWeight = measuredAxes.sumOf { AxisWeights.get(it.axisName) }
+        val provisionalTotalScore = when {
+            !hasMeasuredEvidenceAxis || measuredWeight <= 1e-9 -> null
+            unknownAxes.isEmpty() -> totalScore
+            else -> (measuredAxes.sumOf { it.score * AxisWeights.get(it.axisName) } / measuredWeight)
+                .coerceIn(0.0, 1.0)
         }
 
         val profileCompleteness = profile.completedFields.intersect(RequiredProfileFields.fields).size.toDouble() / RequiredProfileFields.fields.size
@@ -81,8 +109,10 @@ class W5ScoreEngine(private val assets: ValidationAssets) {
                 "totalScore" to totalScore,
                 "confidence" to confidence,
                 "skillMatch" to skillMatch,
-                "experienceAlignment" to experienceAlignment,
+                "experienceAlignment" to (experienceAlignment ?: "unknown"),
                 "constraintCompliance" to constraintCompliance,
+                "unknownAxes" to unknownAxes.joinToString(","),
+                "provisionalTotalScore" to (provisionalTotalScore ?: "unknown"),
                 "missingCount" to gapAnalysis.missing.size,
                 "weakCount" to gapAnalysis.weak.size,
                 "matchedCount" to gapAnalysis.matched.size
@@ -104,7 +134,9 @@ class W5ScoreEngine(private val assets: ValidationAssets) {
             breakdown = breakdown,
             gapAnalysis = gapAnalysis,
             hints = hints,
-            trace = trace
+            trace = trace,
+            unknownAxes = unknownAxes,
+            provisionalTotalScore = provisionalTotalScore
         )
     }
 }

@@ -1,0 +1,43 @@
+ROUTE 1 — LOCAL NARROW VERIFICATION ON CURRENT WORKTREE (NOT RUN IN THIS AUDIT)
+Prerequisite: explicit verification-only authorization permitting Gradle build/cache writes; no source/repo edits.
+
+# Recommended clean state for the run (authorization required):
+rm -rf app/build .kotlin .gradle/configuration-cache
+
+# Narrow B1/AC6 + AC7/AC8 command:
+/root/tools/gradle-9.6.1/bin/gradle :app:testDebugUnitTest \
+  --offline \
+  --no-daemon \
+  --no-configuration-cache \
+  -Pandroid.aapt2FromMavenOverride=/opt/box64/wrap/aapt2 \
+  -I /tmp/r2cuei/init.gradle \
+  --tests "com.vantedge.app.w5.scoring.RequirementCoverageTest" \
+  --tests "com.vantedge.app.w5.scoring.ProvisionalScoreTest" \
+  --tests "com.vantedge.app.w5.scoring.CorrectiveUnknownStateTest"
+
+Why the init script: it injects google()/mavenCentral()/gradlePluginPortal() and dependency repositories without editing settings.gradle. The prior corrective used this route successfully; without it, the same plugin-resolution failure occurs.
+
+ROUTE 2 — GITHUB ACTIONS VIA TEMPORARY COMMIT/BRANCH/PR (NOT RUN; REQUIRES COMMIT/PUSH/PR AUTHORIZATION)
+Candidate commit paths (8; includes current micro-patch):
+  app/src/main/java/com/vantedge/app/data/domain/CompatibilityRecordMapper.kt
+  app/src/main/java/com/vantedge/app/w5/scoring/W5Types.kt
+  app/src/test/java/com/vantedge/app/data/storage/CompatibilityRecordLegacyJsonTest.kt
+  app/src/test/java/com/vantedge/app/data/viewmodel/CycleScoreAggregationTest.kt
+  app/src/test/java/com/vantedge/app/w5/scoring/ProvisionalScoreTest.kt
+  app/src/test/java/com/vantedge/app/w5/scoring/RequirementCoverageTest.kt
+  app/src/test/java/com/vantedge/app/w5/scoring/W5ScoreEngineTest.kt
+  app/src/test/java/com/vantedge/pipeline/validation/P2VerificationHarnessTest.kt
+
+Do NOT stage: settings.gradle, gradle.properties, any other worktree path.
+A commit that excludes settings.gradle uses HEAD blob e0c45838719eb70a1aad67ff7544536157dcd1b3 (correct pluginManagement/dependencyResolutionManagement/rootProject.name).
+Open a PR to develop or main to trigger full-ci.yml and w5-tests.yml. Both strip android.aapt2FromMavenOverride. ci.yml does not strip it and is not the preferred workflow.
+
+ROUTE 3 — ISOLATED COPY/WORKTREE (NOT RUN)
+- Existing /tmp/r2-verify is at HEAD ed83a02c5b14e3d5b116c00fd3621b66d0a4c14c and is stale.
+- Existing /tmp/ckpt is a non-git copy dated 2026-10-16 and is stale.
+- A fresh copy from current worktree or HEAD + 8-path diff could be used, but creating it and running Gradle requires authorization; git worktree would mutate .git metadata.
+
+ROUTE 4 — RESTORE settings.gradle IN WORKTREE (NOT RECOMMENDED)
+- Modifies a protected file and contaminates the preserved dirty worktree.
+- Requires explicit authorization and a reliable restore step.
+- Not necessary because Route 1 avoids settings.gradle entirely and Route 2 uses HEAD's correct settings.gradle.

@@ -1,0 +1,132 @@
+--- a/app/src/main/java/com/vantedge/app/data/domain/CompatibilityRecordMapper.kt
++++ b/app/src/main/java/com/vantedge/app/data/domain/CompatibilityRecordMapper.kt
+@@ -219,6 +219,9 @@
+             gaps = gaps,
+             criticalGapCount = criticalGapCount,
+             analysisSource = CompatibilityAnalysisSource.DETERMINISTIC_W5,
++            // preferredReconstructable is informational: false means preferred requirements could not be
++            // reconstructed from the fallback source, not that the full inventory was reconstructed.
++            // Preferred requirements are non-blocking; required unassessed/unreconciled items still block this gate.
+             evaluationComplete = scoreResult.isComplete && qualificationsAssessed && !blockingUnassessed,
+             provisionalScore = provisionalScore,
+             provisionalVacancyScore = provisionalVacancyScore,
+@@ -293,11 +296,18 @@
+                 it.classificationStatus.name
+             )
+         }
++        val requiredQualificationKeys = validatedJob.requiredQualifications
++            .map { it.category to it.originalText }
++            .toSet()
++        val assessmentSource = distinctSource.filter { evidence ->
++            evidence.category !in qualificationCategories ||
++                (evidence.category to evidence.originalText) in requiredQualificationKeys
++        }
+         val matchedSkills = gapAnalysis.matched.map { it.name }.toSet()
+         val weakSkills = gapAnalysis.weak.toSet()
+         val missingSkills = gapAnalysis.missing.toSet()
+ 
+-        return distinctSource.map { evidence ->
++        val assessments = assessmentSource.map { evidence ->
+             when {
+                 evidence.category == RequirementCategory.SKILL ->
+                     assessSkill(
+@@ -320,6 +330,22 @@
+                     unassessed(evidence, UnassessedReason.UNSUPPORTED_CATEGORY)
+             }
+         }
++        val qualificationCategoryNames = qualificationCategories.map { it.name }.toSet()
++        val assessedQualificationKeys = assessments
++            .filter { it.category in qualificationCategoryNames }
++            .map { it.category to it.text }
++            .toSet()
++        val reconciledQualifications = validatedJob.requiredQualifications
++            .filter { (it.category.name to it.originalText) !in assessedQualificationKeys }
++            .map { qualification ->
++                assessQualification(
++                    qualification,
++                    matchedQualifications,
++                    missingQualifications,
++                    qualificationsAssessed
++                )
++            }
++        return assessments + reconciledQualifications
+     }
+ 
+     private fun hasProfileEvidence(
+--- a/app/src/test/java/com/vantedge/app/w5/scoring/RequirementCoverageTest.kt
++++ b/app/src/test/java/com/vantedge/app/w5/scoring/RequirementCoverageTest.kt
+@@ -387,7 +387,10 @@
+     fun `inventory order is preserved`() {
+         val mapped = map(
+             profile(),
+-            job(requiredSkills = listOf("Kotlin")),
++            job(
++                requiredSkills = listOf("Kotlin"),
++                qualifications = listOf(degree("Bachelor of Science"))
++            ),
+             listOf(skill("Kubernetes"), skill("Kotlin"), degree("Bachelor of Science"))
+         )
+ 
+@@ -409,19 +412,56 @@
+         val assessments = mapped.record.requirementAssessments!!
+         assertEquals(listOf("Kotlin"), assessments.map { it.text })
+         assertTrue(assessments.none { it.importance == "PREFERRED" })
++        assertTrue(mapped.record.evaluationComplete!!)
++    }
++
++    @Test
++    fun `job required qualification with matching profile evidence is matched`() {
++        val mapped = map(
++            profile(qualifications = listOf(degree("Bachelor of Science"))),
++            job(
++                requiredSkills = listOf("Kotlin"),
++                qualifications = listOf(degree("Bachelor of Science"))
++            ),
++            listOf(skill("Kotlin"))
++        )
++
++        val assessment = mapped.record.requirementAssessments!!
++            .first { it.text == "Bachelor of Science" }
++        assertEquals(RequirementAssessmentState.MATCHED, assessment.state)
++        assertTrue(mapped.record.evaluationComplete!!)
+     }
+ 
+     @Test
+-    fun `unreconciled qualification inventory is not mislabeled as absent profile evidence`() {
++    fun `profile qualification not required by the job is not unreconciled and does not block completeness`() {
+         val mapped = map(
+             profile(qualifications = listOf(degree("Bachelor of Science"))),
+-            job(qualifications = emptyList()),
+-            listOf(degree("Bachelor of Science"), degree("Master of Science"))
++            job(requiredSkills = listOf("Kotlin"), qualifications = emptyList()),
++            listOf(skill("Kotlin"), degree("Bachelor of Science"))
+         )
+ 
+         val assessments = mapped.record.requirementAssessments!!
+-        assertEquals(2, assessments.size)
+-        assertTrue(assessments.all { it.state == RequirementAssessmentState.UNASSESSED })
+-        assertTrue(assessments.all { it.reason == "UNRECONCILED" })
++        assertTrue(assessments.none { it.text == "Bachelor of Science" })
++        assertTrue(assessments.none { it.reason == "UNRECONCILED" })
++        assertTrue(mapped.record.gaps.none { it.skill.startsWith("DEGREE:") })
++        assertTrue(mapped.record.evaluationComplete!!)
++    }
++
++    @Test
++    fun `missing job required qualification is reconciled and blocks false completeness`() {
++        val mapped = map(
++            profile(qualifications = emptyList()),
++            job(
++                requiredSkills = listOf("Kotlin"),
++                qualifications = listOf(degree("Bachelor of Science"))
++            ),
++            listOf(skill("Kotlin"))
++        )
++
++        val assessment = mapped.record.requirementAssessments!!
++            .first { it.text == "Bachelor of Science" }
++        assertEquals(RequirementAssessmentState.UNASSESSED, assessment.state)
++        assertEquals("PROFILE_QUALIFICATION_EVIDENCE_ABSENT", assessment.reason)
++        assertFalse(mapped.record.evaluationComplete!!)
+     }
+ }

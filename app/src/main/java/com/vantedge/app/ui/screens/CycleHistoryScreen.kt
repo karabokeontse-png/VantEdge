@@ -18,6 +18,7 @@ import androidx.compose.ui.unit.sp
 import com.vantedge.app.data.model.CompatibilityRecord
 import com.vantedge.app.data.model.GenerationCycle
 import com.vantedge.app.data.viewmodel.CycleViewModel
+import com.vantedge.app.ui.screens.ScorePresentation
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -71,16 +72,22 @@ fun CycleHistoryScreen(
                 items(cycles, key = { it.id }) { cycle ->
 
                     val compatibility = cycle.compatibility
+                    val complete = compatibility?.evaluationComplete == true
 
-                    val score = compatibility?.score ?: 0
+                    val score = compatibility?.score
                     val scoreColor = when {
+                        !complete || score == null -> Color.Gray
                         score >= 75 -> Color(0xFF4CAF50)
                         score >= 50 -> CHAmber
                         else -> Color(0xFFE53935)
                     }
 
                     val previousScore = viewModel.getPreviousScore(cycle)
-                    val delta = if (previousScore != null) score - previousScore else null
+                    val delta = if (complete && score != null && previousScore != null) {
+                        score - previousScore
+                    } else {
+                        null
+                    }
 
                     val date = SimpleDateFormat("dd MMM yyyy", Locale.getDefault())
                         .format(Date(cycle.createdAt))
@@ -115,7 +122,7 @@ fun CycleHistoryScreen(
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Text(
-                                        "Score: $score%",
+                                        ScorePresentation.historyScoreText(compatibility),
                                         color = scoreColor,
                                         fontSize = 12.sp,
                                         fontWeight = FontWeight.Bold

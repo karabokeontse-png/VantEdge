@@ -45,6 +45,7 @@ import com.vantedge.app.data.engine.CVTemplate
 import com.vantedge.app.data.model.CompatibilityRecord
 import com.vantedge.app.data.model.GapItem
 import com.vantedge.app.data.model.GenerationCycle
+import com.vantedge.app.data.model.RequirementAssessment
 import com.vantedge.app.data.viewmodel.CycleViewModel
 import kotlinx.coroutines.launch
 import java.io.File
@@ -89,20 +90,17 @@ fun ResultScreen(
     val context = LocalContext.current
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
     val currentDocContent = if (selectedTab == 0) cvContent else coverLetterContent
+    val complete = compatibility?.evaluationComplete == true
     val score = compatibility?.score ?: 0
     val scoreColor = when {
+        !complete -> Color.Gray
         score >= 75 -> Color(0xFF4CAF50)
         score >= 50 -> RAmber
         else -> Color(0xFFE53935)
     }
-    val scoreLabel = when {
-        score >= 80 -> "Strong match"
-        score >= 60 -> "Decent match"
-        score >= 40 -> "Partial match"
-        else -> "Weak match"
-    }
+    val scoreLabel = compatibility?.let { ScorePresentation.scoreLabel(it) } ?: "—"
     val previousScore = viewModel.getPreviousScore(cycle)
-    val delta = if (previousScore != null) score - previousScore else null
+    val delta = if (complete && previousScore != null) score - previousScore else null
 
     fun savePdf(label: String) {
         val webView = webViewRef ?: run {
@@ -391,7 +389,11 @@ fun ResultScreen(
                 Surface(color = RCard, tonalElevation = 4.dp) {
                     Button(
                         onClick = {
-                            viewModel.startImproveFromCycle(cycle)
+                            // A fresh handoff per click; the persistent GenerationCycle.id is
+                            // not a handoff identity.
+                            val improveHandoffId = java.util.UUID.randomUUID().toString()
+                            viewModel.registerImproveHandoff(improveHandoffId)
+                            viewModel.startImproveFromCycle(cycle, improveHandoffId)
                             // FIX: was navigate("loading") — "loading" does not exist in NavHost.
                             // "new_application" is the correct destination: startImproveFromCycle
                             // pre-loads the job context into CycleViewModel, then JobInputScreen
@@ -438,8 +440,9 @@ private fun AnalysisTab(
     scoreLabel: String,
     delta: Int?
 ) {
+    val complete = ScorePresentation.isAuthoritative(compatibility)
     val sweep by animateFloatAsState(
-        targetValue = (compatibility.score / 100f) * 270f,
+        targetValue = ScorePresentation.sweepDegrees(compatibility),
         animationSpec = tween(1000),
         label = ""
     )
@@ -483,7 +486,7 @@ private fun AnalysisTab(
                         )
                     }
                     Text(
-                        "${compatibility.score}%",
+                        ScorePresentation.scoreText(compatibility),
                         color = scoreColor,
                         fontSize = 26.sp,
                         fontWeight = FontWeight.Bold
@@ -535,13 +538,47 @@ private fun AnalysisTab(
             }
         }
         // ── How you fit ───────────────────────────────────────────────
-        if (compatibility.eligibilitySummary.isNotBlank()) {
+        if (compatibility.eligibilitySummary.isNotBlank() || !complete) {
             item {
                 AnalysisSectionCard(
-                    heading = "How you fit",
-                    body = compatibility.eligibilitySummary
+                    heading = ScorePresentation.eligibilityHeading(compatibility),
+                    body = ScorePresentation.eligibilityBody(compatibility)
                 )
                 Spacer(modifier = Modifier.height(12.dp))
+            }
+        }
+        // ── Unassessed requirements ───────────────────────────────────
+        val coverageKnown = ScorePresentation.hasRecordedCoverage(compatibility)
+        val unassessed = ScorePresentation.unassessedRequirements(compatibility)
+        if (!coverageKnown) {
+            item {
+                AnalysisSectionCard(
+                    heading = "Coverage not recorded",
+                    body = "This saved analysis predates structured requirement coverage. " +
+                        "Unassessed requirements cannot be reconstructed for it."
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+            }
+        } else if (unassessed.isNotEmpty()) {
+            item {
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    "Not assessed (${unassessed.size})",
+                    color = RAmber,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 12.sp,
+                    modifier = Modifier.padding(start = 16.dp, bottom = 4.dp)
+                )
+                Text(
+                    "These requirements could not be assessed from your profile. " +
+                        "They are neither matches nor confirmed gaps.",
+                    color = Color.Gray,
+                    fontSize = 11.sp,
+                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 4.dp)
+                )
+            }
+            items(unassessed) { item ->
+                UnassessedCard(item)
             }
         }
         // ── Advanced toggle ───────────────────────────────────────────
@@ -869,6 +906,33 @@ private fun RelevancyCard(
         }
     }
 }
+@Composable
+private fun UnassessedCard(item: RequirementAssessment) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+        color = RCard,
+        shape = RoundedCornerShape(8.dp),
+        border = BorderStroke(1.dp, RAmber.copy(alpha = 0.35f))
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Text(
+                item.text,
+                color = ROnBg,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                ScorePresentation.unassessedReasonLabel(item.reason),
+                color = RAmber,
+                fontSize = 11.sp
+            )
+        }
+    }
+}
+
 /* ============================================================
    APPEND-ONLY EXTENSION BLOCK (SAFE - NO EXISTING MODIFICATION)
    ============================================================ */

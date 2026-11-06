@@ -30,5 +30,6 @@ data class RequirementEvidence(
     val originalText: String,
     val category: RequirementCategory,
     val classificationStatus: ClassificationStatus,
-    val matchedTaxonomySkill: String? = null
+    val matchedTaxonomySkill: String? = null,
+    val importance: String? = null
 )

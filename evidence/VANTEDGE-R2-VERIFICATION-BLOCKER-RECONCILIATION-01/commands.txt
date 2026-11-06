@@ -1,0 +1,63 @@
+Key read-only commands executed during this audit (all from /root/vantedge-canonical unless noted):
+
+1. git rev-parse --abbrev-ref HEAD
+   exit 0; output: verification/ced-p0-authority
+
+2. git rev-parse HEAD; git rev-parse HEAD^{tree}; git rev-parse HEAD^
+   exit 0; outputs: 06bb4ac287973dd3ca6bdab1eeb85714b4cb97c2; b6aa1d9cafb13154344274da187303076f338901; 3f23859c9d38828b1da673429c11d885b0b0219c
+
+3. git status --porcelain=v1
+   exit 0; 40 M, 1 D, 33 ??; 0 staged; sha256 343e73a969ff93556909c00d906c2e8bbf693697beabc92e9fafb81daf0893e0
+
+4. git diff --cached --name-only
+   exit 0; empty output (0 staged)
+
+5. git show HEAD:settings.gradle
+   exit 0; HEAD settings contains pluginManagement(google/mavenCentral/gradlePluginPortal), dependencyResolutionManagement(google/mavenCentral), rootProject.name="VantEdge", include ':app'
+
+6. git diff -- settings.gradle
+   exit 0; worktree removes all 17 non-include lines; only include ':app' remains
+
+7. git show HEAD:app/src/main/java/com/vantedge/app/w5/scoring/W5Types.kt | grep -n UNRECONCILED
+   exit 1; no matches (UNRECONCILED absent at HEAD)
+
+8. git grep -n 'UNRECONCILED' -- ':!evidence'
+   exit 0; references in Mapper:418, Mapper:472, W5Types:104, CompatibilityRecordLegacyJsonTest:172/184, RequirementCoverageTest:292/445, P2VerificationHarnessTest:753
+
+9. git grep -n 'UNRECONCILED' HEAD -- ':!evidence'
+   exit 1; no matches (absent from HEAD)
+
+10. git log --all --oneline -S'UNRECONCILED' -- app/src/main/java/com/vantedge/app/w5/scoring/W5Types.kt
+    exit 0; empty output (no commit contains the declaration)
+
+11. git diff -- app/src/main/java/com/vantedge/app/w5/scoring/W5Types.kt
+    exit 0; adds UNRECONCILED after PREFERENCE_NOT_ASSESSED at line 104
+
+12. git show HEAD:app/src/main/java/com/vantedge/app/data/domain/CompatibilityRecordMapper.kt | grep -nE 'fun buildRequirementAssessments|fun assessSkill|fun assessQualification|return source.map|UnassessedReason\.'
+    exit 0; HEAD anchors: 270, 287, 308, 358; no UNRECONCILED
+
+13. grep -nE 'fun buildRequirementAssessments|fun assessSkill|fun assessQualification|return assessments|UnassessedReason\.' app/src/main/java/com/vantedge/app/data/domain/CompatibilityRecordMapper.kt
+    exit 0; worktree anchors: 276, 348, 359, 426, 418, 472
+
+14. find ~/.gradle/caches/modules-2/files-2.1/... -maxdepth 2 -type f
+    exit 0; required plugin markers and AGP/Kotlin artifacts present, including com.android.application 9.3.1 marker and com.android.tools.build:gradle:9.3.1 jar
+
+15. find ~/.gradle/caches/modules-2/metadata-2.107/descriptors/... -mindepth 1 -maxdepth 1 -type d
+    exit 0; AGP/marker descriptors under repo hash d4e342018b23d58be902a60e67105aa1 (same as androidx.core/Google Maven); Kotlin markers under 26c913274550a0b2221f47a0fe2d2358 (same as kotlin-stdlib/Maven Central)
+
+16. grep -nE '^name:|^on:|workflow_dispatch|push:|pull_request:|branches:|paths:|run: ./gradlew|--tests|testDebugUnitTest|compileDebugUnitTestKotlin|sed -i' .github/workflows/*.yml
+    exit 0; triggers/tasks captured in workflows.txt
+
+17. /root/tools/gradle-9.6.1/bin/gradle --version
+    exit 0; Gradle 9.6.1, Kotlin 2.3.21, JVM 17.0.20.1
+
+18. git diff --check -- <4 corrective paths>
+    exit 0; no whitespace errors
+
+19. git show HEAD:<path> | sha256sum; sha256sum <path>
+    exit 0; HEAD/worktree hashes captured in head-vs-worktree-hashes.txt
+
+20. cat evidence/VANTEDGE-R2-FINAL-CORRECTIVE-MICRO-PATCH-01/local-test-attempt.log
+    exit 0 (reading prior log); prior log records exit code 1 from the failed micro-patch local test attempt: Plugin [id: 'com.android.application', version: '9.3.1', apply: false] was not found; searched only Gradle Central Plugin Repository
+
+No Gradle test/build command was executed during this audit. No source, workflow, settings, staging, commit, or branch mutation was performed. The only repository writes are the required report and evidence artifacts under evidence/VANTEDGE-R2-VERIFICATION-BLOCKER-RECONCILIATION-01/. A delivery copy was written outside the repository to the project's evidence/put here!/ folder.

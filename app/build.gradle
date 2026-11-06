@@ -25,6 +25,7 @@ android {
         targetSdk 34
         versionCode 1
         versionName "1.0"
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         
         // Safely extract the token or default to an empty string if missing
         def apiKey = properties.getProperty('OPENROUTER_API_KEY', '""')
@@ -121,4 +122,8 @@ dependencies {
 	testImplementation 'junit:junit:4.13.2'
     // Override android.jar's broken org.json implementation in unit tests
     testImplementation 'org.json:json:20231013'
+    // Deterministic coroutine scheduling for the Amendment C lifecycle tests
+    // (version aligned with the resolved kotlinx-coroutines 1.8.1).
+    testImplementation 'org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1'
 }
+

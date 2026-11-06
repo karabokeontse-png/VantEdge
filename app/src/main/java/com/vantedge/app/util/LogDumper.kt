@@ -55,9 +55,6 @@ object LogDumper {
                     appendLine()
                 }
 
-                appendLine("=== LOGS ===")
-                appendLine(logs)
-
                 if (errors.isNotBlank()) {
                     appendLine()
                     appendLine("=== ERRORS ===")

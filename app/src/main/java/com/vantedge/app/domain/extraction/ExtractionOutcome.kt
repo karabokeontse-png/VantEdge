@@ -5,7 +5,11 @@ import com.vantedge.pipeline.validation.ValidationDecision
 
 sealed class ExtractionOutcome {
     data class Accepted(val result: JobExtractionResult, val decision: ValidationDecision) : ExtractionOutcome()
-    data class ReviewRequired(val result: JobExtractionResult, val decision: ValidationDecision) : ExtractionOutcome()
+    data class ReviewRequired(
+        val result: JobExtractionResult,
+        val decision: ValidationDecision,
+        val extractionReview: List<FieldReview> = emptyList()
+    ) : ExtractionOutcome()
     data class Rejected(val reason: String, val traceId: String) : ExtractionOutcome()
     data class EmergencyFallback(val result: JobExtractionResult, val traceId: String) : ExtractionOutcome()
 }

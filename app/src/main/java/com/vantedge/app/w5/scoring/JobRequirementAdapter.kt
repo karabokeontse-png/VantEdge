@@ -8,7 +8,8 @@ data class AdaptedJobInput(
     val requiredQualifications: List<RequirementEvidence> = emptyList(),
     val requiredYears: Int?,
     val keywords: List<String>,
-    val unmappedRequirements: List<RequirementEvidence>
+    val unmappedRequirements: List<RequirementEvidence>,
+    val requirementInventory: List<RequirementEvidence> = emptyList()
 )
 
 enum class RequirementDiagnosticType {
@@ -29,7 +30,8 @@ data class DiagnosticsSummary(
 
 data class RequirementDiagnostics(
     val diagnostics: List<RequirementDiagnostic>,
-    val summary: DiagnosticsSummary
+    val summary: DiagnosticsSummary,
+    val inventory: List<RequirementEvidence> = emptyList()
 )
 
 data class AdaptationResult(
@@ -44,6 +46,7 @@ object JobRequirementAdapter {
 
     fun adapt(
         jobDescription: String,
+        jobTitle: String,
         requiredSkills: List<String> = emptyList(),
         preferredSkills: List<String> = emptyList(),
         educationRequired: String? = null,
@@ -114,10 +117,11 @@ object JobRequirementAdapter {
 
         val diagnostics = RequirementDiagnostics(
             diagnostics = diagnosticsList,
-            summary = summary
+            summary = summary,
+            inventory = adaptedInput.requirementInventory
         )
 
-        val validatedJob = toValidatedJob(adaptedInput, "", correlationId)
+        val validatedJob = toValidatedJob(adaptedInput, jobTitle, correlationId)
 
         PipelineTrace.dataQuality(
             stage = "JobRequirementAdapter.adapt",
@@ -156,11 +160,19 @@ object JobRequirementAdapter {
         val matchedPreferred = mutableListOf<String>()
         val requiredQualifications = mutableListOf<RequirementEvidence>()
         val unmapped = mutableListOf<RequirementEvidence>()
+        val inventory = mutableListOf<RequirementEvidence>()
 
         for (skill in requiredSkills) {
             val matched = matchTaxonomy(skill, skillTaxonomy)
             if (matched != null) {
                 matchedRequired.add(matched)
+                inventory.add(RequirementEvidence(
+                    originalText = skill,
+                    category = RequirementCategory.SKILL,
+                    classificationStatus = ClassificationStatus.NORMALIZED,
+                    matchedTaxonomySkill = matched,
+                    importance = "MANDATORY"
+                ))
             } else {
                 val category = classifyRequirement(skill)
                 when (category) {
@@ -168,11 +180,14 @@ object JobRequirementAdapter {
                     RequirementCategory.CERTIFICATION,
                     RequirementCategory.LICENCE,
                     RequirementCategory.SECURITY_CLEARANCE -> {
-                        requiredQualifications.add(RequirementEvidence(
+                        val evidence = RequirementEvidence(
                             originalText = skill,
                             category = category,
-                            classificationStatus = ClassificationStatus.NORMALIZED
-                        ))
+                            classificationStatus = ClassificationStatus.NORMALIZED,
+                            importance = "MANDATORY"
+                        )
+                        requiredQualifications.add(evidence)
+                        inventory.add(evidence)
                     }
                     else -> {
                         val status = if (category == RequirementCategory.UNCLASSIFIED) {
@@ -180,12 +195,15 @@ object JobRequirementAdapter {
                         } else {
                             ClassificationStatus.UNSUPPORTED
                         }
-                        unmapped.add(RequirementEvidence(
+                        val evidence = RequirementEvidence(
                             originalText = skill,
                             category = category,
                             classificationStatus = status,
-                            matchedTaxonomySkill = null
-                        ))
+                            matchedTaxonomySkill = null,
+                            importance = "MANDATORY"
+                        )
+                        unmapped.add(evidence)
+                        inventory.add(evidence)
                     }
                 }
             }
@@ -195,6 +213,13 @@ object JobRequirementAdapter {
             val matched = matchTaxonomy(skill, skillTaxonomy)
             if (matched != null) {
                 matchedPreferred.add(matched)
+                inventory.add(RequirementEvidence(
+                    originalText = skill,
+                    category = RequirementCategory.SKILL,
+                    classificationStatus = ClassificationStatus.NORMALIZED,
+                    matchedTaxonomySkill = matched,
+                    importance = "PREFERRED"
+                ))
             } else {
                 val category = classifyRequirement(skill)
                 when (category) {
@@ -202,11 +227,14 @@ object JobRequirementAdapter {
                     RequirementCategory.CERTIFICATION,
                     RequirementCategory.LICENCE,
                     RequirementCategory.SECURITY_CLEARANCE -> {
-                        requiredQualifications.add(RequirementEvidence(
+                        val evidence = RequirementEvidence(
                             originalText = skill,
                             category = category,
-                            classificationStatus = ClassificationStatus.NORMALIZED
-                        ))
+                            classificationStatus = ClassificationStatus.NORMALIZED,
+                            importance = "MANDATORY"
+                        )
+                        requiredQualifications.add(evidence)
+                        inventory.add(evidence)
                     }
                     else -> {
                         val status = if (category == RequirementCategory.UNCLASSIFIED) {
@@ -214,12 +242,15 @@ object JobRequirementAdapter {
                         } else {
                             ClassificationStatus.UNSUPPORTED
                         }
-                        unmapped.add(RequirementEvidence(
+                        val evidence = RequirementEvidence(
                             originalText = skill,
                             category = category,
                             classificationStatus = status,
-                            matchedTaxonomySkill = null
-                        ))
+                            matchedTaxonomySkill = null,
+                            importance = "PREFERRED"
+                        )
+                        unmapped.add(evidence)
+                        inventory.add(evidence)
                     }
                 }
             }
@@ -244,7 +275,8 @@ object JobRequirementAdapter {
                     originalText = fragment,
                     category = category,
                     classificationStatus = if (isSupported) ClassificationStatus.NORMALIZED else ClassificationStatus.UNMAPPED,
-                    matchedTaxonomySkill = null
+                    matchedTaxonomySkill = null,
+                    importance = "MANDATORY"
                 )
 
                 if (isSupported) {
@@ -252,6 +284,7 @@ object JobRequirementAdapter {
                 } else {
                     unmapped.add(evidence)
                 }
+                inventory.add(evidence)
             }
         }
 
@@ -261,7 +294,8 @@ object JobRequirementAdapter {
             requiredQualifications = requiredQualifications,
             requiredYears = requiredYears,
             keywords = (matchedRequired + matchedPreferred).distinct(),
-            unmappedRequirements = unmapped
+            unmappedRequirements = unmapped,
+            requirementInventory = inventory
         )
     }
 
@@ -287,6 +321,7 @@ object JobRequirementAdapter {
 
         val required = mutableListOf<String>()
         val preferred = mutableListOf<String>()
+        val inventory = mutableListOf<RequirementEvidence>()
 
         for (skill in matchedSkills) {
             val skillTokens = skill.split(" ")
@@ -294,13 +329,38 @@ object JobRequirementAdapter {
                 .indexOfFirst { it == skillTokens }
             if (skillIndex == -1) {
                 required.add(skill)
+                inventory.add(RequirementEvidence(
+                    originalText = skill,
+                    category = RequirementCategory.SKILL,
+                    classificationStatus = ClassificationStatus.NORMALIZED,
+                    matchedTaxonomySkill = skill,
+                    importance = "MANDATORY"
+                ))
                 continue
             }
             val precedingWindow = if (skillIndex > 5) tokens.subList(skillIndex - 5, skillIndex) else tokens.subList(0, skillIndex)
             val windowText = precedingWindow.joinToString(" ")
             when {
-                preferredMarkers.any { windowText.contains(it) } -> preferred.add(skill)
-                else -> required.add(skill)
+                preferredMarkers.any { windowText.contains(it) } -> {
+                    preferred.add(skill)
+                    inventory.add(RequirementEvidence(
+                        originalText = skill,
+                        category = RequirementCategory.SKILL,
+                        classificationStatus = ClassificationStatus.NORMALIZED,
+                        matchedTaxonomySkill = skill,
+                        importance = "PREFERRED"
+                    ))
+                }
+                else -> {
+                    required.add(skill)
+                    inventory.add(RequirementEvidence(
+                        originalText = skill,
+                        category = RequirementCategory.SKILL,
+                        classificationStatus = ClassificationStatus.NORMALIZED,
+                        matchedTaxonomySkill = skill,
+                        importance = "MANDATORY"
+                    ))
+                }
             }
         }
 
@@ -315,12 +375,15 @@ object JobRequirementAdapter {
 
         for (phrase in phrases) {
             if (phrase.length > 150) {
-                extractedUnmapped.add(RequirementEvidence(
+                val evidence = RequirementEvidence(
                     originalText = phrase,
                     category = RequirementCategory.UNCLASSIFIED,
                     classificationStatus = ClassificationStatus.UNMAPPED,
-                    matchedTaxonomySkill = null
-                ))
+                    matchedTaxonomySkill = null,
+                    importance = "MANDATORY"
+                )
+                extractedUnmapped.add(evidence)
+                inventory.add(evidence)
                 continue
             }
 
@@ -339,11 +402,13 @@ object JobRequirementAdapter {
                 originalText = phrase,
                 category = category,
                 classificationStatus = status,
-                matchedTaxonomySkill = null
+                matchedTaxonomySkill = null,
+                importance = "MANDATORY"
             )
 
             if (isSupported) extractedQualifications.add(evidence)
             else extractedUnmapped.add(evidence)
+            inventory.add(evidence)
         }
 
         return AdaptedJobInput(
@@ -352,7 +417,8 @@ object JobRequirementAdapter {
             requiredQualifications = extractedQualifications,
             requiredYears = requiredYears,
             keywords = (required + preferred).distinct(),
-            unmappedRequirements = extractedUnmapped
+            unmappedRequirements = extractedUnmapped,
+            requirementInventory = inventory
         )
     }
 
@@ -412,7 +478,7 @@ object JobRequirementAdapter {
             "unmappedCount" to jobInput.unmappedRequirements.size
         ))
 
-        val seniorityLevel = SeniorityDeriver.derive(jobTitle, jobInput.requiredYears)
+        val seniorityLevel = SeniorityDeriver.derive(null, jobInput.requiredYears)
         val completedFields = mutableSetOf<String>()
         if (jobInput.requiredSkills.isNotEmpty()) completedFields.add("requiredSkills")
         if (jobTitle.isNotEmpty()) completedFields.add("title")

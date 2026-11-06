@@ -1,0 +1,146 @@
+=== Verification-route evidence ===
+Repository: /root/vantedge-canonical
+Branch: verification/ced-p0-authority
+HEAD: 06bb4ac287973dd3ca6bdab1eeb85714b4cb97c2
+Upstream: fatal: no upstream configured for branch 'verification/ced-p0-authority'
+Remote: https://github.com/karabokeontse-png/VantEdge.git
+
+--- Workflow triggers/tasks/timeouts/uploads ---
+### .github/workflows/ci.yml
+1:name: VantEdge CI
+3:on:
+4:  push:
+5:    branches: [main, develop]
+6:  pull_request:
+7:    branches: [main, develop]
+25:        run: ./gradlew testDebugUnitTest --stacktrace
+28:        uses: actions/upload-artifact@v4
+32:          path: |
+
+### .github/workflows/full-ci.yml
+1:name: Full CI + W5 Validation
+3:on:
+4:  push:
+5:    branches: [ main, develop, recovery/reconstructed ]
+6:  pull_request:
+7:    branches: [ main, develop ]
+13:    timeout-minutes: 15
+35:        run: ./gradlew compileDebugUnitTestKotlin --no-daemon
+38:        run: ./gradlew testDebugUnitTest --tests "com.vantedge.app.w5.scoring.*" --no-daemon
+49:        uses: actions/upload-artifact@v4
+51:          name: w5-determinism-results
+52:          path: |
+
+### .github/workflows/w5-tests.yml
+1:name: W5 Deterministic Scoring Tests
+3:on:
+4:  push:
+5:    branches: [ main, develop, feature/w5-scoring ]
+6:    paths:
+10:  pull_request:
+11:    branches: [ main, develop ]
+12:    paths:
+20:    timeout-minutes: 10
+42:        run: ./gradlew testDebugUnitTest --tests "com.vantedge.app.w5.scoring.*" --no-daemon
+46:        uses: actions/upload-artifact@v4
+48:          name: w5-test-results
+49:          path: app/build/test-results/testDebugUnitTest/
+53:        uses: actions/upload-artifact@v4
+55:          name: w5-test-report
+56:          path: app/build/reports/tests/testDebugUnitTest/
+61:    timeout-minutes: 10
+83:        run: ./gradlew testDebugUnitTest --tests "com.vantedge.app.w5.scoring.W5ScoreBaselineTest" --no-daemon
+86:        uses: actions/upload-artifact@v4
+88:          name: w5-baseline-scores
+89:          path: app/build/reports/baseline_scores.csv
+
+### .github/workflows/h3-corrupted-ocr-test.yml
+1:name: H-3 Corrupted OCR Detection Test
+3:on:
+4:  workflow_dispatch:
+10:    timeout-minutes: 15
+34:        uses: actions/upload-artifact@v4
+37:          path: |
+
+--- HEAD settings.gradle ---
+pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS)
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+rootProject.name = "VantEdge"
+include ':app'
+
+--- Worktree settings.gradle ---
+include ':app'
+
+--- HEAD gradle.properties relevant lines ---
+1:org.gradle.daemon=false
+8:kotlin.incremental=false
+10:kotlin.daemon.enabled=false
+12:kotlin.incremental=false
+14:kotlin.daemon.enabled=false
+20:kapt.incremental.apt=false
+23:android.aapt2FromMavenOverride=/data/data/com.itsaky.androidide/files/home/android-sdk/build-tools/36.0.0/aapt2
+
+--- Worktree gradle.properties relevant lines ---
+1:org.gradle.daemon=false
+7:org.gradle.configuration-cache=true
+8:org.gradle.configuration-cache.problems=warn
+12:kotlin.incremental=true
+14:kotlin.daemon.enabled=false
+16:kotlin.incremental=true
+18:kotlin.daemon.enabled=false
+24:kapt.incremental.apt=false
+27:android.aapt2FromMavenOverride=/data/data/com.itsaky.androidide/files/home/android-sdk/build-tools/36.0.0/aapt2
+
+--- Eight-path corrective commit candidate status ---
+ M app/src/main/java/com/vantedge/app/data/domain/CompatibilityRecordMapper.kt
+ M app/src/main/java/com/vantedge/app/w5/scoring/W5Types.kt
+ M app/src/test/java/com/vantedge/app/data/storage/CompatibilityRecordLegacyJsonTest.kt
+ M app/src/test/java/com/vantedge/app/data/viewmodel/CycleScoreAggregationTest.kt
+ M app/src/test/java/com/vantedge/app/w5/scoring/ProvisionalScoreTest.kt
+ M app/src/test/java/com/vantedge/app/w5/scoring/RequirementCoverageTest.kt
+ M app/src/test/java/com/vantedge/app/w5/scoring/W5ScoreEngineTest.kt
+ M app/src/test/java/com/vantedge/pipeline/validation/P2VerificationHarnessTest.kt
+
+--- Prior timeout logs ---
+### /data/user/0/ai.opencode.app/files/projects/Vantedge/evidence/put here!/VANTEDGE-R2-CURRENT-WORKTREE-VERIFICATION-01-artifacts/gradle-run.log
+  38 2064 /data/user/0/ai.opencode.app/files/projects/Vantedge/evidence/put here!/VANTEDGE-R2-CURRENT-WORKTREE-VERIFICATION-01-artifacts/gradle-run.log
+b0d5356064217f851275504ba77a13c8a90fb2e51272612f47aa964dc0a31c6f  /data/user/0/ai.opencode.app/files/projects/Vantedge/evidence/put here!/VANTEDGE-R2-CURRENT-WORKTREE-VERIFICATION-01-artifacts/gradle-run.log
+/root/vantedge-canonical/app/src/main/AndroidManifest.xml:40:9-44:35 Warning:
+	provider#androidx.work.impl.WorkManagerInitializer was tagged at AndroidManifest.xml:40 to remove other declarations but no other declaration present
+
+> Task :app:processDebugManifest
+> Task :app:preDebugUnitTestBuild UP-TO-DATE
+> Task :app:javaPreCompileDebugUnitTest
+> Task :app:processDebugManifestForPackage
+> Task :app:processDebugResources
+
+### /data/user/0/ai.opencode.app/files/projects/Vantedge/evidence/put here!/VANTEDGE-R2-CURRENT-WORKTREE-VERIFICATION-01-artifacts/gradle-run-2.log
+  42 2322 /data/user/0/ai.opencode.app/files/projects/Vantedge/evidence/put here!/VANTEDGE-R2-CURRENT-WORKTREE-VERIFICATION-01-artifacts/gradle-run-2.log
+3d40534b8b9c553ee03575e8d6fa21f1728154624dd208e0564ef9621e6fd4cd  /data/user/0/ai.opencode.app/files/projects/Vantedge/evidence/put here!/VANTEDGE-R2-CURRENT-WORKTREE-VERIFICATION-01-artifacts/gradle-run-2.log
+
+> Task :app:processDebugManifest
+> Task :app:preDebugUnitTestBuild UP-TO-DATE
+> Task :app:javaPreCompileDebugUnitTest
+> Task :app:processDebugManifestForPackage
+> Task :app:processDebugResources
+> Task :app:kaptDebugKotlin
+> Task :app:compileDebugKotlin
+
+--- Current build outputs ---
+17M	app/build
+7.0K	.kotlin
+fresh_test_xml_count=0

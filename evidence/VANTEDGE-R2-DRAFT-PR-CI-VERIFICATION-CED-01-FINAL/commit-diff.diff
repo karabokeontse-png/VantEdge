@@ -1,0 +1,644 @@
+diff --git a/app/src/main/java/com/vantedge/app/data/domain/CompatibilityRecordMapper.kt b/app/src/main/java/com/vantedge/app/data/domain/CompatibilityRecordMapper.kt
+index c129ff1..eaee5a6 100644
+--- a/app/src/main/java/com/vantedge/app/data/domain/CompatibilityRecordMapper.kt
++++ b/app/src/main/java/com/vantedge/app/data/domain/CompatibilityRecordMapper.kt
+@@ -197,7 +197,8 @@ class CompatibilityRecordMapper {
+             gapAnalysis = gapAnalysis,
+             matchedQualifications = matchedQualifications,
+             missingQualifications = missingQualifications,
+-            qualificationsAssessed = qualificationsAssessed
++            qualificationsAssessed = qualificationsAssessed,
++            profileSkills = validatedProfile.skills
+         )
+         val blockingUnassessed = requirementAssessments.any {
+             it.state == RequirementAssessmentState.UNASSESSED && it.importance != "PREFERRED"
+@@ -218,6 +219,9 @@ class CompatibilityRecordMapper {
+             gaps = gaps,
+             criticalGapCount = criticalGapCount,
+             analysisSource = CompatibilityAnalysisSource.DETERMINISTIC_W5,
++            // preferredReconstructable is informational: false means preferred requirements could not be
++            // reconstructed from the fallback source, not that the full inventory was reconstructed.
++            // Preferred requirements are non-blocking; required unassessed/unreconciled items still block this gate.
+             evaluationComplete = scoreResult.isComplete && qualificationsAssessed && !blockingUnassessed,
+             provisionalScore = provisionalScore,
+             provisionalVacancyScore = provisionalVacancyScore,
+@@ -238,6 +242,8 @@ class CompatibilityRecordMapper {
+                 "dataIntegrityNote" to record.dataIntegrityNote,
+                 "unmappedRequirementCount" to evidenceReport.summary.totalUnmapped,
+                 "classificationWarningCount" to evidenceReport.diagnostics.size,
++                "inventorySource" to if (diagnostics.inventory.isNotEmpty()) "DIAGNOSTICS" else "SYNTHESIZED",
++                "preferredReconstructable" to diagnostics.inventory.isNotEmpty().toString(),
+                 "provisionalScore" to (record.provisionalScore ?: "unknown"),
+                 "provisionalVacancyScore" to (record.provisionalVacancyScore ?: "unknown"),
+                 "unassessedRequirementCount" to requirementAssessments.count {
+@@ -273,21 +279,44 @@ class CompatibilityRecordMapper {
+         gapAnalysis: GapAnalysis,
+         matchedQualifications: List<RequirementEvidence>,
+         missingQualifications: List<RequirementEvidence>,
+-        qualificationsAssessed: Boolean
++        qualificationsAssessed: Boolean,
++        profileSkills: List<String>
+     ): List<RequirementAssessment> {
+         val source = if (inventory.isNotEmpty()) {
+             inventory
+         } else {
+             synthesizeRequirementInventory(validatedJob)
+         }
++        val distinctSource = source.distinctBy {
++            listOf(
++                it.originalText,
++                it.category.name,
++                it.matchedTaxonomySkill,
++                it.importance,
++                it.classificationStatus.name
++            )
++        }
++        val requiredQualificationKeys = validatedJob.requiredQualifications
++            .map { it.category to it.originalText }
++            .toSet()
++        val assessmentSource = distinctSource.filter { evidence ->
++            evidence.category !in qualificationCategories ||
++                (evidence.category to evidence.originalText) in requiredQualificationKeys
++        }
+         val matchedSkills = gapAnalysis.matched.map { it.name }.toSet()
+         val weakSkills = gapAnalysis.weak.toSet()
+         val missingSkills = gapAnalysis.missing.toSet()
+ 
+-        return source.map { evidence ->
++        val assessments = assessmentSource.map { evidence ->
+             when {
+                 evidence.category == RequirementCategory.SKILL ->
+-                    assessSkill(evidence, matchedSkills, weakSkills, missingSkills)
++                    assessSkill(
++                        evidence,
++                        matchedSkills,
++                        weakSkills,
++                        missingSkills,
++                        profileSkills
++                    )
+                 evidence.category in qualificationCategories ->
+                     assessQualification(
+                         evidence,
+@@ -300,19 +329,62 @@ class CompatibilityRecordMapper {
+                 else ->
+                     unassessed(evidence, UnassessedReason.UNSUPPORTED_CATEGORY)
+             }
+-        }.distinctBy {
+-            listOf(it.text, it.category, it.canonical, it.importance)
+         }
++        val qualificationCategoryNames = qualificationCategories.map { it.name }.toSet()
++        val assessedQualificationKeys = assessments
++            .filter { it.category in qualificationCategoryNames }
++            .map { it.category to it.text }
++            .toSet()
++        val reconciledQualifications = validatedJob.requiredQualifications
++            .filter { (it.category.name to it.originalText) !in assessedQualificationKeys }
++            .map { qualification ->
++                assessQualification(
++                    qualification,
++                    matchedQualifications,
++                    missingQualifications,
++                    qualificationsAssessed
++                )
++            }
++        return assessments + reconciledQualifications
++    }
++
++    private fun hasProfileEvidence(
++        evidence: RequirementEvidence,
++        profileSkills: List<String>
++    ): Boolean = profileSkills.any { skill ->
++        skill.equals(evidence.matchedTaxonomySkill, ignoreCase = true) ||
++            skill.equals(evidence.originalText, ignoreCase = true)
+     }
+ 
+     private fun assessSkill(
+         evidence: RequirementEvidence,
+         matchedSkills: Set<String>,
+         weakSkills: Set<String>,
+-        missingSkills: Set<String>
++        missingSkills: Set<String>,
++        profileSkills: List<String>
+     ): RequirementAssessment {
+         val canonical = evidence.matchedTaxonomySkill
+-            ?: return unassessed(
++        val matchedByGap = canonical?.let { it in matchedSkills } == true ||
++            evidence.originalText in matchedSkills
++        val matchedByProfile = evidence.importance == "PREFERRED" &&
++            hasProfileEvidence(evidence, profileSkills)
++
++        if (matchedByGap || matchedByProfile) {
++            return RequirementAssessment(
++                text = evidence.originalText,
++                state = RequirementAssessmentState.MATCHED,
++                canonical = canonical,
++                category = evidence.category.name,
++                importance = evidence.importance ?: "MANDATORY"
++            )
++        }
++
++        if (evidence.importance == "PREFERRED") {
++            return unassessed(evidence, UnassessedReason.PREFERENCE_NOT_ASSESSED)
++        }
++
++        if (canonical == null) {
++            return unassessed(
+                 evidence,
+                 if (evidence.classificationStatus == ClassificationStatus.UNSUPPORTED) {
+                     UnassessedReason.UNSUPPORTED_CATEGORY
+@@ -320,23 +392,12 @@ class CompatibilityRecordMapper {
+                     UnassessedReason.TAXONOMY_MISS
+                 }
+             )
+-
+-        if (evidence.importance == "PREFERRED") {
+-            return unassessed(evidence, UnassessedReason.PREFERENCE_NOT_ASSESSED)
+         }
+ 
+-        val matched = canonical in matchedSkills || evidence.originalText in matchedSkills
+         val weak = canonical in weakSkills || evidence.originalText in weakSkills
+         val missing = canonical in missingSkills || evidence.originalText in missingSkills
+ 
+         return when {
+-            matched -> RequirementAssessment(
+-                text = evidence.originalText,
+-                state = RequirementAssessmentState.MATCHED,
+-                canonical = canonical,
+-                category = evidence.category.name,
+-                importance = evidence.importance ?: "MANDATORY"
+-            )
+             weak -> RequirementAssessment(
+                 text = evidence.originalText,
+                 state = RequirementAssessmentState.CONFIRMED_GAP,
+@@ -351,7 +412,14 @@ class CompatibilityRecordMapper {
+                 category = evidence.category.name,
+                 importance = "MANDATORY"
+             )
+-            else -> unassessed(evidence, UnassessedReason.PROFILE_SKILL_EVIDENCE_ABSENT)
++            else -> unassessed(
++                evidence,
++                if (profileSkills.isNotEmpty()) {
++                    UnassessedReason.UNRECONCILED
++                } else {
++                    UnassessedReason.PROFILE_SKILL_EVIDENCE_ABSENT
++                }
++            )
+         }
+     }
+ 
+@@ -401,7 +469,7 @@ class CompatibilityRecordMapper {
+                 text = evidence.originalText,
+                 state = RequirementAssessmentState.UNASSESSED,
+                 canonical = canonical,
+-                reason = UnassessedReason.PROFILE_QUALIFICATION_EVIDENCE_ABSENT.name,
++                reason = UnassessedReason.UNRECONCILED.name,
+                 category = evidence.category.name,
+                 importance = importance
+             )
+diff --git a/app/src/main/java/com/vantedge/app/w5/scoring/W5Types.kt b/app/src/main/java/com/vantedge/app/w5/scoring/W5Types.kt
+index 623ee7b..1ac7a4e 100644
+--- a/app/src/main/java/com/vantedge/app/w5/scoring/W5Types.kt
++++ b/app/src/main/java/com/vantedge/app/w5/scoring/W5Types.kt
+@@ -100,7 +100,8 @@ enum class UnassessedReason {
+     PROFILE_QUALIFICATION_EVIDENCE_ABSENT,
+     TAXONOMY_MISS,
+     UNSUPPORTED_CATEGORY,
+-    PREFERENCE_NOT_ASSESSED
++    PREFERENCE_NOT_ASSESSED,
++    UNRECONCILED
+ }
+ 
+ data class UnassessedRequirement(
+diff --git a/app/src/test/java/com/vantedge/app/data/storage/CompatibilityRecordLegacyJsonTest.kt b/app/src/test/java/com/vantedge/app/data/storage/CompatibilityRecordLegacyJsonTest.kt
+index f25a86b..12bf185 100644
+--- a/app/src/test/java/com/vantedge/app/data/storage/CompatibilityRecordLegacyJsonTest.kt
++++ b/app/src/test/java/com/vantedge/app/data/storage/CompatibilityRecordLegacyJsonTest.kt
+@@ -162,6 +162,28 @@ class CompatibilityRecordLegacyJsonTest {
+         assertEquals("TAXONOMY_MISS", assessment.reason)
+     }
+ 
++    @Test
++    fun `confirmed gap and preferred assessment round trip`() {
++        val record = gson.fromJson(
++            legacyJson(
++                "\"requirementAssessments\": [" +
++                    "{\"text\": \"Kubernetes\", \"state\": \"CONFIRMED_GAP\", \"canonical\": \"Kubernetes\", \"importance\": \"MANDATORY\"}," +
++                    "{\"text\": \"Docker\", \"state\": \"UNASSESSED\", \"reason\": \"PREFERENCE_NOT_ASSESSED\", \"importance\": \"PREFERRED\"}," +
++                    "{\"text\": \"Legacy Skill\", \"state\": \"UNASSESSED\", \"reason\": \"UNRECONCILED\", \"importance\": \"MANDATORY\"}" +
++                    "]"
++            ),
++            CompatibilityRecord::class.java
++        )
++
++        val roundTripped = gson.fromJson(gson.toJson(record), CompatibilityRecord::class.java)
++        val assessments = roundTripped.requirementAssessments!!
++        assertEquals(3, assessments.size)
++        assertEquals(RequirementAssessmentState.CONFIRMED_GAP, assessments[0].state)
++        assertEquals("PREFERRED", assessments[1].importance)
++        assertEquals("PREFERENCE_NOT_ASSESSED", assessments[1].reason)
++        assertEquals("UNRECONCILED", assessments[2].reason)
++    }
++
+     @Test
+     fun `recorded empty inventory stays distinct from unknown coverage`() {
+         val record = gson.fromJson(
+diff --git a/app/src/test/java/com/vantedge/app/data/viewmodel/CycleScoreAggregationTest.kt b/app/src/test/java/com/vantedge/app/data/viewmodel/CycleScoreAggregationTest.kt
+index e4e05c0..b21a9a0 100644
+--- a/app/src/test/java/com/vantedge/app/data/viewmodel/CycleScoreAggregationTest.kt
++++ b/app/src/test/java/com/vantedge/app/data/viewmodel/CycleScoreAggregationTest.kt
+@@ -196,4 +196,15 @@ class CycleScoreAggregationTest {
+         assertEquals(1, CycleScoreAggregation.incompleteScoreCount(cycles))
+     }
+ 
++    @Test
++    fun `provisional values do not affect previous score or improvement`() {
++        val previous = cycle("p", "Engineer", 60, true, provisional = 100, version = 1)
++        val current = cycle("c", "Engineer", 90, true, provisional = 10, version = 2)
++
++        assertEquals(
++            60,
++            CycleScoreAggregation.previousScore(listOf(previous, current), current)
++        )
++        assertEquals(1, CycleScoreAggregation.improvedApplicationsCount(listOf(previous, current)))
++    }
+ }
+diff --git a/app/src/test/java/com/vantedge/app/w5/scoring/CorrectiveUnknownStateTest.kt b/app/src/test/java/com/vantedge/app/w5/scoring/CorrectiveUnknownStateTest.kt
+index 6a14f86..bbdc404 100644
+--- a/app/src/test/java/com/vantedge/app/w5/scoring/CorrectiveUnknownStateTest.kt
++++ b/app/src/test/java/com/vantedge/app/w5/scoring/CorrectiveUnknownStateTest.kt
+@@ -5,6 +5,7 @@ import com.vantedge.app.data.model.RequirementAssessmentState
+ import com.vantedge.app.data.model.UserProfile
+ import org.junit.Assert.assertEquals
+ import org.junit.Assert.assertFalse
++import org.junit.Assert.assertNull
+ import org.junit.Assert.assertTrue
+ import org.junit.Test
+ 
+@@ -123,6 +124,10 @@ class CorrectiveUnknownStateTest {
+         val assessed = profile().copy(qualifications = listOf(degree("Master of Business")))
+         val mapped = map(assessed, job(degree("Bachelor of Science")))
+ 
++        val assessment = mapped.record.requirementAssessments!!
++            .first { it.text == "Bachelor of Science" }
++        assertEquals(RequirementAssessmentState.CONFIRMED_GAP, assessment.state)
++        assertNull(assessment.reason)
+         assertEquals(true, mapped.record.evaluationComplete)
+         assertTrue(mapped.record.gaps.any { it.skill == "DEGREE: Bachelor of Science" && it.importance == "MANDATORY" })
+     }
+diff --git a/app/src/test/java/com/vantedge/app/w5/scoring/ProvisionalScoreTest.kt b/app/src/test/java/com/vantedge/app/w5/scoring/ProvisionalScoreTest.kt
+index f357010..4d0fba7 100644
+--- a/app/src/test/java/com/vantedge/app/w5/scoring/ProvisionalScoreTest.kt
++++ b/app/src/test/java/com/vantedge/app/w5/scoring/ProvisionalScoreTest.kt
+@@ -11,6 +11,13 @@ class ProvisionalScoreTest {
+ 
+     private val assets = ValidationAssets(stopWords = emptySet(), keywordDictionary = emptyMap())
+     private val engine = W5ScoreEngine(assets)
++    private val evidenceAxes = setOf(
++        "SkillMatch",
++        "ExperienceAlignment",
++        "RoleRelevance",
++        "KeywordCoverage",
++        "SeniorityFit"
++    )
+ 
+     private fun profile(skills: List<String> = listOf("Kotlin")) = ValidatedProfile(
+         correlationId = "provisional",
+@@ -88,20 +95,87 @@ class ProvisionalScoreTest {
+         )
+ 
+         assertTrue(result.isComplete)
+-        assertEquals(result.totalScore, result.provisionalTotalScore!!, 1e-12)
++        assertEquals(result.totalScore, result.provisionalTotalScore!!, 0.0)
++    }
++
++    private fun assertOnlyEvidenceAxisMeasured(result: ScoreResult, axis: String) {
++        val measuredEvidence = result.axisScores
++            .filter { it.isMeasured && it.axisName in evidenceAxes }
++            .map { it.axisName }
++            .toSet()
++        assertEquals(setOf(axis), measuredEvidence)
++
++        val measured = result.axisScores.filter { it.isMeasured }
++        val expectedWeight = measured.sumOf { AxisWeights.get(it.axisName) }
++        val expected = measured.sumOf { it.score * AxisWeights.get(it.axisName) } / expectedWeight
++        assertEquals(expected, result.provisionalTotalScore!!, 1e-12)
+     }
+ 
+     @Test
+-    fun `no measured evidence axis yields a null provisional score`() {
+-        val result = evaluate(
+-            profile(skills = emptyList()),
+-            job(requiredSkills = emptyList())
++    fun `SkillMatch alone supports a provisional score`() {
++        assertOnlyEvidenceAxisMeasured(evaluate(profile(), job()), "SkillMatch")
++    }
++
++    @Test
++    fun `ExperienceAlignment alone supports a provisional score`() {
++        assertOnlyEvidenceAxisMeasured(
++            evaluate(profile(skills = emptyList()), job(requiredSkills = emptyList(), requiredYears = 5)),
++            "ExperienceAlignment"
++        )
++    }
++
++    @Test
++    fun `RoleRelevance alone supports a provisional score`() {
++        assertOnlyEvidenceAxisMeasured(
++            evaluate(profile(skills = emptyList()), job(requiredSkills = emptyList(), title = "Developer")),
++            "RoleRelevance"
+         )
++    }
++
++    @Test
++    fun `KeywordCoverage alone supports a provisional score`() {
++        assertOnlyEvidenceAxisMeasured(
++            evaluate(profile(skills = emptyList()), job(requiredSkills = emptyList(), keywords = listOf("Kotlin"))),
++            "KeywordCoverage"
++        )
++    }
++
++    @Test
++    fun `SeniorityFit alone supports a provisional score`() {
++        assertOnlyEvidenceAxisMeasured(
++            evaluate(profile(skills = emptyList()), job(requiredSkills = emptyList(), seniorityLevel = "senior")),
++            "SeniorityFit"
++        )
++    }
++
++    @Test
++    fun `structural and constraint axes alone yield a null provisional score`() {
++        val result = evaluate(profile(skills = emptyList()), job(requiredSkills = emptyList()))
++        val measuredEvidence = result.axisScores.filter { it.isMeasured && it.axisName in evidenceAxes }
+ 
++        assertTrue(measuredEvidence.isEmpty())
++        assertTrue(result.axisScores.first { it.axisName == "StructuralCompleteness" }.isMeasured)
++        assertTrue(result.axisScores.first { it.axisName == "ConstraintCompliance" }.isMeasured)
+         assertNull(result.provisionalTotalScore)
+         assertFalse(result.isComplete)
+     }
+ 
++    @Test
++    fun `all configured axes have positive weights summing to one`() {
++        val axes = listOf(
++            "SkillMatch",
++            "ExperienceAlignment",
++            "RoleRelevance",
++            "KeywordCoverage",
++            "SeniorityFit",
++            "StructuralCompleteness",
++            "ConstraintCompliance"
++        )
++
++        axes.forEach { assertTrue("$it must have a positive weight", AxisWeights.get(it) > 0.0) }
++        assertEquals(1.0, axes.sumOf { AxisWeights.get(it) }, 1e-9)
++    }
++
+     @Test
+     fun `provisional score stays within the unit interval`() {
+         val result = evaluate(
+diff --git a/app/src/test/java/com/vantedge/app/w5/scoring/RequirementCoverageTest.kt b/app/src/test/java/com/vantedge/app/w5/scoring/RequirementCoverageTest.kt
+index e9e95cf..6b78822 100644
+--- a/app/src/test/java/com/vantedge/app/w5/scoring/RequirementCoverageTest.kt
++++ b/app/src/test/java/com/vantedge/app/w5/scoring/RequirementCoverageTest.kt
+@@ -240,4 +240,228 @@ class RequirementCoverageTest {
+         assertNull(legacy.provisionalScore)
+         assertNull(legacy.provisionalVacancyScore)
+     }
++
++    private fun preferredSkill(text: String, canonical: String? = text) = RequirementEvidence(
++        originalText = text,
++        category = RequirementCategory.SKILL,
++        classificationStatus = ClassificationStatus.NORMALIZED,
++        matchedTaxonomySkill = canonical,
++        importance = "PREFERRED"
++    )
++
++    @Test
++    fun `preferred skill with matching profile evidence is matched`() {
++        val mapped = map(
++            profile(skills = listOf("Kotlin", "Docker")),
++            job(requiredSkills = listOf("Kotlin")),
++            listOf(skill("Kotlin"), preferredSkill("Docker"))
++        )
++
++        val assessments = mapped.record.requirementAssessments!!
++        val preferred = assessments.first { it.text == "Docker" }
++        assertEquals(RequirementAssessmentState.MATCHED, preferred.state)
++        assertEquals("PREFERRED", preferred.importance)
++        assertTrue(mapped.record.gaps.isEmpty())
++    }
++
++    @Test
++    fun `preferred skill without matching profile evidence stays unassessed and is not a gap`() {
++        val mapped = map(
++            profile(skills = listOf("Kotlin")),
++            job(requiredSkills = listOf("Kotlin")),
++            listOf(skill("Kotlin"), preferredSkill("Docker"))
++        )
++
++        val assessments = mapped.record.requirementAssessments!!
++        val preferred = assessments.first { it.text == "Docker" }
++        assertEquals(RequirementAssessmentState.UNASSESSED, preferred.state)
++        assertEquals("PREFERENCE_NOT_ASSESSED", preferred.reason)
++        assertTrue(mapped.record.gaps.isEmpty())
++    }
++
++    @Test
++    fun `reconciliation failure is distinct from absent profile evidence`() {
++        val failure = map(
++            profile(skills = listOf("Kotlin")),
++            job(requiredSkills = listOf("Kotlin")),
++            listOf(skill("Kotlin"), skill("Unmapped Inventory Item", canonical = "Unmapped Inventory Item"))
++        )
++        val failureAssessment = failure.record.requirementAssessments!!
++            .first { it.text == "Unmapped Inventory Item" }
++        assertEquals(RequirementAssessmentState.UNASSESSED, failureAssessment.state)
++        assertEquals("UNRECONCILED", failureAssessment.reason)
++
++        val absent = map(
++            profile(skills = emptyList()),
++            job(requiredSkills = listOf("Kotlin")),
++            listOf(skill("Kotlin"))
++        )
++        val absentAssessment = absent.record.requirementAssessments!!
++            .first { it.text == "Kotlin" }
++        assertEquals(RequirementAssessmentState.UNASSESSED, absentAssessment.state)
++        assertEquals("PROFILE_SKILL_EVIDENCE_ABSENT", absentAssessment.reason)
++    }
++
++    @Test
++    fun `inventory entries differing in classification status remain distinct`() {
++        val mapped = map(
++            profile(skills = listOf("Kotlin")),
++            job(requiredSkills = listOf("Kotlin")),
++            listOf(
++                skill("Kotlin", status = ClassificationStatus.NORMALIZED),
++                skill("Kotlin", status = ClassificationStatus.UNSUPPORTED)
++            )
++        )
++
++        val assessments = mapped.record.requirementAssessments!!
++        assertEquals(2, assessments.count { it.text == "Kotlin" })
++    }
++
++    @Test
++    fun `every gap has exactly one confirmed gap assessment`() {
++        val mapped = map(
++            profile(),
++            job(requiredSkills = listOf("Kotlin", "Kubernetes")),
++            listOf(skill("Kotlin"), skill("Kubernetes"))
++        )
++
++        val gapNames = mapped.record.gaps.map { it.skill }
++        assertEquals(listOf("Kubernetes"), gapNames)
++        val confirmed = mapped.record.requirementAssessments!!
++            .filter { it.state == RequirementAssessmentState.CONFIRMED_GAP }
++        assertEquals(1, confirmed.size)
++        assertEquals("Kubernetes", confirmed.single().canonical)
++    }
++
++    @Test
++    fun `every matched required skill has exactly one matched assessment`() {
++        val mapped = map(
++            profile(),
++            job(requiredSkills = listOf("Kotlin")),
++            listOf(skill("Kotlin"))
++        )
++
++        val matchedNames = mapped.record.relevancyItems.map { it.name }
++        assertEquals(listOf("Kotlin"), matchedNames)
++        val matched = mapped.record.requirementAssessments!!
++            .filter { it.state == RequirementAssessmentState.MATCHED }
++        assertEquals(1, matched.size)
++        assertEquals("Kotlin", matched.single().canonical)
++    }
++
++    @Test
++    fun `no eligible measured component yields a null provisional vacancy score`() {
++        val noEvidenceJob = job(requiredSkills = emptyList(), requiredYears = null).copy(
++            title = "",
++            keywords = emptyList(),
++            seniorityLevel = null,
++            completedFields = emptySet()
++        )
++        val mapped = map(profile(skills = emptyList()), noEvidenceJob, emptyList())
++
++        assertNull(mapped.record.provisionalVacancyScore)
++    }
++
++    @Test
++    fun `experience-only partial measurement normalizes measured vacancy components`() {
++        val experienceJob = job(requiredSkills = emptyList(), requiredYears = 5).copy(
++            title = "",
++            keywords = emptyList(),
++            seniorityLevel = null
++        )
++        val validatedProfile = profile(skills = emptyList())
++        val mapped = map(validatedProfile, experienceJob, emptyList())
++        val scoreResult = W5ScoreEngine(assets).evaluate(
++            validatedProfile,
++            experienceJob,
++            W5TraceContext("coverage", "", 0L)
++        )
++
++        val experience = scoreResult.axisScores.first { it.axisName == "ExperienceAlignment" }.score
++        val constraint = scoreResult.axisScores.first { it.axisName == "ConstraintCompliance" }.score
++        val expected = (((experience * 0.3) + (constraint * 0.2)) / 0.5 * 100).toInt()
++        assertEquals(expected, mapped.record.provisionalVacancyScore)
++    }
++
++    @Test
++    fun `inventory order is preserved`() {
++        val mapped = map(
++            profile(),
++            job(
++                requiredSkills = listOf("Kotlin"),
++                qualifications = listOf(degree("Bachelor of Science"))
++            ),
++            listOf(skill("Kubernetes"), skill("Kotlin"), degree("Bachelor of Science"))
++        )
++
++        val assessments = mapped.record.requirementAssessments!!
++        assertEquals(
++            listOf("Kubernetes", "Kotlin", "Bachelor of Science"),
++            assessments.map { it.text }
++        )
++    }
++
++    @Test
++    fun `fallback inventory keeps required requirements and does not invent preferred`() {
++        val mapped = map(
++            profile(),
++            job(requiredSkills = listOf("Kotlin")),
++            emptyList()
++        )
++
++        val assessments = mapped.record.requirementAssessments!!
++        assertEquals(listOf("Kotlin"), assessments.map { it.text })
++        assertTrue(assessments.none { it.importance == "PREFERRED" })
++        assertTrue(mapped.record.evaluationComplete!!)
++    }
++
++    @Test
++    fun `job required qualification with matching profile evidence is matched`() {
++        val mapped = map(
++            profile(qualifications = listOf(degree("Bachelor of Science"))),
++            job(
++                requiredSkills = listOf("Kotlin"),
++                qualifications = listOf(degree("Bachelor of Science"))
++            ),
++            listOf(skill("Kotlin"))
++        )
++
++        val assessment = mapped.record.requirementAssessments!!
++            .first { it.text == "Bachelor of Science" }
++        assertEquals(RequirementAssessmentState.MATCHED, assessment.state)
++        assertTrue(mapped.record.evaluationComplete!!)
++    }
++
++    @Test
++    fun `profile qualification not required by the job is not unreconciled and does not block completeness`() {
++        val mapped = map(
++            profile(qualifications = listOf(degree("Bachelor of Science"))),
++            job(requiredSkills = listOf("Kotlin"), qualifications = emptyList()),
++            listOf(skill("Kotlin"), degree("Bachelor of Science"))
++        )
++
++        val assessments = mapped.record.requirementAssessments!!
++        assertTrue(assessments.none { it.text == "Bachelor of Science" })
++        assertTrue(assessments.none { it.reason == "UNRECONCILED" })
++        assertTrue(mapped.record.gaps.none { it.skill.startsWith("DEGREE:") })
++        assertTrue(mapped.record.evaluationComplete!!)
++    }
++
++    @Test
++    fun `missing job required qualification is reconciled and blocks false completeness`() {
++        val mapped = map(
++            profile(qualifications = emptyList()),
++            job(
++                requiredSkills = listOf("Kotlin"),
++                qualifications = listOf(degree("Bachelor of Science"))
++            ),
++            listOf(skill("Kotlin"))
++        )
++
++        val assessment = mapped.record.requirementAssessments!!
++            .first { it.text == "Bachelor of Science" }
++        assertEquals(RequirementAssessmentState.UNASSESSED, assessment.state)
++        assertEquals("PROFILE_QUALIFICATION_EVIDENCE_ABSENT", assessment.reason)
++        assertFalse(mapped.record.evaluationComplete!!)
++    }
+ }
+diff --git a/app/src/test/java/com/vantedge/app/w5/scoring/W5ScoreEngineTest.kt b/app/src/test/java/com/vantedge/app/w5/scoring/W5ScoreEngineTest.kt
+index c66da91..e01605d 100644
+--- a/app/src/test/java/com/vantedge/app/w5/scoring/W5ScoreEngineTest.kt
++++ b/app/src/test/java/com/vantedge/app/w5/scoring/W5ScoreEngineTest.kt
+@@ -974,7 +974,7 @@ class W5ScoreEngineTest {
+ 
+         val complete = engine.evaluate(completeProfile, completeJob, W5TraceContext("provisional-001", "", 0L))
+         assertTrue(complete.isComplete)
+-        assertEquals(complete.totalScore, complete.provisionalTotalScore!!, 1e-12)
++        assertEquals(complete.totalScore, complete.provisionalTotalScore!!, 0.0)
+ 
+         val partial = engine.evaluate(
+             completeProfile,

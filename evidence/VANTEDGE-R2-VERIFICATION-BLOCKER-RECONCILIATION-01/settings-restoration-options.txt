@@ -1,0 +1,37 @@
+MINIMAL PLUGIN-RESOLUTION RESTORATION (not applied; requires explicit authorization):
+pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+
+FULL HEAD SETTINGS.GRADLE (known-good repository behavior; not applied):
+pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS)
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+rootProject.name = "VantEdge"
+include ':app'
+
+WORKTREE CURRENT CONTENT:
+include ':app'
+
+NOTES:
+- The plugin resolution failure occurs before dependency resolution, so the pluginManagement block is the minimal block that changes the failing repository set.
+- dependencyResolutionManagement and rootProject.name are also missing from the worktree and are part of the exact HEAD behavior.
+- The micro-patch directive prohibits modifying settings.gradle. Restoring any of it requires a new explicit authorization.
+- Alternative that avoids editing settings.gradle: inject the same repositories with an init script outside the repo (see /tmp/r2cuei/init.gradle).

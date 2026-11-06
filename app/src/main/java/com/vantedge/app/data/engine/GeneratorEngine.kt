@@ -3,7 +3,7 @@ package com.vantedge.app.data.engine
 import android.util.Log
 import com.vantedge.app.data.model.UserProfile
 import com.vantedge.app.data.engine.extraction.JsonExtractionEngine
-import com.vantedge.app.data.network.AiGateway
+import com.vantedge.app.data.network.AiTextGateway
 import com.vantedge.app.data.network.AiRequest
 import com.vantedge.app.domain.PipelineTrace
 import com.vantedge.pipeline.validation.P2ValidationEngine
@@ -14,8 +14,101 @@ sealed class EngineResult {
     data class Failure(val type: String, val detail: String?) : EngineResult()
 }
 
+/**
+ * User-reviewed requirements for the job being applied to.
+ *
+ * These are job-scoped facts, not candidate qualifications. They are optional so callers
+ * that have not completed extraction review retain the previous generation behavior.
+ */
+data class ReviewedJobRequirements(
+    val requiredSkills: List<String> = emptyList(),
+    val preferredSkills: List<String> = emptyList(),
+    val educationRequired: String? = null
+) {
+    val isEmpty: Boolean
+        get() = requiredSkills.all { it.isBlank() } &&
+            preferredSkills.all { it.isBlank() } &&
+            educationRequired.isNullOrBlank()
+}
+
+internal fun buildReviewedJobRequirementsPrompt(
+    requirements: ReviewedJobRequirements?
+): String {
+    if (requirements == null || requirements.isEmpty) return ""
+
+    val required = requirements.requiredSkills.filter { it.isNotBlank() }
+    val preferred = requirements.preferredSkills.filter { it.isNotBlank() }
+    val education = requirements.educationRequired?.trim().orEmpty()
+    if (required.isEmpty() && preferred.isEmpty() && education.isEmpty()) return ""
+
+    return buildString {
+        append("JOB REQUIREMENTS (user-reviewed; role requirements, not candidate qualifications):")
+        if (required.isNotEmpty()) append("\nRequired Skills: ").append(required.joinToString(", "))
+        if (preferred.isNotEmpty()) append("\nPreferred Skills: ").append(preferred.joinToString(", "))
+        if (education.isNotEmpty()) append("\nEducation Requirement: ").append(education)
+    }
+}
+
+internal fun buildCvUserPrompt(
+    profile: UserProfile,
+    jobDescription: String,
+    reviewedRequirements: ReviewedJobRequirements?
+): String = buildString {
+    append("JOB DESCRIPTION:\n")
+    append(jobDescription)
+    appendReviewedRequirements(reviewedRequirements)
+    append("\n\nPROFILE SUMMARY:\n")
+    append(profile.summary)
+    append("\n\nPROFILE EXPERIENCE:\n")
+    append(profile.workHistory.joinToString("\n") { "${it.role} at ${it.company}: ${it.description}" })
+}
+
+internal fun buildCoverLetterUserPrompt(
+    profile: UserProfile,
+    jobDescription: String,
+    reviewedRequirements: ReviewedJobRequirements?
+): String = buildString {
+    append("PROFILE:\n")
+    append("Name: ").append(profile.name)
+    append("\nSummary: ").append(profile.summary)
+    append("\nSkills: ").append(profile.skills.joinToString(", "))
+    append("\nExperience: ").append(profile.workHistory.joinToString("\n") { "${it.role} at ${it.company}: ${it.description}" })
+    append("\n\nJOB DESCRIPTION:\n")
+    append(jobDescription)
+    appendReviewedRequirements(reviewedRequirements)
+}
+
+internal fun buildCvDocxUserPrompt(
+    profile: UserProfile,
+    jobDescription: String,
+    reviewedRequirements: ReviewedJobRequirements?
+): String = buildString {
+    append("PROFILE:\n")
+    append("Name: ").append(profile.name)
+    append("\nEmail: ").append(profile.email)
+    append("\nPhone: ").append(profile.phone)
+    append("\nLocation: ").append(profile.location)
+    append("\nLinkedIn: ").append(profile.linkedIn)
+    append("\nSummary: ").append(profile.summary)
+    append("\nSkills: ").append(profile.skills.joinToString(", "))
+    append("\nWork History: ").append(profile.workHistory.joinToString("\n") {
+        "${it.role} at ${it.company} (${it.startDate} - ${it.endDate}): ${it.description}"
+    })
+    append("\nEducation: ").append(profile.education.joinToString(", "))
+    append("\nCertifications: ").append(profile.certifications.joinToString(", "))
+    append("\nLanguages: ").append(profile.languages.joinToString(", "))
+    append("\n\nJOB DESCRIPTION:\n")
+    append(jobDescription)
+    appendReviewedRequirements(reviewedRequirements)
+}
+
+private fun StringBuilder.appendReviewedRequirements(requirements: ReviewedJobRequirements?) {
+    val block = buildReviewedJobRequirementsPrompt(requirements)
+    if (block.isNotEmpty()) append("\n\n").append(block)
+}
+
 class GeneratorEngine(
-    private val aiGateway: AiGateway
+    private val aiGateway: AiTextGateway
 ) {
 
     suspend fun generateCv(
@@ -26,7 +119,8 @@ class GeneratorEngine(
         jobTitle: String,
         company: String,
         correlationId: String,
-        onResult: (EngineResult) -> Unit
+        onResult: (EngineResult) -> Unit,
+        reviewedRequirements: ReviewedJobRequirements? = null
     ) {
         val systemPrompt = """
 Analyse this job description and return ONLY a JSON object with this exact structure, nothing else:
@@ -39,16 +133,7 @@ Analyse this job description and return ONLY a JSON object with this exact struc
 Return ONLY the JSON. No explanation. No markdown. No code blocks.
         """.trimIndent()
 
-        val userPrompt = """
-JOB DESCRIPTION:
-$jobDescription
-
-PROFILE SUMMARY:
-${profile.summary}
-
-PROFILE EXPERIENCE:
-${profile.workHistory.joinToString("\n") { "${it.role} at ${it.company}: ${it.description}" }}
-        """.trimIndent()
+        val userPrompt = buildCvUserPrompt(profile, jobDescription, reviewedRequirements)
 
         val request = AiRequest(systemPrompt = systemPrompt, userPrompt = userPrompt)
         val result = aiGateway.generate("cv", request, 120_000L)
@@ -61,7 +146,6 @@ ${profile.workHistory.joinToString("\n") { "${it.role} at ${it.company}: ${it.de
 
         Log.d("GeneratorEngine", "CV: aiGateway returned non-null | rawLength=${result.length}")
 
-        Log.d("GeneratorEngine", "CV preview: ${result.take(500)}")
 
         try {
             val extractionResult = JsonExtractionEngine.extract(result)
@@ -111,7 +195,8 @@ ${profile.workHistory.joinToString("\n") { "${it.role} at ${it.company}: ${it.de
         jobTitle: String,
         company: String,
         correlationId: String,
-        onResult: (EngineResult) -> Unit
+        onResult: (EngineResult) -> Unit,
+        reviewedRequirements: ReviewedJobRequirements? = null
     ) {
         val systemPrompt = """
 Write a professional cover letter as a single structured JSON object.
@@ -148,16 +233,7 @@ OUTPUT BOUNDARY:
 - JSON string values must never contain HTML tags.
         """.trimIndent()
 
-        val userPrompt = """
-PROFILE:
-Name: ${profile.name}
-Summary: ${profile.summary}
-Skills: ${profile.skills.joinToString(", ")}
-Experience: ${profile.workHistory.joinToString("\n") { "${it.role} at ${it.company}: ${it.description}" }}
-
-JOB DESCRIPTION:
-$jobDescription
-        """.trimIndent()
+        val userPrompt = buildCoverLetterUserPrompt(profile, jobDescription, reviewedRequirements)
 
         val request = AiRequest(systemPrompt = systemPrompt, userPrompt = userPrompt)
         val result = aiGateway.generate("cover_letter", request, 120_000L)
@@ -169,7 +245,6 @@ $jobDescription
         }
 
         Log.d("GeneratorEngine", "Cover letter: aiGateway returned non-null | rawLength=${result.length}")
-        Log.d("GeneratorEngine", "Cover letter raw AI response: $result")
         Log.d("GeneratorEngine", "Cover letter: EXIT Success")
         onResult(EngineResult.Success(result))
     }
@@ -216,7 +291,8 @@ $jobDescription
         profile: UserProfile,
         jobDescription: String,
         correlationId: String,
-        onResult: (EngineResult) -> Unit
+        onResult: (EngineResult) -> Unit,
+        reviewedRequirements: ReviewedJobRequirements? = null
     ) {
         val systemPrompt = """
 Generate an ATS-optimized CV as plain text formatted for Microsoft Word.
@@ -228,25 +304,7 @@ Keep it under one page worth of content.
 Do NOT invent information not in the profile.
         """.trimIndent()
 
-        val userPrompt = """
-PROFILE:
-Name: ${profile.name}
-Email: ${profile.email}
-Phone: ${profile.phone}
-Location: ${profile.location}
-LinkedIn: ${profile.linkedIn}
-Summary: ${profile.summary}
-Skills: ${profile.skills.joinToString(", ")}
-Work History: ${profile.workHistory.joinToString("\n") {
-    "${it.role} at ${it.company} (${it.startDate} - ${it.endDate}): ${it.description}"
-}}
-Education: ${profile.education.joinToString(", ")}
-Certifications: ${profile.certifications.joinToString(", ")}
-Languages: ${profile.languages.joinToString(", ")}
-
-JOB DESCRIPTION:
-$jobDescription
-        """.trimIndent()
+        val userPrompt = buildCvDocxUserPrompt(profile, jobDescription, reviewedRequirements)
 
         val request = AiRequest(systemPrompt = systemPrompt, userPrompt = userPrompt)
         val result = aiGateway.generate("cv_docx", request, 120_000L)

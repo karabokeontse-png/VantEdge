@@ -1,0 +1,27 @@
+=== HEAD Mapper anchors ===
+270:    private fun buildRequirementAssessments(
+287:        return source.map { evidence ->
+299:                    unassessed(evidence, UnassessedReason.TAXONOMY_MISS)
+301:                    unassessed(evidence, UnassessedReason.UNSUPPORTED_CATEGORY)
+308:    private fun assessSkill(
+318:                    UnassessedReason.UNSUPPORTED_CATEGORY
+320:                    UnassessedReason.TAXONOMY_MISS
+325:            return unassessed(evidence, UnassessedReason.PREFERENCE_NOT_ASSESSED)
+354:            else -> unassessed(evidence, UnassessedReason.PROFILE_SKILL_EVIDENCE_ABSENT)
+358:    private fun assessQualification(
+372:                reason = UnassessedReason.PROFILE_QUALIFICATION_EVIDENCE_ABSENT.name,
+404:                reason = UnassessedReason.PROFILE_QUALIFICATION_EVIDENCE_ABSENT.name,
+=== WORKTREE Mapper anchors ===
+276:    private fun buildRequirementAssessments(
+328:                    unassessed(evidence, UnassessedReason.TAXONOMY_MISS)
+330:                    unassessed(evidence, UnassessedReason.UNSUPPORTED_CATEGORY)
+348:        return assessments + reconciledQualifications
+359:    private fun assessSkill(
+383:            return unassessed(evidence, UnassessedReason.PREFERENCE_NOT_ASSESSED)
+390:                    UnassessedReason.UNSUPPORTED_CATEGORY
+392:                    UnassessedReason.TAXONOMY_MISS
+418:                    UnassessedReason.UNRECONCILED
+420:                    UnassessedReason.PROFILE_SKILL_EVIDENCE_ABSENT
+426:    private fun assessQualification(
+440:                reason = UnassessedReason.PROFILE_QUALIFICATION_EVIDENCE_ABSENT.name,
+472:                reason = UnassessedReason.UNRECONCILED.name,

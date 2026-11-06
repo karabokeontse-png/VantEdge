@@ -1,0 +1,28 @@
+=== required plugin marker/artifact presence ===
+--- com.android.application/com.android.application.gradle.plugin/9.3.1 ---
+/root/.gradle/caches/modules-2/files-2.1/com.android.application/com.android.application.gradle.plugin/9.3.1/4765bdca31c40b40932ecab192c74018f05ab76a/com.android.application.gradle.plugin-9.3.1.pom
+--- com.android.legacy-kapt/com.android.legacy-kapt.gradle.plugin/9.3.1 ---
+/root/.gradle/caches/modules-2/files-2.1/com.android.legacy-kapt/com.android.legacy-kapt.gradle.plugin/9.3.1/3ead883a10e796dc964f4e3a5e8656b3e01ede97/com.android.legacy-kapt.gradle.plugin-9.3.1.pom
+--- org.jetbrains.kotlin.plugin.serialization/org.jetbrains.kotlin.plugin.serialization.gradle.plugin/2.3.21 ---
+/root/.gradle/caches/modules-2/files-2.1/org.jetbrains.kotlin.plugin.serialization/org.jetbrains.kotlin.plugin.serialization.gradle.plugin/2.3.21/58ce95ccec10426c9b88abc9c68c8f2b2cedd62e/org.jetbrains.kotlin.plugin.serialization.gradle.plugin-2.3.21.pom
+--- org.jetbrains.kotlin.plugin.compose/org.jetbrains.kotlin.plugin.compose.gradle.plugin/2.3.21 ---
+/root/.gradle/caches/modules-2/files-2.1/org.jetbrains.kotlin.plugin.compose/org.jetbrains.kotlin.plugin.compose.gradle.plugin/2.3.21/ca73671fc82853bf928712f4b042f9da03123bbb/org.jetbrains.kotlin.plugin.compose.gradle.plugin-2.3.21.pom
+--- org.jetbrains.kotlin/kotlin-gradle-plugin/2.3.21 ---
+/root/.gradle/caches/modules-2/files-2.1/org.jetbrains.kotlin/kotlin-gradle-plugin/2.3.21/5080023ad259611ea1817dd86eaf7093df056a49/kotlin-gradle-plugin-2.3.21.pom
+/root/.gradle/caches/modules-2/files-2.1/org.jetbrains.kotlin/kotlin-gradle-plugin/2.3.21/8a41db363bb2b7fb2c4963e0eed87bef02897108/kotlin-gradle-plugin-2.3.21.module
+/root/.gradle/caches/modules-2/files-2.1/org.jetbrains.kotlin/kotlin-gradle-plugin/2.3.21/24cd0fef7f2b18be74a59975d6f941798a0e4b96/kotlin-gradle-plugin-2.3.21-gradle813.jar
+--- com.android.tools.build/gradle/9.3.1 ---
+/root/.gradle/caches/modules-2/files-2.1/com.android.tools.build/gradle/9.3.1/683d0b5ce181727ea2dcc9cecd12a380bb21433c/gradle-9.3.1.pom
+/root/.gradle/caches/modules-2/files-2.1/com.android.tools.build/gradle/9.3.1/dd3450281d8e08aebe2b56dcf84a9a4c243077a/gradle-9.3.1.module
+/root/.gradle/caches/modules-2/files-2.1/com.android.tools.build/gradle/9.3.1/c1b6c02a8fc39bf66416535fb07a966f2a0aea86/gradle-9.3.1.jar
+=== descriptor repository hash examples ===
+--- com.android.application/com.android.application.gradle.plugin/9.3.1 ---
+/root/.gradle/caches/modules-2/metadata-2.107/descriptors/com.android.application/com.android.application.gradle.plugin/9.3.1/d4e342018b23d58be902a60e67105aa1
+--- com.android.tools.build/gradle/9.3.1 ---
+/root/.gradle/caches/modules-2/metadata-2.107/descriptors/com.android.tools.build/gradle/9.3.1/d4e342018b23d58be902a60e67105aa1
+--- androidx.core/core-ktx/1.12.0 ---
+/root/.gradle/caches/modules-2/metadata-2.107/descriptors/androidx.core/core-ktx/1.12.0/d4e342018b23d58be902a60e67105aa1
+--- org.jetbrains.kotlin.plugin.serialization/org.jetbrains.kotlin.plugin.serialization.gradle.plugin/2.3.21 ---
+/root/.gradle/caches/modules-2/metadata-2.107/descriptors/org.jetbrains.kotlin.plugin.serialization/org.jetbrains.kotlin.plugin.serialization.gradle.plugin/2.3.21/26c913274550a0b2221f47a0fe2d2358
+--- org.jetbrains.kotlin/kotlin-stdlib/2.3.21 ---
+/root/.gradle/caches/modules-2/metadata-2.107/descriptors/org.jetbrains.kotlin/kotlin-stdlib/2.3.21/26c913274550a0b2221f47a0fe2d2358

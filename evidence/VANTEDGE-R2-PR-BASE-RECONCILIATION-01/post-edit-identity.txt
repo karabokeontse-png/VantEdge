@@ -1,0 +1,9 @@
+2026-11-04T09:16:18Z
+branch=verification/ced-p0-authority
+head=06bb4ac287973dd3ca6bdab1eeb85714b4cb97c2
+head_tree=b6aa1d9cafb13154344274da187303076f338901
+staged_count=0
+      1  D
+     41  M
+     34 ??
+porcelain_sha256=4aac344577a647f7a7c25655e4d2bbec2b187bd73979a564f6f5f75dafe49097

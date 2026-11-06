@@ -10,6 +10,7 @@ class JobRequirementAdapterTest {
         val adapter = JobRequirementAdapter
         val result = adapter.adapt(
             jobDescription = "Data Protection Manager. Requires Master's Degree in Law and CIPP certification. Must have security clearance.",
+            jobTitle = "",
             requiredSkills = emptyList(),
             preferredSkills = emptyList(),
             educationRequired = null,
@@ -40,6 +41,7 @@ class JobRequirementAdapterTest {
 
         val result = adapter.adapt(
             jobDescription = description,
+            jobTitle = "",
             requiredSkills = emptyList(),
             preferredSkills = emptyList(),
             educationRequired = null,

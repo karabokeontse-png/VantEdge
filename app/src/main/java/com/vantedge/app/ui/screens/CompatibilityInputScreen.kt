@@ -48,9 +48,12 @@ import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.text.PDFTextStripper
+import com.vantedge.app.data.model.JobExtractionResult
 import com.vantedge.app.data.model.UserProfile
+import com.vantedge.app.data.viewmodel.JobExtractionState
 import com.vantedge.app.data.viewmodel.CompatibilityUiState
 import com.vantedge.app.data.viewmodel.CompatibilityViewModel
+import com.vantedge.app.ui.components.ExtractionReviewSurface
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.TimeoutCancellationException
@@ -70,6 +73,8 @@ fun CompatibilityInputScreen(
     onNavigateToResult: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val pendingReview by viewModel.pendingExtractionReview.collectAsState()
+    val extractionState by viewModel.lastExtractionState.collectAsState()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
@@ -98,6 +103,15 @@ fun CompatibilityInputScreen(
         if (uiState is CompatibilityUiState.Success) {
             onNavigateToResult()
         }
+    }
+
+    fun fillFromExtraction(extraction: JobExtractionResult) {
+        if (extraction.jobTitle != null) jobTitle = extraction.jobTitle
+        if (extraction.company != null) company = extraction.company
+        jobDescription = extraction.description
+        savedRequiredSkills = extraction.requiredSkills
+        savedPreferredSkills = extraction.preferredSkills
+        savedEducationRequired = extraction.educationRequired
     }
 
     val fileLauncher = rememberLauncherForActivityResult(
@@ -250,10 +264,35 @@ fun CompatibilityInputScreen(
                 fontSize = 13.sp
             )
 
+            (extractionState as? JobExtractionState.Failure)?.let { failure ->
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF3A1A1A))
+                ) {
+                    Text(
+                        text = "Extraction failed: ${failure.message}",
+                        color = Color(0xFFFFCDD2),
+                        fontSize = 12.sp,
+                        modifier = Modifier.padding(12.dp)
+                    )
+                }
+            }
+
+            pendingReview?.let { review ->
+                ExtractionReviewSurface(
+                    review = review,
+                    onConfirm = { corrected ->
+                        fillFromExtraction(corrected)
+                        viewModel.acknowledgeExtractionReview(corrected)
+                    }
+                )
+            }
+
             OutlinedTextField(
                 value = jobTitle,
                 onValueChange = { jobTitle = it },
                 label = { Text("Job Title") },
+                enabled = pendingReview == null,
                 modifier = Modifier.fillMaxWidth(),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedTextColor = Color.White,
@@ -269,6 +308,7 @@ fun CompatibilityInputScreen(
                 value = company,
                 onValueChange = { company = it },
                 label = { Text("Company") },
+                enabled = pendingReview == null,
                 modifier = Modifier.fillMaxWidth(),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedTextColor = Color.White,
@@ -293,7 +333,7 @@ fun CompatibilityInputScreen(
                     .fillMaxWidth()
                     .height(180.dp),
                 maxLines = Int.MAX_VALUE,
-                enabled = !isExtracting,
+                enabled = !isExtracting && pendingReview == null,
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedTextColor = Color.White,
                     unfocusedTextColor = Color.White,
@@ -378,7 +418,7 @@ fun CompatibilityInputScreen(
 
             Button(
                 onClick = {
-                    if (fieldsValid) {
+                    if (fieldsValid && pendingReview == null) {
                         viewModel.analyze(
                             profile = profile,
                             jobTitle = jobTitle,
@@ -391,7 +431,7 @@ fun CompatibilityInputScreen(
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),
-                enabled = fieldsValid && !isLoading && !isExtracting,
+                enabled = fieldsValid && !isLoading && !isExtracting && pendingReview == null,
                 colors = ButtonDefaults.buttonColors(
                     containerColor = teal,
                     contentColor = Color.Black,

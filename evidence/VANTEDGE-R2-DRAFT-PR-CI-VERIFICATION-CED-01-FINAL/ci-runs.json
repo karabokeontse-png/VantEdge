@@ -1,0 +1,24 @@
+{
+  "head_sha": "d68026d7c55b50a2f50ed165dbd8aad27c51a69f",
+  "polled_at": "2026-11-04T13:38:30Z",
+  "runs": [
+    {
+      "name": "W5 Deterministic Scoring Tests",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/karabokeontse-png/VantEdge/actions/runs/41839277174"
+    },
+    {
+      "name": "VantEdge CI",
+      "status": "completed",
+      "conclusion": "failure",
+      "url": "https://github.com/karabokeontse-png/VantEdge/actions/runs/41839278056"
+    },
+    {
+      "name": "Full CI + W5 Validation",
+      "status": "completed",
+      "conclusion": "success",
+      "url": "https://github.com/karabokeontse-png/VantEdge/actions/runs/41839277536"
+    }
+  ]
+}

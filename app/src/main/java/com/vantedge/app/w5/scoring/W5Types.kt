@@ -46,12 +46,17 @@ data class ScoreResult(
     val breakdown: ScoreBreakdown,
     val gapAnalysis: GapAnalysis,
     val hints: RecommendationHints,
-    val trace: W5TraceContext
-)
+    val trace: W5TraceContext,
+    val unknownAxes: List<String> = emptyList(),
+    val provisionalTotalScore: Double? = null
+) {
+    val isComplete: Boolean get() = unknownAxes.isEmpty()
+}
 
 data class AxisScore(
     val axisName: String,
-    val score: Double
+    val score: Double,
+    val isMeasured: Boolean = true
 )
 
 data class ScoreBreakdown(
@@ -86,7 +91,22 @@ data class GapAnalysis(
     val missing: List<String>,
     val weak: List<String>,
     val matched: List<MatchEvidence>,
-    val qualificationGaps: List<QualificationGap> = emptyList()
+    val qualificationGaps: List<QualificationGap> = emptyList(),
+    val unassessed: List<UnassessedRequirement> = emptyList()
+)
+
+enum class UnassessedReason {
+    PROFILE_SKILL_EVIDENCE_ABSENT,
+    PROFILE_QUALIFICATION_EVIDENCE_ABSENT,
+    TAXONOMY_MISS,
+    UNSUPPORTED_CATEGORY,
+    PREFERENCE_NOT_ASSESSED,
+    UNRECONCILED
+}
+
+data class UnassessedRequirement(
+    val text: String,
+    val reason: UnassessedReason
 )
 
 data class RecommendationHints(

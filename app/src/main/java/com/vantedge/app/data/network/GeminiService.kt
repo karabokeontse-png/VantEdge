@@ -86,7 +86,14 @@ class GeminiService(
     private val mediaType = "application/json".toMediaType()
 
     private val apiKey = BuildConfig.OPENROUTER_API_KEY
-    private val baseUrl = "https://openrouter.ai/api/v1/chat/completions"
+    // === VANTEDGE PROVIDER SWITCH (Gemini direct) ===
+    // Revert to OpenRouter by setting useGeminiDirect = false.
+    // Change documented in VANTEDGE-R2-GEMINI-DIRECT-SWITCH-01 report + patch.
+    private val useGeminiDirect = true
+    private val openRouterBaseUrl = "https://openrouter.ai/api/v1/chat/completions"
+    private val geminiBaseUrl = "https://generativelanguage.googleapis.com/v1beta/models"
+    private val baseUrl = openRouterBaseUrl
+    private val providerName = if (useGeminiDirect) "gemini" else "openrouter"
 
     companion object {
         private const val MAX_RETRY_ATTEMPTS = 2
@@ -95,6 +102,33 @@ class GeminiService(
         private const val RAW_BODY_LOG_LIMIT = 8192
         private const val DEGRADE_THRESHOLD = 3
         private const val DEGRADE_DURATION_MS = 15 * 60 * 1000L
+
+        private fun normalizeGeminiResponse(payload: JSONObject): JSONObject {
+            if (payload.has("error")) return payload
+            val candidates = payload.optJSONArray("candidates") ?: return payload
+            val first = candidates.optJSONObject(0) ?: return payload
+            val parts = first.optJSONObject("content")?.optJSONArray("parts")
+            var text = ""
+            if (parts != null) {
+                for (i in 0 until parts.length()) {
+                    val p = parts.optJSONObject(i) ?: continue
+                    if (p.optBoolean("thought", false)) continue
+                    val t = p.optString("text", "")
+                    if (t.isNotEmpty()) { text = t; break }
+                }
+            }
+            val finishReason = first.optString("finishReason", "STOP")
+            return JSONObject().apply {
+                put("choices", JSONArray().apply {
+                    put(JSONObject().apply {
+                        put("message", JSONObject().apply {
+                            put("content", if (text.isEmpty()) JSONObject.NULL else text)
+                        })
+                        put("finish_reason", finishReason)
+                    })
+                })
+            }
+        }
 
         private fun computePromptHash(systemPrompt: String, userPrompt: String): String {
             val digest = MessageDigest.getInstance("SHA-256")
@@ -109,7 +143,10 @@ class GeminiService(
 
     private val modelStates = ConcurrentHashMap<String, ModelCircuitState>()
 
-    private val models = listOf(
+    private val models = if (useGeminiDirect) listOf(
+        "gemini-3.8-flash",
+        "gemini-3.5-flash-lite"
+    ) else listOf(
         "nvidia/nemotron-3-super-120b-a12b:free",
         "cohere/north-mini-code:free"
     )
@@ -158,6 +195,22 @@ class GeminiService(
         onModelResult: (ModelAttemptResult) -> Unit = {},
         budgetDeadlineMs: Long = Long.MAX_VALUE
     ): String? {
+        if (apiKey.isBlank()) {
+            onModelResult(ModelAttemptResult(
+                requestId = requestId,
+                model = "none",
+                attempt = 0,
+                failureType = FailureType.CONFIG_ERROR.name,
+                failureStage = "configuration",
+                httpCode = null,
+                durationMs = 0L,
+                latencyMs = null,
+                bodyPreview = null,
+                detail = "API key is not configured",
+                cancelReason = null
+            ))
+            return null
+        }
         val requestStartElapsed = SystemClock.elapsedRealtime()
         val blacklistedModels = mutableSetOf<String>()
         return tryChain(requestId, pipeline, request, onProgress, onModelResult, blacklistedModels, requestStartElapsed, budgetDeadlineMs)
@@ -480,35 +533,63 @@ class GeminiService(
         val requestStartMs = System.currentTimeMillis()
         val promptHash = computePromptHash(aiRequest.systemPrompt, aiRequest.userPrompt)
 
-        val json = JSONObject().apply {
-            put("model", model)
-            put("messages", JSONArray().apply {
-                put(JSONObject().apply {
-                    put("role", "system")
-                    put("content", aiRequest.systemPrompt)
+        val json = if (useGeminiDirect) {
+            JSONObject().apply {
+                put("contents", JSONArray().apply {
+                    put(JSONObject().apply {
+                        put("role", "user")
+                        put("parts", JSONArray().apply {
+                            put(JSONObject().apply { put("text", aiRequest.userPrompt) })
+                        })
+                    })
                 })
-                put(JSONObject().apply {
-                    put("role", "user")
-                    put("content", aiRequest.userPrompt)
+                put("systemInstruction", JSONObject().apply {
+                    put("parts", JSONArray().apply {
+                        put(JSONObject().apply { put("text", aiRequest.systemPrompt) })
+                    })
                 })
-            })
-            put("max_tokens", aiRequest.maxTokens)
-            put("temperature", aiRequest.temperature)
-            put("top_p", 0.8)
-            put("reasoning", JSONObject().apply {
-                put("enabled", false)
-                put("max_tokens", 0)
-                put("exclude", true)
-            })
+                put("generationConfig", JSONObject().apply {
+                    put("temperature", aiRequest.temperature)
+                    put("maxOutputTokens", aiRequest.maxTokens)
+                    put("topP", 0.8)
+                })
+            }
+        } else {
+            JSONObject().apply {
+                put("model", model)
+                put("messages", JSONArray().apply {
+                    put(JSONObject().apply {
+                        put("role", "system")
+                        put("content", aiRequest.systemPrompt)
+                    })
+                    put(JSONObject().apply {
+                        put("role", "user")
+                        put("content", aiRequest.userPrompt)
+                    })
+                })
+                put("max_tokens", aiRequest.maxTokens)
+                put("temperature", aiRequest.temperature)
+                put("top_p", 0.8)
+                put("reasoning", JSONObject().apply {
+                    put("enabled", false)
+                    put("max_tokens", 0)
+                    put("exclude", true)
+                })
+            }
         }
 
-        val request = Request.Builder()
-            .url(baseUrl)
-            .addHeader("Authorization", "Bearer $apiKey")
-            .addHeader("HTTP-Referer", "com.vantedge.app")
-            .addHeader("X-Title", "VantEdge")
+        val requestUrl = if (useGeminiDirect) "$geminiBaseUrl/$model:generateContent" else baseUrl
+        val requestBuilder = Request.Builder()
+            .url(requestUrl)
             .post(json.toString().toRequestBody(mediaType))
-            .build()
+        if (useGeminiDirect) {
+            requestBuilder.addHeader("x-goog-api-key", apiKey)
+        } else {
+            requestBuilder.addHeader("Authorization", "Bearer $apiKey")
+            requestBuilder.addHeader("HTTP-Referer", "com.vantedge.app")
+            requestBuilder.addHeader("X-Title", "VantEdge")
+        }
+        val request = requestBuilder.build()
 
         // Phase 1: Transport acquisition — suspendCancellableCoroutine owns the Response
         var transportArtifactPayload: AiRawResponseArtifact? = null
@@ -593,7 +674,7 @@ class GeminiService(
                         correlationId = requestId,
                         attemptNumber = attemptIndex + 1,
                         model = model,
-                        provider = "openrouter",
+                        provider = providerName,
                         timestamp = artifactTimestamp,
                         requestStartMs = requestStartMs,
                         requestDurationMs = artifactTimestamp - requestStartMs,
@@ -714,7 +795,7 @@ class GeminiService(
                 correlationId = requestId,
                 attemptNumber = attemptIndex + 1,
                 model = model,
-                provider = "openrouter",
+                provider = providerName,
                 timestamp = artifactTimestamp,
                 requestStartMs = requestStartMs,
                 requestDurationMs = artifactTimestamp - requestStartMs,
@@ -722,19 +803,13 @@ class GeminiService(
                 finishReason = if (httpCode == 200) "STOP" else "TRANSPORT_FAILURE",
                 promptHash = promptHash,
                 bodyLength = bodyContent?.length ?: 0,
-                rawResponse = safeBody,
+                rawResponse = "",
                 failureType = RequestFailureType.UNKNOWN.name,
                 failureStage = "NONE"
             )
 
             // RAW_RESPONSE_ARTIFACT telemetry
             val leadingWhitespace = safeBody.length - safeBody.trimStart().length
-            val preview = safeBody.trimStart()
-                .replace("\r", "\\r")
-                .replace("\n", "\\n")
-                .replace("\t", "\\t")
-                .take(RAW_BODY_LOG_LIMIT)
-            val rawPreview = if (preview.isBlank()) "<EMPTY_OR_WHITESPACE_ONLY>" else preview
             PipelineTrace.dataQuality(
                 stage = "gemini_service",
                 issue = PipelineEvents.RAW_RESPONSE_ARTIFACT,
@@ -745,7 +820,6 @@ class GeminiService(
                     "httpCode" to httpCode,
                     "rawLength" to safeBody.length,
                     "leadingWhitespaceChars" to leadingWhitespace,
-                    "rawPreview" to rawPreview
                 ),
                 correlationId = requestId
             )
@@ -754,7 +828,6 @@ class GeminiService(
 
             if (httpCode == 200) {
                 val bodyStr = bodyContent ?: ""
-                val bodyPreview = bodyStr.take(500)
 
                 // Transport-layer response body validation
                 if (bodyContent.isNullOrBlank()) {
@@ -768,7 +841,7 @@ class GeminiService(
                         httpCode = httpCode,
                         durationMs = durationMs,
                         latencyMs = latencyMs,
-                        bodyPreview = bodyPreview,
+                        bodyPreview = null,
                         detail = "HTTP 200 with empty body",
                         cancelReason = null
                     ))
@@ -784,7 +857,7 @@ class GeminiService(
                         httpCode = httpCode,
                         durationMs = durationMs,
                         latencyMs = latencyMs,
-                        bodyPreview = bodyPreview,
+                        bodyPreview = null,
                         detail = "HTTP 200 body too short: ${bodyStr.length} chars",
                         cancelReason = null
                     ))
@@ -800,7 +873,7 @@ class GeminiService(
                         httpCode = httpCode,
                         durationMs = durationMs,
                         latencyMs = latencyMs,
-                        bodyPreview = bodyPreview,
+                        bodyPreview = null,
                         detail = "HTTP 200 body contains no JSON object start",
                         cancelReason = null
                     ))
@@ -822,7 +895,7 @@ class GeminiService(
                         )
                     } catch (e: Exception) {
                         val durationMs = SystemClock.elapsedRealtime() - attemptStart
-                        Log.e("GeminiService", "[$requestId] [$model] INVALID_JSON code=$httpCode error=${e.message} body=$bodyPreview")
+                        Log.e("GeminiService", "[$requestId] [$model] INVALID_JSON code=$httpCode error=${e.message}")
                         onModelResult(ModelAttemptResult(
                             requestId = requestId,
                             model = model,
@@ -831,12 +904,16 @@ class GeminiService(
                             httpCode = httpCode,
                             durationMs = durationMs,
                             latencyMs = latencyMs,
-                            bodyPreview = bodyPreview,
+                            bodyPreview = null,
                             detail = e.message,
                             cancelReason = null
                         ))
                         result = null
                         parsedPayload = null
+                    }
+
+                    if (parsedPayload != null && useGeminiDirect) {
+                        parsedPayload = normalizeGeminiResponse(parsedPayload!!)
                     }
 
                     val payload = parsedPayload
@@ -846,7 +923,7 @@ class GeminiService(
                         val durationMs = SystemClock.elapsedRealtime() - attemptStart
                         val errorObj = payload.getJSONObject("error")
                         val errorMsg = errorObj.optString("message", errorObj.toString())
-                        Log.e("GeminiService", "[$requestId] [$model] PROVIDER_ERROR code=$httpCode message=$errorMsg body=$bodyPreview")
+                        Log.e("GeminiService", "[$requestId] [$model] PROVIDER_ERROR code=$httpCode message=$errorMsg")
                         onModelResult(ModelAttemptResult(
                             requestId = requestId,
                             model = model,
@@ -855,7 +932,7 @@ class GeminiService(
                             httpCode = httpCode,
                             durationMs = durationMs,
                             latencyMs = latencyMs,
-                            bodyPreview = bodyPreview,
+                            bodyPreview = null,
                             detail = errorMsg,
                             cancelReason = null
                         ))
@@ -866,7 +943,7 @@ class GeminiService(
                             val iter = payload.keys()
                             while (iter.hasNext()) list += iter.next()
                         }
-                        Log.e("GeminiService", "[$requestId] [$model] MODEL_CONTRACT_VIOLATION stage=VALIDATION code=$httpCode keys=$keys body=$bodyPreview")
+                        Log.e("GeminiService", "[$requestId] [$model] MODEL_CONTRACT_VIOLATION stage=VALIDATION code=$httpCode keys=$keys")
                         onModelResult(ModelAttemptResult(
                             requestId = requestId,
                             model = model,
@@ -876,7 +953,7 @@ class GeminiService(
                             httpCode = httpCode,
                             durationMs = durationMs,
                             latencyMs = latencyMs,
-                            bodyPreview = bodyPreview,
+                            bodyPreview = null,
                             detail = "No value for choices",
                             cancelReason = null
                         ))
@@ -1029,7 +1106,7 @@ class GeminiService(
                                         val iter = payload.keys()
                                         while (iter.hasNext()) list += iter.next()
                                     }
-                                    Log.e("GeminiService", "[$requestId] [$model] $msg error=ParseFailed keys=$keys body=$bodyPreview")
+                                    Log.e("GeminiService", "[$requestId] [$model] $msg error=ParseFailed keys=$keys")
                                     onModelResult(ModelAttemptResult(
                                         requestId = requestId,
                                         model = model,
@@ -1039,7 +1116,7 @@ class GeminiService(
                                         httpCode = httpCode,
                                         durationMs = durationMs,
                                         latencyMs = latencyMs,
-                                        bodyPreview = bodyPreview,
+                                        bodyPreview = null,
                                         detail = msg,
                                         cancelReason = null
                                     ))
@@ -1058,7 +1135,7 @@ class GeminiService(
                                 val iter = payload.keys()
                                 while (iter.hasNext()) list += iter.next()
                             }
-                            Log.e("GeminiService", "[$requestId] [$model] MODEL_CONTRACT_VIOLATION stage=$contractStage error=${e.message} keys=$keys body=$bodyPreview")
+                            Log.e("GeminiService", "[$requestId] [$model] MODEL_CONTRACT_VIOLATION stage=$contractStage error=${e.message} keys=$keys")
                             onModelResult(ModelAttemptResult(
                                 requestId = requestId,
                                 model = model,
@@ -1068,7 +1145,7 @@ class GeminiService(
                                 httpCode = httpCode,
                                 durationMs = durationMs,
                                 latencyMs = latencyMs,
-                                bodyPreview = bodyPreview,
+                                bodyPreview = null,
                                 detail = e.message,
                                 cancelReason = null
                             ))
@@ -1078,10 +1155,10 @@ class GeminiService(
                 }
             } else {
                 val durationMs = SystemClock.elapsedRealtime() - attemptStart
-                val bodyPreview = bodyContent?.take(200) ?: ""
                 when (httpCode) {
                     404 -> {
-                        Log.w("GeminiService", "[$requestId] [$model] HTTP_404 body=$bodyPreview")
+                        val bodySnippet = safeBody.take(500)
+                        Log.w("GeminiService", "[$requestId] [$model] HTTP_404 body=$bodySnippet")
                         onModelResult(ModelAttemptResult(
                             requestId = requestId,
                             model = model,
@@ -1090,13 +1167,13 @@ class GeminiService(
                             httpCode = httpCode,
                             durationMs = durationMs,
                             latencyMs = latencyMs,
-                            bodyPreview = bodyPreview,
-                            detail = null,
+                            bodyPreview = null,
+                            detail = bodySnippet,
                             cancelReason = null
                         ))
                     }
                     429 -> {
-                        Log.w("GeminiService", "[$requestId] [$model] HTTP_429 body=$bodyPreview")
+                        Log.w("GeminiService", "[$requestId] [$model] HTTP_429")
                         onModelResult(ModelAttemptResult(
                             requestId = requestId,
                             model = model,
@@ -1105,13 +1182,13 @@ class GeminiService(
                             httpCode = httpCode,
                             durationMs = durationMs,
                             latencyMs = latencyMs,
-                            bodyPreview = bodyPreview,
+                            bodyPreview = null,
                             detail = null,
                             cancelReason = null
                         ))
                     }
                     else -> {
-                        Log.w("GeminiService", "[$requestId] [$model] HTTP_${httpCode} body=$bodyPreview")
+                        Log.w("GeminiService", "[$requestId] [$model] HTTP_${httpCode}")
                         onModelResult(ModelAttemptResult(
                             requestId = requestId,
                             model = model,
@@ -1120,7 +1197,7 @@ class GeminiService(
                             httpCode = httpCode,
                             durationMs = durationMs,
                             latencyMs = latencyMs,
-                            bodyPreview = bodyPreview,
+                            bodyPreview = null,
                             detail = null,
                             cancelReason = null
                         ))

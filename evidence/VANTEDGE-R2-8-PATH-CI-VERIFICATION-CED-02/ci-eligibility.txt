@@ -1,0 +1,70 @@
+=== .github/workflows/ci.yml ===
+     1	name: VantEdge CI
+     2	
+     3	on:
+     4	  push:
+     5	    branches: [main, develop]
+     6	  pull_request:
+     7	    branches: [main, develop]
+     8	
+     9	jobs:
+    10	  test:
+    11	    runs-on: ubuntu-latest
+    12	    steps:
+    13	      - uses: actions/checkout@v4
+    14	
+    15	      - name: Set up JDK 17
+    16	        uses: actions/setup-java@v4
+    17	        with:
+    18	          java-version: '17'
+    19	          distribution: 'temurin'
+    20	
+    21	      - name: Grant execute permission for gradlew
+    22	        run: chmod +x gradlew
+=== .github/workflows/full-ci.yml ===
+     1	name: Full CI + W5 Validation
+     2	
+     3	on:
+     4	  push:
+     5	    branches: [ main, develop, recovery/reconstructed ]
+     6	  pull_request:
+     7	    branches: [ main, develop ]
+     8	
+     9	jobs:
+    10	  w5-determinism-check:
+    11	    name: W5 100-Run Determinism Validation
+    12	    runs-on: ubuntu-latest
+    13	    timeout-minutes: 15
+    14	
+    15	    steps:
+    16	      - name: Checkout repository
+    17	        uses: actions/checkout@v4
+    18	
+    19	      - name: Set up JDK 17
+    20	        uses: actions/setup-java@v4
+    21	        with:
+    22	          java-version: '17'
+=== .github/workflows/w5-tests.yml ===
+     1	name: W5 Deterministic Scoring Tests
+     2	
+     3	on:
+     4	  push:
+     5	    branches: [ main, develop, feature/w5-scoring ]
+     6	    paths:
+     7	      - 'app/src/main/java/com/vantedge/app/w5/scoring/**'
+     8	      - 'app/src/test/java/com/vantedge/app/w5/scoring/**'
+     9	      - '.github/workflows/w5-tests.yml'
+    10	  pull_request:
+    11	    branches: [ main, develop ]
+    12	    paths:
+    13	      - 'app/src/main/java/com/vantedge/app/w5/scoring/**'
+    14	      - 'app/src/test/java/com/vantedge/app/w5/scoring/**'
+    15	
+    16	jobs:
+    17	  w5-unit-tests:
+    18	    name: W5 Unit Tests (JVM)
+    19	    runs-on: ubuntu-latest
+    20	    timeout-minutes: 10
+    21	
+    22	    steps:
+=== workflow_dispatch in the three required workflows ===

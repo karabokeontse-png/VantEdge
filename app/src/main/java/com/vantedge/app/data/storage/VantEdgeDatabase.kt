@@ -10,7 +10,7 @@ import com.vantedge.app.data.model.AiRawResponseArtifact
 
 @Database(
     entities = [CycleEntity::class, OnboardingDraftEntity::class, AiRawResponseArtifact::class],
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 abstract class VantEdgeDatabase : RoomDatabase() {
@@ -52,6 +52,13 @@ abstract class VantEdgeDatabase : RoomDatabase() {
             }
         }
 
+
+        private val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("UPDATE ai_raw_response_artifact SET rawResponse = ''")
+            }
+        }
+
         fun getInstance(context: Context): VantEdgeDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -59,7 +66,7 @@ abstract class VantEdgeDatabase : RoomDatabase() {
                     VantEdgeDatabase::class.java,
                     "vantedge_database"
                 )
-                .addMigrations(MIGRATION_2_3)
+                .addMigrations(MIGRATION_2_3, MIGRATION_3_4)
                 .build()
                 INSTANCE = instance
                 instance

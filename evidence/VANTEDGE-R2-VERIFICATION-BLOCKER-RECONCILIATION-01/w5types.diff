@@ -1,0 +1,14 @@
+diff --git a/app/src/main/java/com/vantedge/app/w5/scoring/W5Types.kt b/app/src/main/java/com/vantedge/app/w5/scoring/W5Types.kt
+index 623ee7b..1ac7a4e 100644
+--- a/app/src/main/java/com/vantedge/app/w5/scoring/W5Types.kt
++++ b/app/src/main/java/com/vantedge/app/w5/scoring/W5Types.kt
+@@ -100,7 +100,8 @@ enum class UnassessedReason {
+     PROFILE_QUALIFICATION_EVIDENCE_ABSENT,
+     TAXONOMY_MISS,
+     UNSUPPORTED_CATEGORY,
+-    PREFERENCE_NOT_ASSESSED
++    PREFERENCE_NOT_ASSESSED,
++    UNRECONCILED
+ }
+ 
+ data class UnassessedRequirement(

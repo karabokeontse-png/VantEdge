@@ -36,9 +36,24 @@ object ExtractionDecisionCoordinator {
         val lowConfidenceFields = mutableMapOf<String, FieldConfidence>()
         for (key in sortedKeys) {
             val conf = fieldConfidenceMap[key]!!
-            if (conf.overallConfidence < ACCEPT_THRESHOLD) {
+            val overall = conf.overallConfidence
+            if (overall == null || overall < ACCEPT_THRESHOLD) {
                 lowConfidenceFields[key] = conf
             }
+        }
+
+        if (lowConfidenceFields.size == fieldConfidenceMap.size &&
+            lowConfidenceFields.values.all { it.overallConfidence == null }
+        ) {
+            val durationMs = System.currentTimeMillis() - startMs
+            PipelineTrace.exit("ExtractionDecisionCoordinator", durationMs, mapOf(
+                "decision" to "Failure",
+                "reason" to "UNRECOVERABLE_PARSE_ERROR",
+                "detail" to "NO_MEASURED_CONFIDENCE",
+                "method" to source,
+                "correlationId" to correlationId
+            ))
+            return ExtractionDecision.Failure(FailureReason.UNRECOVERABLE_PARSE_ERROR)
         }
 
         if (lowConfidenceFields.isEmpty()) {
@@ -55,7 +70,8 @@ object ExtractionDecisionCoordinator {
         val criticalLow = lowConfidenceFields.filter { it.key in criticalFields }
 
         val criticalBelowReview = criticalLow.filter { (_, conf) ->
-            conf.overallConfidence < USER_REVIEW_THRESHOLD
+            val overall = conf.overallConfidence
+            overall == null || overall < USER_REVIEW_THRESHOLD
         }
 
         if (criticalBelowReview.isNotEmpty()) {
@@ -63,11 +79,11 @@ object ExtractionDecisionCoordinator {
                 FieldReview(
                     fieldName = field,
                     confidence = conf,
-                    reviewReason = "Overall confidence ${"%.2f".format(conf.overallConfidence)} below review threshold $USER_REVIEW_THRESHOLD"
+                    reviewReason = "Overall confidence ${conf.overallConfidence?.let { "%.2f".format(it) } ?: "unknown"} below review threshold $USER_REVIEW_THRESHOLD"
                 )
             }
             val durationMs = System.currentTimeMillis() - startMs
-            val reviewFields = reviews.joinToString(", ") { "${it.fieldName}=${"%.2f".format(it.confidence.overallConfidence)}" }
+            val reviewFields = reviews.joinToString(", ") { "${it.fieldName}=${it.confidence.overallConfidence?.let { v -> "%.2f".format(v) } ?: "unknown"}" }
             PipelineTrace.exit("ExtractionDecisionCoordinator", durationMs, mapOf(
                 "decision" to "UserReview",
                 "reason" to "criticalFieldsBelowThreshold",
@@ -79,7 +95,8 @@ object ExtractionDecisionCoordinator {
         }
 
         val acceptWithWarning = lowConfidenceFields.all { (_, conf) ->
-            conf.overallConfidence >= ACCEPT_WARNING_THRESHOLD
+            val overall = conf.overallConfidence
+            overall != null && overall >= ACCEPT_WARNING_THRESHOLD
         }
         if (acceptWithWarning) {
             val durationMs = System.currentTimeMillis() - startMs
@@ -96,11 +113,11 @@ object ExtractionDecisionCoordinator {
             FieldReview(
                 fieldName = field,
                 confidence = conf,
-                reviewReason = "Confidence ${"%.2f".format(conf.overallConfidence)} below warning threshold $ACCEPT_WARNING_THRESHOLD"
+                reviewReason = "Confidence ${conf.overallConfidence?.let { "%.2f".format(it) } ?: "unknown"} below warning threshold $ACCEPT_WARNING_THRESHOLD"
             )
         }
         val durationMs = System.currentTimeMillis() - startMs
-        val reviewFields = reviews.joinToString(", ") { "${it.fieldName}=${"%.2f".format(it.confidence.overallConfidence)}" }
+        val reviewFields = reviews.joinToString(", ") { "${it.fieldName}=${it.confidence.overallConfidence?.let { v -> "%.2f".format(v) } ?: "unknown"}" }
         PipelineTrace.exit("ExtractionDecisionCoordinator", durationMs, mapOf(
             "decision" to "UserReview",
             "reason" to "fieldsBelowWarningThreshold",

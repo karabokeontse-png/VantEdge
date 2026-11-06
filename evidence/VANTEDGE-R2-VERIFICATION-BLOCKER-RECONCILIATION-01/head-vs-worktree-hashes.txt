@@ -1,0 +1,18 @@
+settings.gradle
+  HEAD     234d51d6433b2d926cc8668a8c4fc5f839352c39de1439b8b5bb6c1708e861e1
+  WORKTREE 4b919cfffaed71637d1ee9c89f21f4247273e14eb8433afdcd0672eba906b41f
+app/src/main/java/com/vantedge/app/w5/scoring/W5Types.kt
+  HEAD     ed880cb97acce53ffdf41f6f11eb963a156c10c870a47bb29596e18722d28efb
+  WORKTREE 19d880dbb7bb64bb7d741e2ae214e12ed5cd38922a2b02edcfe616e6721f6964
+app/src/main/java/com/vantedge/app/data/domain/CompatibilityRecordMapper.kt
+  HEAD     0ea43a8e89a9ad2407b6f863af444c698980086a0f49276c4fa2199560bb3baa
+  WORKTREE bf34c26a16dcad1281553a20966171bc46a1f11f58491dbfa2cf6d9ab4b240c2
+app/src/test/java/com/vantedge/app/w5/scoring/RequirementCoverageTest.kt
+  HEAD     34e1adedb5885a2f289d9a1c014144c1e844b885d1be73b5902626442697fa31
+  WORKTREE 9db3e123c05ef5ab3cf9e9f0f57b5c54d5327862c829fbaf52fdfc6237cb4f92
+app/src/test/java/com/vantedge/app/w5/scoring/ProvisionalScoreTest.kt
+  HEAD     ee1cfdf57329be7d97726df3db536602ef2672a4f6deb65c658a526a13851a41
+  WORKTREE 87dca7ba65d289e2f51cdaa01835ed0e9b5a558feb5d430589aff4e423fa0e64
+app/src/test/java/com/vantedge/app/w5/scoring/CorrectiveUnknownStateTest.kt
+  HEAD     363f088db6ae185fb62eb2c9d65e061f728191dc30403cda89ca3aca18404964
+  WORKTREE 363f088db6ae185fb62eb2c9d65e061f728191dc30403cda89ca3aca18404964
