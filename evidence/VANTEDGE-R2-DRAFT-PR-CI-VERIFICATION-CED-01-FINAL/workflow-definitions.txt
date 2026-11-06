@@ -1,0 +1,180 @@
+=== ci.yml ===
+     1	name: VantEdge CI
+     2	
+     3	on:
+     4	  push:
+     5	    branches: [main, develop]
+     6	  pull_request:
+     7	    branches: [main, develop]
+     8	
+     9	jobs:
+    10	  test:
+    11	    runs-on: ubuntu-latest
+    12	    steps:
+    13	      - uses: actions/checkout@v4
+    14	
+    15	      - name: Set up JDK 17
+    16	        uses: actions/setup-java@v4
+    17	        with:
+    18	          java-version: '17'
+    19	          distribution: 'temurin'
+    20	
+    21	      - name: Grant execute permission for gradlew
+    22	        run: chmod +x gradlew
+    23	
+    24	      - name: Run unit tests
+    25	        run: ./gradlew testDebugUnitTest --stacktrace
+    26	
+    27	      - name: Upload test results
+    28	        uses: actions/upload-artifact@v4
+    29	        if: always()
+    30	        with:
+    31	          name: test-results
+    32	          path: |
+    33	            app/build/reports/tests/
+    34	            app/build/test-results/
+=== full-ci.yml ===
+     1	name: Full CI + W5 Validation
+     2	
+     3	on:
+     4	  push:
+     5	    branches: [ main, develop, recovery/reconstructed ]
+     6	  pull_request:
+     7	    branches: [ main, develop ]
+     8	
+     9	jobs:
+    10	  w5-determinism-check:
+    11	    name: W5 100-Run Determinism Validation
+    12	    runs-on: ubuntu-latest
+    13	    timeout-minutes: 15
+    14	
+    15	    steps:
+    16	      - name: Checkout repository
+    17	        uses: actions/checkout@v4
+    18	
+    19	      - name: Set up JDK 17
+    20	        uses: actions/setup-java@v4
+    21	        with:
+    22	          java-version: '17'
+    23	          distribution: 'temurin'
+    24	          cache: gradle
+    25	
+    26	      - name: Fix gradle.properties for CI
+    27	        run: |
+    28	          sed -i '/org.gradle.java.home/d' gradle.properties
+    29	          sed -i '/android.aapt2FromMavenOverride/d' gradle.properties
+    30	
+    31	      - name: Grant execute permission for gradlew
+    32	        run: chmod +x gradlew
+    33	
+    34	      - name: Compile W5 Sources
+    35	        run: ./gradlew compileDebugUnitTestKotlin --no-daemon
+    36	
+    37	      - name: Run W5 Full Test Suite
+    38	        run: ./gradlew testDebugUnitTest --tests "com.vantedge.app.w5.scoring.*" --no-daemon
+    39	
+    40	      - name: Verify test artifacts exist
+    41	        run: |
+    42	          echo "=== Test Results ==="
+    43	          find app/build/test-results -name "*.xml" | head -5
+    44	          echo "=== Test Report ==="
+    45	          ls -la app/build/reports/tests/testDebugUnitTest/ 2>/dev/null || echo "Report directory not found"
+    46	
+    47	      - name: Upload test results
+    48	        if: always()
+    49	        uses: actions/upload-artifact@v4
+    50	        with:
+    51	          name: w5-determinism-results
+    52	          path: |
+    53	            app/build/test-results/
+    54	            app/build/reports/
+=== w5-tests.yml ===
+     1	name: W5 Deterministic Scoring Tests
+     2	
+     3	on:
+     4	  push:
+     5	    branches: [ main, develop, feature/w5-scoring ]
+     6	    paths:
+     7	      - 'app/src/main/java/com/vantedge/app/w5/scoring/**'
+     8	      - 'app/src/test/java/com/vantedge/app/w5/scoring/**'
+     9	      - '.github/workflows/w5-tests.yml'
+    10	  pull_request:
+    11	    branches: [ main, develop ]
+    12	    paths:
+    13	      - 'app/src/main/java/com/vantedge/app/w5/scoring/**'
+    14	      - 'app/src/test/java/com/vantedge/app/w5/scoring/**'
+    15	
+    16	jobs:
+    17	  w5-unit-tests:
+    18	    name: W5 Unit Tests (JVM)
+    19	    runs-on: ubuntu-latest
+    20	    timeout-minutes: 10
+    21	
+    22	    steps:
+    23	      - name: Checkout repository
+    24	        uses: actions/checkout@v4
+    25	
+    26	      - name: Set up JDK 17
+    27	        uses: actions/setup-java@v4
+    28	        with:
+    29	          java-version: '17'
+    30	          distribution: 'temurin'
+    31	          cache: gradle
+    32	
+    33	      - name: Grant execute permission for gradlew
+    34	        run: chmod +x gradlew
+    35	
+    36	      - name: Fix gradle.properties for CI
+    37	        run: |
+    38	          sed -i '/org.gradle.java.home/d' gradle.properties
+    39	          sed -i '/android.aapt2FromMavenOverride/d' gradle.properties
+    40	
+    41	      - name: Run W5 Scoring Tests
+    42	        run: ./gradlew testDebugUnitTest --tests "com.vantedge.app.w5.scoring.*" --no-daemon
+    43	
+    44	      - name: Upload test results
+    45	        if: always()
+    46	        uses: actions/upload-artifact@v4
+    47	        with:
+    48	          name: w5-test-results
+    49	          path: app/build/test-results/testDebugUnitTest/
+    50	
+    51	      - name: Upload test report
+    52	        if: always()
+    53	        uses: actions/upload-artifact@v4
+    54	        with:
+    55	          name: w5-test-report
+    56	          path: app/build/reports/tests/testDebugUnitTest/
+    57	
+    58	  w5-baseline-benchmark:
+    59	    name: W5 Baseline Benchmark
+    60	    runs-on: ubuntu-latest
+    61	    timeout-minutes: 10
+    62	
+    63	    steps:
+    64	      - name: Checkout repository
+    65	        uses: actions/checkout@v4
+    66	
+    67	      - name: Set up JDK 17
+    68	        uses: actions/setup-java@v4
+    69	        with:
+    70	          java-version: '17'
+    71	          distribution: 'temurin'
+    72	          cache: gradle
+    73	
+    74	      - name: Grant execute permission for gradlew
+    75	        run: chmod +x gradlew
+    76	
+    77	      - name: Fix gradle.properties for CI
+    78	        run: |
+    79	          sed -i '/org.gradle.java.home/d' gradle.properties
+    80	          sed -i '/android.aapt2FromMavenOverride/d' gradle.properties
+    81	
+    82	      - name: Run W5 Baseline Test
+    83	        run: ./gradlew testDebugUnitTest --tests "com.vantedge.app.w5.scoring.W5ScoreBaselineTest" --no-daemon
+    84	
+    85	      - name: Upload baseline CSV
+    86	        uses: actions/upload-artifact@v4
+    87	        with:
+    88	          name: w5-baseline-scores
+    89	          path: app/build/reports/baseline_scores.csv

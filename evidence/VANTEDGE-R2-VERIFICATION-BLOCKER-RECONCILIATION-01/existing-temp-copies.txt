@@ -1,0 +1,24 @@
+=== /tmp/r2-verify ===
+ed83a02c5b14e3d5b116c00fd3621b66d0a4c14c
+ed83a02 fix(AC10): gate eligibility claims on confirmed gaps
+     10 ??
+     24 M
+=== /tmp/ckpt ===
+fatal: not a git repository (or any of the parent directories): .git
+2026-10-06 06:12:04.000000000 +0000 settings.gradle
+=== /tmp/r2cuei/init.gradle ===
+beforeSettings { settings ->
+    settings.pluginManagement {
+        repositories {
+            google()
+            mavenCentral()
+            gradlePluginPortal()
+        }
+    }
+    settings.dependencyResolutionManagement {
+        repositories {
+            google()
+            mavenCentral()
+        }
+    }
+}

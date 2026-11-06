@@ -1,0 +1,56 @@
+REPO_ROOT=/root/vantedge-canonical
+BRANCH=verification/ced-p0-authority
+HEAD=06bb4ac287973dd3ca6bdab1eeb85714b4cb97c2
+HEAD_PARENT=3f23859c9d38828b1da673429c11d885b0b0219c
+HEAD_TREE=b6aa1d9cafb13154344274da187303076f338901
+STATUS_COUNTS_BEGIN
+     33 ??
+      1 D
+     40 M
+STATUS_COUNTS_END
+PORCELAIN_SHA256=343e73a969ff93556909c00d906c2e8bbf693697beabc92e9fafb81daf0893e0
+STAGED_COUNT=0
+UNSTAGED_DIFF_STAT_BEGIN
+ app/build.gradle                                   |   5 +
+ app/src/main/AndroidManifest.xml                   |   4 +-
+ .../app/data/domain/CompatibilityRecordMapper.kt   | 110 ++++--
+ .../app/data/domain/OptimizationOrchestrator.kt    |  71 ++--
+ .../vantedge/app/data/engine/GeneratorEngine.kt    | 150 ++++++---
+ .../app/data/engine/ProfileExtractionEngine.kt     |  50 +--
+ .../com/vantedge/app/data/network/AiGateway.kt     |  45 +--
+ .../java/com/vantedge/app/data/network/AiResult.kt |  21 --
+ .../com/vantedge/app/data/network/GeminiService.kt | 193 +++++++----
+ .../vantedge/app/data/storage/VantEdgeDatabase.kt  |  11 +-
+ .../app/data/viewmodel/CompatibilityViewModel.kt   |  48 ++-
+ .../vantedge/app/data/viewmodel/CycleNavEvent.kt   |   1 +
+ .../vantedge/app/data/viewmodel/CycleUiState.kt    |  24 +-
+ .../vantedge/app/data/viewmodel/CycleViewModel.kt  | 375 ++++++++++++++++-----
+ .../app/data/viewmodel/GeneratorViewModel.kt       |  74 +++-
+ .../app/data/viewmodel/JobExtractionState.kt       |  11 +-
+ .../app/data/viewmodel/OnboardingViewModel.kt      |  12 +-
+ .../java/com/vantedge/app/domain/PipelineTrace.kt  |   5 +
+ .../app/domain/extraction/ExtractionOutcome.kt     |   6 +-
+ .../domain/extraction/JobExtractionOrchestrator.kt |  71 +++-
+ .../java/com/vantedge/app/navigation/Navigation.kt |  58 +++-
+ .../com/vantedge/app/ui/screens/CVDesignScreen.kt  |  20 +-
+ .../vantedge/app/ui/screens/CVGeneratorScreen.kt   |  92 +++--
+ .../app/ui/screens/CompatibilityInputScreen.kt     |  46 ++-
+ .../vantedge/app/ui/screens/EditProfileScreen.kt   |   5 +-
+ .../com/vantedge/app/ui/screens/JobInputScreen.kt  | 181 +++++++---
+ .../com/vantedge/app/ui/screens/ResultScreen.kt    |   6 +-
+ .../java/com/vantedge/app/util/FailureLogBundle.kt |  34 +-
+ .../main/java/com/vantedge/app/util/LogDumper.kt   |   3 -
+ app/src/main/java/com/vantedge/app/util/LogSink.kt |   8 +
+ .../java/com/vantedge/app/w5/scoring/W5Types.kt    |   3 +-
+ .../data/engine/DateRecoveryPostProcessingTest.kt  |   8 +-
+ .../storage/CompatibilityRecordLegacyJsonTest.kt   |  22 ++
+ .../data/viewmodel/CycleScoreAggregationTest.kt    |  11 +
+ .../data/viewmodel/ExtractionOutcomeMapperTest.kt  |   7 +
+ .../app/w5/scoring/ProvisionalScoreTest.kt         |  84 ++++-
+ .../app/w5/scoring/RequirementCoverageTest.kt      | 224 ++++++++++++
+ .../vantedge/app/w5/scoring/W5ScoreEngineTest.kt   |   2 +-
+ .../validation/P2VerificationHarnessTest.kt        |  46 +++
+ gradle.properties                                  |  10 +-
+ settings.gradle                                    |  17 -
+ 41 files changed, 1648 insertions(+), 526 deletions(-)
+UNSTAGED_DIFF_STAT_END

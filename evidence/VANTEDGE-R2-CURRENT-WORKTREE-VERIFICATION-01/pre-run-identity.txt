@@ -1,0 +1,115 @@
+=== date_utc ===
+2026-11-04T07:10:59Z
+=== branch ===
+verification/ced-p0-authority
+=== head ===
+06bb4ac287973dd3ca6bdab1eeb85714b4cb97c2
+=== head_tree ===
+b6aa1d9cafb13154344274da187303076f338901
+=== head_parent ===
+3f23859c9d38828b1da673429c11d885b0b0219c
+=== staged_paths ===
+=== staged_count ===
+0
+=== porcelain ===
+ M app/build.gradle
+ M app/src/main/AndroidManifest.xml
+ M app/src/main/java/com/vantedge/app/data/domain/CompatibilityRecordMapper.kt
+ M app/src/main/java/com/vantedge/app/data/domain/OptimizationOrchestrator.kt
+ M app/src/main/java/com/vantedge/app/data/engine/GeneratorEngine.kt
+ M app/src/main/java/com/vantedge/app/data/engine/ProfileExtractionEngine.kt
+ M app/src/main/java/com/vantedge/app/data/network/AiGateway.kt
+ D app/src/main/java/com/vantedge/app/data/network/AiResult.kt
+ M app/src/main/java/com/vantedge/app/data/network/GeminiService.kt
+ M app/src/main/java/com/vantedge/app/data/storage/VantEdgeDatabase.kt
+ M app/src/main/java/com/vantedge/app/data/viewmodel/CompatibilityViewModel.kt
+ M app/src/main/java/com/vantedge/app/data/viewmodel/CycleNavEvent.kt
+ M app/src/main/java/com/vantedge/app/data/viewmodel/CycleUiState.kt
+ M app/src/main/java/com/vantedge/app/data/viewmodel/CycleViewModel.kt
+ M app/src/main/java/com/vantedge/app/data/viewmodel/GeneratorViewModel.kt
+ M app/src/main/java/com/vantedge/app/data/viewmodel/JobExtractionState.kt
+ M app/src/main/java/com/vantedge/app/data/viewmodel/OnboardingViewModel.kt
+ M app/src/main/java/com/vantedge/app/domain/PipelineTrace.kt
+ M app/src/main/java/com/vantedge/app/domain/extraction/ExtractionOutcome.kt
+ M app/src/main/java/com/vantedge/app/domain/extraction/JobExtractionOrchestrator.kt
+ M app/src/main/java/com/vantedge/app/navigation/Navigation.kt
+ M app/src/main/java/com/vantedge/app/ui/screens/CVDesignScreen.kt
+ M app/src/main/java/com/vantedge/app/ui/screens/CVGeneratorScreen.kt
+ M app/src/main/java/com/vantedge/app/ui/screens/CompatibilityInputScreen.kt
+ M app/src/main/java/com/vantedge/app/ui/screens/EditProfileScreen.kt
+ M app/src/main/java/com/vantedge/app/ui/screens/JobInputScreen.kt
+ M app/src/main/java/com/vantedge/app/ui/screens/ResultScreen.kt
+ M app/src/main/java/com/vantedge/app/util/FailureLogBundle.kt
+ M app/src/main/java/com/vantedge/app/util/LogDumper.kt
+ M app/src/main/java/com/vantedge/app/util/LogSink.kt
+ M app/src/main/java/com/vantedge/app/w5/scoring/W5Types.kt
+ M app/src/test/java/com/vantedge/app/data/engine/DateRecoveryPostProcessingTest.kt
+ M app/src/test/java/com/vantedge/app/data/storage/CompatibilityRecordLegacyJsonTest.kt
+ M app/src/test/java/com/vantedge/app/data/viewmodel/CycleScoreAggregationTest.kt
+ M app/src/test/java/com/vantedge/app/data/viewmodel/ExtractionOutcomeMapperTest.kt
+ M app/src/test/java/com/vantedge/app/w5/scoring/ProvisionalScoreTest.kt
+ M app/src/test/java/com/vantedge/app/w5/scoring/RequirementCoverageTest.kt
+ M app/src/test/java/com/vantedge/app/w5/scoring/W5ScoreEngineTest.kt
+ M app/src/test/java/com/vantedge/pipeline/validation/P2VerificationHarnessTest.kt
+ M gradle.properties
+ M settings.gradle
+?? AUDIT_2026-10-15.md
+?? VANTEDGE_AUDIT_BRIEF.md
+?? VANTEDGE_AUDIT_INDEX.json
+?? VANTEDGE_BUILD_SPEED_CONFIG_CACHE.md
+?? VANTEDGE_CED-PRIV-01_REVISION_E_AUDIT.md
+?? VANTEDGE_DETERMINISTIC_FIRST_PHASE1.md
+?? VANTEDGE_DETERMINISTIC_FIRST_PHASE3.md
+?? VANTEDGE_P0_PROFILE_EXTRACTION_INVESTIGATION.md
+?? VANTEDGE_SIGNING_CONTINUITY_REPORT.md
+?? app/src/androidTest/java/com/vantedge/app/R2AutoVerifyTest.kt
+?? app/src/main/java/com/vantedge/app/data/domain/GenerationOrchestrator.kt
+?? app/src/main/java/com/vantedge/app/data/domain/GenerationOutcome.kt
+?? app/src/main/java/com/vantedge/app/data/domain/ProfileEligibility.kt
+?? app/src/main/java/com/vantedge/app/data/engine/DeterministicProfileExtractor.kt
+?? app/src/main/java/com/vantedge/app/data/model/GenerationRequest.kt
+?? app/src/main/java/com/vantedge/app/data/network/AiTextGateway.kt
+?? app/src/main/java/com/vantedge/app/data/viewmodel/ExtractionReviewController.kt
+?? app/src/main/java/com/vantedge/app/domain/extraction/ExtractionReview.kt
+?? app/src/main/java/com/vantedge/app/ui/components/ExtractionReviewSurface.kt
+?? app/src/main/res/xml/backup_rules.xml
+?? app/src/main/res/xml/data_extraction_rules.xml
+?? app/src/test/java/com/vantedge/app/A13BlankApiKeyTest.kt
+?? app/src/test/java/com/vantedge/app/data/domain/
+?? app/src/test/java/com/vantedge/app/data/engine/DeterministicProfileExtractorTest.kt
+?? app/src/test/java/com/vantedge/app/data/engine/NormalizeRootKeysDateAuthorityTest.kt
+?? app/src/test/java/com/vantedge/app/data/engine/ReviewedJobRequirementsPromptTest.kt
+?? app/src/test/java/com/vantedge/app/data/viewmodel/CycleViewModelHandoffLifecycleTest.kt
+?? app/src/test/java/com/vantedge/app/data/viewmodel/GeneratorViewModelReviewedRequirementsChainTest.kt
+?? app/src/test/java/com/vantedge/app/domain/extraction/ExtractionReviewTest.kt
+?? app/src/test/java/com/vantedge/app/domain/extraction/JobExtractionDecisionEnforcementTest.kt
+?? app/src/test/java/com/vantedge/app/domain/extraction/JobExtractionOrchestratorFieldPreservationTest.kt
+?? app/src/test/java/com/vantedge/app/navigation/
+?? evidence/
+=== porcelain_sha256 ===
+343e73a969ff93556909c00d906c2e8bbf693697beabc92e9fafb81daf0893e0  -
+=== source_hashes ===
+bf34c26a16dcad1281553a20966171bc46a1f11f58491dbfa2cf6d9ab4b240c2  app/src/main/java/com/vantedge/app/data/domain/CompatibilityRecordMapper.kt
+9db3e123c05ef5ab3cf9e9f0f57b5c54d5327862c829fbaf52fdfc6237cb4f92  app/src/test/java/com/vantedge/app/w5/scoring/RequirementCoverageTest.kt
+=== init_script_sha256 ===
+6aa2bd5f4b2c79595b0224226173e9cd91aecef2fcf9e598780e161bdd1cd1ab  /tmp/r2cuei/init.gradle
+=== required_paths_present ===
+PRESENT app/src/main/java/com/vantedge/app/data/domain/CompatibilityRecordMapper.kt
+PRESENT app/src/main/java/com/vantedge/app/w5/scoring/W5Types.kt
+PRESENT app/src/test/java/com/vantedge/app/w5/scoring/RequirementCoverageTest.kt
+PRESENT app/src/test/java/com/vantedge/app/w5/scoring/ProvisionalScoreTest.kt
+PRESENT app/src/test/java/com/vantedge/app/w5/scoring/CorrectiveUnknownStateTest.kt
+PRESENT /tmp/r2cuei/init.gradle
+=== static_test_counts ===
+21 app/src/test/java/com/vantedge/app/w5/scoring/RequirementCoverageTest.kt
+11 app/src/test/java/com/vantedge/app/w5/scoring/ProvisionalScoreTest.kt
+10 app/src/test/java/com/vantedge/app/w5/scoring/CorrectiveUnknownStateTest.kt
+=== static_total ===
+42
+=== ignored_check ===
+app/.gitignore:11:/build	app/build
+.gitignore:13:/.gradle/	.gradle/configuration-cache
+=== tracked_check ===
+=== dot_kotlin_contents ===
+d .kotlin
+d .kotlin/sessions

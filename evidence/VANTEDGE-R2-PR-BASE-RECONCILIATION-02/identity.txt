@@ -1,0 +1,11 @@
+2026-11-04T11:57:49Z
+branch=verification/ced-p0-authority
+head=06bb4ac287973dd3ca6bdab1eeb85714b4cb97c2
+head_tree=b6aa1d9cafb13154344274da187303076f338901
+head_parent=3f23859c9d38828b1da673429c11d885b0b0219c
+staged_count=0
+      1  D
+     41  M
+     34 ??
+porcelain_sha256=4aac344577a647f7a7c25655e4d2bbec2b187bd73979a564f6f5f75dafe49097
+upstream=fatal: no upstream configured for branch 'verification/ced-p0-authority'

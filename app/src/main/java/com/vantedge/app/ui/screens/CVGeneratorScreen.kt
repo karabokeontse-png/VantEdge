@@ -27,10 +27,12 @@ import com.tom_roush.pdfbox.pdmodel.PDDocument
 import com.tom_roush.pdfbox.text.PDFTextStripper
 import com.vantedge.app.domain.extraction.ExtractionOutcome
 import com.vantedge.app.domain.extraction.JobExtractionOrchestrator
+import com.vantedge.app.data.model.JobExtractionResult
 import com.vantedge.app.data.model.JobSourceType
 import com.vantedge.app.data.model.UserProfile
 import com.vantedge.app.data.viewmodel.GeneratorUiState
 import com.vantedge.app.data.viewmodel.GeneratorViewModel
+import com.vantedge.app.ui.components.ExtractionReviewSurface
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.TimeoutCancellationException
@@ -58,6 +60,7 @@ fun CVGeneratorScreen(
     onNavigateToEditProfile: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val pendingReview by viewModel.pendingExtractionReview.collectAsState()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
@@ -79,11 +82,7 @@ fun CVGeneratorScreen(
             else viewModel.savedJobDescription
         )
     }
-    var savedRequiredSkills by remember { mutableStateOf<List<String>>(emptyList()) }
-    var savedPreferredSkills by remember { mutableStateOf<List<String>>(emptyList()) }
-    var savedEducationRequired by remember { mutableStateOf<String?>(null) }
-    var savedConfidenceScore by remember { mutableStateOf(0f) }
-    var savedGate0Result by remember { mutableStateOf<com.vantedge.app.data.model.Gate0JobResult?>(null) }
+    var extractionError by remember { mutableStateOf<String?>(null) }
 
     var urlInput by remember { mutableStateOf("") }
     var showUrlInput by remember { mutableStateOf(false) }
@@ -206,37 +205,36 @@ fun CVGeneratorScreen(
         return
     }
 
+    fun fillFromExtraction(extraction: JobExtractionResult) {
+        if (extraction.jobTitle != null) jobTitle = extraction.jobTitle
+        if (extraction.company != null) company = extraction.company
+        jobDescription = extraction.description
+    }
+
     fun extractAndFill(rawText: String) {
+        viewModel.clearExtractionReview()
         isExtracting = true
+        extractionError = null
         scope.launch(Dispatchers.IO) {
             val result = extractionOrchestrator.extractJob(rawText, JobSourceType.USER_INPUT)
-            result.onSuccess { outcome ->
-                val extraction = when (outcome) {
-                    is ExtractionOutcome.Accepted -> outcome.result
-                    is ExtractionOutcome.ReviewRequired -> outcome.result
-                    is ExtractionOutcome.EmergencyFallback -> outcome.result
-                    is ExtractionOutcome.Rejected -> null
-                }
-                scope.launch(Dispatchers.Main) {
-                    if (extraction != null) {
-                        if (extraction.jobTitle != null) jobTitle = extraction.jobTitle
-                        if (extraction.company != null) company = extraction.company
-                        jobDescription = extraction.description
-                        savedRequiredSkills = extraction.requiredSkills
-                        savedPreferredSkills = extraction.preferredSkills
-                        savedEducationRequired = extraction.educationRequired
-                        savedConfidenceScore = extraction.confidenceScore
-                        savedGate0Result = extraction.gate0Result
-                    } else {
-                        jobDescription = rawText.take(3000)
+            withContext(Dispatchers.Main) {
+                result.onSuccess { outcome ->
+                    viewModel.presentExtractionOutcome(outcome)
+                    when (outcome) {
+                        is ExtractionOutcome.Accepted -> fillFromExtraction(outcome.result)
+                        is ExtractionOutcome.ReviewRequired -> fillFromExtraction(outcome.result)
+                        is ExtractionOutcome.EmergencyFallback -> fillFromExtraction(outcome.result)
+                        is ExtractionOutcome.Rejected -> {
+                            extractionError = "Extraction rejected: ${outcome.reason}"
+                            jobDescription = rawText.take(3000)
+                        }
                     }
-                    isExtracting = false
-                }
-            }.onFailure {
-                scope.launch(Dispatchers.Main) {
+                }.onFailure { error ->
+                    viewModel.clearExtractionReview()
+                    extractionError = error.message ?: "Extraction failed"
                     jobDescription = rawText.take(3000)
-                    isExtracting = false
                 }
+                isExtracting = false
             }
         }
     }
@@ -348,10 +346,35 @@ fun CVGeneratorScreen(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            extractionError?.let { message ->
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF3A1A1A))
+                ) {
+                    Text(
+                        text = "Extraction failed: $message",
+                        color = Color(0xFFFFCDD2),
+                        fontSize = 12.sp,
+                        modifier = Modifier.padding(12.dp)
+                    )
+                }
+            }
+
+            pendingReview?.let { review ->
+                ExtractionReviewSurface(
+                    review = review,
+                    onConfirm = { corrected ->
+                        fillFromExtraction(corrected)
+                        viewModel.acknowledgeExtractionReview(corrected)
+                    }
+                )
+            }
+
             OutlinedTextField(
                 value = jobTitle,
                 onValueChange = { jobTitle = it },
                 label = { Text("Job Title") },
+                enabled = pendingReview == null,
                 modifier = Modifier.fillMaxWidth(),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedTextColor = Color.White,
@@ -367,6 +390,7 @@ fun CVGeneratorScreen(
                 value = company,
                 onValueChange = { company = it },
                 label = { Text("Company") },
+                enabled = pendingReview == null,
                 modifier = Modifier.fillMaxWidth(),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedTextColor = Color.White,
@@ -391,7 +415,7 @@ fun CVGeneratorScreen(
                     .fillMaxWidth()
                     .height(180.dp),
                 maxLines = Int.MAX_VALUE,
-                enabled = !isExtracting,
+                enabled = !isExtracting && pendingReview == null,
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedTextColor = Color.White,
                     unfocusedTextColor = Color.White,
@@ -472,7 +496,7 @@ fun CVGeneratorScreen(
 
             Button(
                 onClick = {
-                    if (fieldsValid) {
+                    if (fieldsValid && pendingReview == null) {
                         viewModel.generate(
                             profile = profile,
                             jobTitle = jobTitle,
@@ -486,7 +510,7 @@ fun CVGeneratorScreen(
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),
-                enabled = fieldsValid && !isLoading && !isExtracting,
+                enabled = fieldsValid && !isLoading && !isExtracting && pendingReview == null,
                 colors = ButtonDefaults.buttonColors(
                     containerColor = teal,
                     contentColor = Color.Black,
@@ -503,7 +527,7 @@ fun CVGeneratorScreen(
 
             Button(
                 onClick = {
-                    if (fieldsValid) {
+                    if (fieldsValid && pendingReview == null) {
                         viewModel.generate(
                             profile = profile,
                             jobTitle = jobTitle,
@@ -517,7 +541,7 @@ fun CVGeneratorScreen(
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),
-                enabled = fieldsValid && !isLoading && !isExtracting,
+                enabled = fieldsValid && !isLoading && !isExtracting && pendingReview == null,
                 colors = ButtonDefaults.buttonColors(
                     containerColor = amber,
                     contentColor = Color.Black,

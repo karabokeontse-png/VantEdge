@@ -4,11 +4,12 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.vantedge.app.data.domain.CompatibilityOrchestrator
 import com.vantedge.app.data.engine.CompatibilityResult
+import com.vantedge.app.domain.extraction.EMERGENCY_EXTRACTION_NOTICE
 import com.vantedge.app.domain.extraction.ExtractionOutcome
+import com.vantedge.app.domain.extraction.ExtractionReview
 import com.vantedge.app.domain.extraction.JobExtractionOrchestrator
 import com.vantedge.pipeline.validation.ValidationDecision
 import com.vantedge.app.data.model.CompatibilityRecord
-import com.vantedge.app.data.model.Gate0JobResult
 import com.vantedge.app.data.model.JobExtractionResult
 import com.vantedge.app.data.model.JobSourceType
 import com.vantedge.app.data.model.UserProfile
@@ -18,6 +19,7 @@ import com.vantedge.app.data.storage.UserPreferences
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -48,13 +50,15 @@ class CompatibilityViewModel(
     var savedRequiredSkills: List<String> = emptyList()
     var savedPreferredSkills: List<String> = emptyList()
     var savedEducationRequired: String? = null
-    var savedConfidenceScore: Float = 0f
-    var savedGate0Result: Gate0JobResult? = null
+    private val extractionReviewController = ExtractionReviewController()
+    val pendingExtractionReview: StateFlow<ExtractionReview?> = extractionReviewController.review
+
+    private val _lastExtractionState = MutableStateFlow<JobExtractionState>(JobExtractionState.Idle)
     /**
      * Current extraction state for UI observation.
      * Updated exclusively by [extractFieldsFromText]. External mutation is not intended.
      */
-    var lastExtractionState: JobExtractionState = JobExtractionState.Idle
+    val lastExtractionState: StateFlow<JobExtractionState> = _lastExtractionState.asStateFlow()
 
     private val _addedSkills = MutableStateFlow<Set<String>>(emptySet())
     val addedSkills: StateFlow<Set<String>> = _addedSkills
@@ -200,18 +204,22 @@ class CompatibilityViewModel(
             val result = extractionOrchestrator.extractJob(rawText, JobSourceType.USER_INPUT)
             val outcome = result.getOrNull()
             if (outcome == null) {
+                extractionReviewController.clear()
+                _lastExtractionState.value = JobExtractionState.Failure(
+                    result.exceptionOrNull()?.message ?: "Extraction failed"
+                )
                 viewModelScope.launch(Dispatchers.Main) {
                     onResult(null)
                 }
                 return@launch
             }
+
+            extractionReviewController.present(outcome)
             when (outcome) {
                 is ExtractionOutcome.Accepted -> {
                     savedRequiredSkills = outcome.result.requiredSkills
                     savedPreferredSkills = outcome.result.preferredSkills
                     savedEducationRequired = outcome.result.educationRequired
-                    savedConfidenceScore = outcome.result.confidenceScore
-                    savedGate0Result = outcome.result.gate0Result
                     viewModelScope.launch(Dispatchers.Main) {
                         onResult(outcome.result)
                     }
@@ -220,8 +228,6 @@ class CompatibilityViewModel(
                     savedRequiredSkills = outcome.result.requiredSkills
                     savedPreferredSkills = outcome.result.preferredSkills
                     savedEducationRequired = outcome.result.educationRequired
-                    savedConfidenceScore = outcome.result.confidenceScore
-                    savedGate0Result = outcome.result.gate0Result
                     viewModelScope.launch(Dispatchers.Main) {
                         onResult(outcome.result)
                     }
@@ -230,8 +236,6 @@ class CompatibilityViewModel(
                     savedRequiredSkills = outcome.result.requiredSkills
                     savedPreferredSkills = outcome.result.preferredSkills
                     savedEducationRequired = outcome.result.educationRequired
-                    savedConfidenceScore = outcome.result.confidenceScore
-                    savedGate0Result = outcome.result.gate0Result
                     viewModelScope.launch(Dispatchers.Main) {
                         onResult(outcome.result)
                     }
@@ -240,15 +244,18 @@ class CompatibilityViewModel(
                     savedRequiredSkills = emptyList()
                     savedPreferredSkills = emptyList()
                     savedEducationRequired = null
-                    savedConfidenceScore = 0f
-                    savedGate0Result = null
                     viewModelScope.launch(Dispatchers.Main) {
                         onResult(null)
                     }
                 }
             }
-            lastExtractionState = mapOutcomeToState(outcome)
+            _lastExtractionState.value = mapOutcomeToState(outcome)
         }
+    }
+
+    fun acknowledgeExtractionReview(corrected: JobExtractionResult) {
+        extractionReviewController.acknowledge(corrected)
+        _lastExtractionState.value = JobExtractionState.Success(corrected)
     }
 }
 
@@ -256,9 +263,20 @@ internal fun mapOutcomeToState(outcome: ExtractionOutcome): JobExtractionState =
     is ExtractionOutcome.Accepted -> JobExtractionState.Success(outcome.result)
     is ExtractionOutcome.ReviewRequired -> {
         val warnings = if (outcome.decision is ValidationDecision.Degraded) outcome.decision.warnings else emptyList()
-        JobExtractionState.SuccessWithWarning(outcome.result, warnings)
+        JobExtractionState.SuccessWithWarning(
+            result = outcome.result,
+            warnings = warnings,
+            extractionReview = outcome.extractionReview,
+            requiresAcknowledgment = true
+        )
     }
     is ExtractionOutcome.EmergencyFallback ->
-        JobExtractionState.SuccessWithWarning(outcome.result, listOf("Emergency extraction — validation not performed"))
+        JobExtractionState.SuccessWithWarning(
+            result = outcome.result,
+            warnings = listOf(EMERGENCY_EXTRACTION_NOTICE),
+            requiresAcknowledgment = true,
+            isUnvalidatedFallback = true,
+            traceId = outcome.traceId
+        )
     is ExtractionOutcome.Rejected -> JobExtractionState.Failure(outcome.reason)
 }

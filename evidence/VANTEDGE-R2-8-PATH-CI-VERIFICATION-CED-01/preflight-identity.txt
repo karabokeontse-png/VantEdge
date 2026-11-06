@@ -1,0 +1,22 @@
+=== preflight identity ===
+2026-11-04T08:58:11Z
+branch=verification/ced-p0-authority
+head=06bb4ac287973dd3ca6bdab1eeb85714b4cb97c2
+head_tree=b6aa1d9cafb13154344274da187303076f338901
+head_parent=3f23859c9d38828b1da673429c11d885b0b0219c
+staged_count=0
+porcelain_counts:
+      1  D
+     40  M
+     34 ??
+porcelain_sha256=71570223b0346af77388bb5c71120be98845f737f06513441b541e8344211830
+upstream=fatal: no upstream configured for branch 'verification/ced-p0-authority'
+remote=https://github.com/karabokeontse-png/VantEdge.git
+head_on_remote_refs=
+merge_base_origin_main=b3c9d06c82a553a53bf9bca62cc521014ce4f159
+left_right_vs_origin_main=4	0
+local_commits_not_on_origin_main:
+  06bb4ac fix(r2): preserve unknown requirement evidence
+  3f23859 R2: unknown-state integrity implementation (milestone)
+  ed83a02 fix(AC10): gate eligibility claims on confirmed gaps
+  5609322 fix(P0-A): forward structured requirements to every analysis branch

@@ -54,7 +54,15 @@ object LogSink {
             return
         }
         lock.withLock {
+            val activePath = file.absolutePath
             try {
+                // Purge all rotated archives (.1 .. .5) before clearing the active file.
+                for (index in 1..MAX_ARCHIVES) {
+                    val archive = File("$activePath.$index")
+                    if (archive.exists() && !archive.delete()) {
+                        Log.w(TAG, "Failed to delete trace archive: ${archive.absolutePath}")
+                    }
+                }
                 if (file.exists()) {
                     RandomAccessFile(file, "rw").use { it.setLength(0) }
                 } else {

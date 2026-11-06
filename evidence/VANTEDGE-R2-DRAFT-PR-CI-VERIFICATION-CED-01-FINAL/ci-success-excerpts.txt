@@ -1,0 +1,11 @@
+=== Successful workflow excerpts ===
+--- W5 Unit Tests (JVM) ---
+290:2026-11-04T13:36:47.0720968Z > Task :app:testDebugUnitTest
+300:2026-11-04T13:36:47.1877620Z BUILD SUCCESSFUL in 2m 31s
+--- W5 Baseline Benchmark ---
+291:2026-11-04T13:37:07.7621084Z > Task :app:testDebugUnitTest
+301:2026-11-04T13:37:07.7682507Z BUILD SUCCESSFUL in 2m 51s
+--- W5 100-Run Determinism Validation ---
+293:2026-11-04T13:36:44.8213784Z BUILD SUCCESSFUL in 2m 27s
+345:2026-11-04T13:37:04.3841848Z > Task :app:testDebugUnitTest
+355:2026-11-04T13:37:04.3875518Z BUILD SUCCESSFUL in 19s

@@ -7,14 +7,16 @@ import com.vantedge.app.data.engine.CompatibilityEngine
 import com.vantedge.app.data.engine.CompatibilityResult
 import com.vantedge.app.data.engine.EngineResult
 import com.vantedge.app.data.engine.GeneratorEngine
+import com.vantedge.app.data.engine.ReviewedJobRequirements
 import com.vantedge.app.data.engine.extraction.JsonExtractionEngine
 import com.vantedge.app.data.model.DesignConfig
 import com.vantedge.app.data.model.GenerationCycle
 import com.vantedge.app.data.model.GenerationMode
+import com.vantedge.app.data.model.GenerationRequest
 import com.vantedge.app.data.domain.PipelineStep
 import com.vantedge.app.data.model.QualificationRatio
 import com.vantedge.app.data.model.UserProfile
-import com.vantedge.app.data.network.AiGateway
+import com.vantedge.app.data.network.AiTextGateway
 import com.vantedge.app.data.network.AiRequest
 import com.vantedge.app.data.storage.HistoryStore
 import com.vantedge.app.domain.PipelineTrace
@@ -45,12 +47,12 @@ import kotlinx.coroutines.launch
 import java.util.UUID
 
 class OptimizationOrchestrator(
-    private val aiGateway: AiGateway,
+    private val aiGateway: AiTextGateway,
     private val contractValidator: ContractValidator,
     private val compatibilityEngine: CompatibilityEngine,
     private val generatorEngine: GeneratorEngine,
     private val historyStore: HistoryStore
-) : CompatibilityOrchestrator {
+) : CompatibilityOrchestrator, GenerationOrchestrator {
     /**
      * Phase B: the single production construction path for the deterministic W5
      * chain. Explicit dependencies, no DI framework. W5AssetLoader and
@@ -66,12 +68,12 @@ class OptimizationOrchestrator(
         )
     }
 
-    suspend fun runAnalysisOnly(
+    override suspend fun runAnalysisOnly(
         profile: UserProfile, jobTitle: String, company: String, jobDescription: String,
-        improvementContext: String? = null,
-        requiredSkills: List<String> = emptyList(),
-        preferredSkills: List<String> = emptyList(),
-        educationRequired: String? = null
+        improvementContext: String?,
+        requiredSkills: List<String>,
+        preferredSkills: List<String>,
+        educationRequired: String?
     ): GenerationCycle {
         val correlationId = UUID.randomUUID().toString().take(8)
         val startMs = System.currentTimeMillis()
@@ -96,7 +98,7 @@ class OptimizationOrchestrator(
         }
     }
 
-    suspend fun runGenerationFromCycle(cycle: GenerationCycle, improvementContext: String? = null): GenerationCycle {
+    override suspend fun runGenerationFromCycle(cycle: GenerationCycle, improvementContext: String?): GenerationCycle {
         val correlationId = UUID.randomUUID().toString().take(8)
         val startMs = System.currentTimeMillis()
         PipelineTrace.entry("generation_from_cycle", mapOf("correlationId" to correlationId, "jobTitle" to cycle.jobTitle, "company" to cycle.company))
@@ -113,7 +115,7 @@ class OptimizationOrchestrator(
             val readyCycle = cycle.copy(compatibility = compatibility, matchedKeywords = matchedKeywords, cvContent = cvJson, coverLetterContent = coverLetterBody, cvErrorMessage = cvError, coverLetterErrorMessage = coverLetterError, title = improvementContext, isVisibleInHistory = true)
             historyStore.saveCycle(readyCycle)
             val durationMs = System.currentTimeMillis() - startMs
-            PipelineTrace.exit("generation_from_cycle", durationMs, mapOf("correlationId" to correlationId, "status" to "success", "cvError" to (cvError ?: "none"), "coverLetterError" to (coverLetterError ?: "none")))
+            PipelineTrace.exit("generation_from_cycle", durationMs, mapOf("correlationId" to correlationId, "status" to GenerationOutcome.traceStatus(GenerationOutcome.of(readyCycle)), "cvError" to (cvError ?: "none"), "coverLetterError" to (coverLetterError ?: "none")))
             readyCycle
         } catch (e: Exception) {
             val durationMs = System.currentTimeMillis() - startMs
@@ -123,12 +125,13 @@ class OptimizationOrchestrator(
         }
     }
 
-    suspend fun runFullPipeline(
+    override suspend fun runFullPipeline(
         profile: UserProfile, jobTitle: String, company: String, jobDescription: String,
-        mode: GenerationMode, improvementContext: String? = null, onProgress: (PipelineStep) -> Unit = {},
-        requiredSkills: List<String> = emptyList(),
-        preferredSkills: List<String> = emptyList(),
-        educationRequired: String? = null
+        mode: GenerationMode, improvementContext: String?, onProgress: (PipelineStep) -> Unit,
+        requiredSkills: List<String>,
+        preferredSkills: List<String>,
+        educationRequired: String?,
+        request: GenerationRequest
     ): GenerationCycle {
         val correlationId = UUID.randomUUID().toString().take(8)
         val startMs = System.currentTimeMillis()
@@ -138,19 +141,23 @@ class OptimizationOrchestrator(
             val analysisResult = runAnalysisFresh(profile, jobTitle, company, jobDescription, requiredSkills, preferredSkills, educationRequired)
             val compatibility = when (analysisResult) { is CompatibilityResult.Success -> analysisResult.data; is CompatibilityResult.Failure -> throw IllegalStateException("Compatibility analysis failed: ${analysisResult.type} - ${analysisResult.message}") }
             val enrichedJobDescription = if (!improvementContext.isNullOrBlank()) "$jobDescription\n\n---\n$improvementContext" else jobDescription
-            onProgress(PipelineStep.GENERATING_CV)
-            val cvResult = coroutineScope { val d = CompletableDeferred<EngineResult>(); launch(Dispatchers.IO) { generatorEngine.generateCv(profile = profile, jobDescription = enrichedJobDescription, designId = "modern", schemeId = "navy", jobTitle = jobTitle, company = company, correlationId = correlationId, onResult = { result -> d.complete(result) }) }; d.await() }
-            val cvJson: String = when (cvResult) { is EngineResult.Success -> cvResult.data; is EngineResult.Failure -> "" }
-            val cvError: String? = when (cvResult) { is EngineResult.Success -> null; is EngineResult.Failure -> cvResult.detail ?: cvResult.type }
-            onProgress(PipelineStep.GENERATING_COVER_LETTER)
-            val clResult = coroutineScope { val d = CompletableDeferred<EngineResult>(); launch(Dispatchers.IO) { generatorEngine.generateCoverLetter(profile = profile, jobDescription = enrichedJobDescription, designId = "modern", schemeId = "navy", jobTitle = jobTitle, company = company, correlationId = correlationId, onResult = { result -> d.complete(result) }) }; d.await() }
-            val coverLetterBody: String? = when (clResult) { is EngineResult.Success -> clResult.data; is EngineResult.Failure -> null }
-            val coverLetterError: String? = when (clResult) { is EngineResult.Success -> null; is EngineResult.Failure -> clResult.detail ?: clResult.type }
-            val matchedKeywords = if (cvJson.isEmpty()) emptyList() else { try { val json = org.json.JSONObject(cvJson); val arr = json.getJSONArray("matchedKeywords"); (0 until arr.length()).map { arr.getString(it) } } catch (e: Exception) { throw IllegalStateException("Failed to parse matchedKeywords from cvJson", e) } }
+            val cvResult: EngineResult? = if (request != GenerationRequest.COVER_LETTER_ONLY) {
+                onProgress(PipelineStep.GENERATING_CV)
+                coroutineScope { val d = CompletableDeferred<EngineResult>(); launch(Dispatchers.IO) { generatorEngine.generateCv(profile = profile, jobDescription = enrichedJobDescription, designId = "modern", schemeId = "navy", jobTitle = jobTitle, company = company, correlationId = correlationId, onResult = { result -> d.complete(result) }) }; d.await() }
+            } else null
+            val cvJson: String? = when (cvResult) { null -> null; is EngineResult.Success -> cvResult.data; is EngineResult.Failure -> "" }
+            val cvError: String? = when (cvResult) { null -> null; is EngineResult.Success -> null; is EngineResult.Failure -> cvResult.detail ?: cvResult.type }
+            val clResult: EngineResult? = if (request != GenerationRequest.CV_ONLY) {
+                onProgress(PipelineStep.GENERATING_COVER_LETTER)
+                coroutineScope { val d = CompletableDeferred<EngineResult>(); launch(Dispatchers.IO) { generatorEngine.generateCoverLetter(profile = profile, jobDescription = enrichedJobDescription, designId = "modern", schemeId = "navy", jobTitle = jobTitle, company = company, correlationId = correlationId, onResult = { result -> d.complete(result) }) }; d.await() }
+            } else null
+            val coverLetterBody: String? = when (clResult) { null -> null; is EngineResult.Success -> clResult.data; is EngineResult.Failure -> null }
+            val coverLetterError: String? = when (clResult) { null -> null; is EngineResult.Success -> null; is EngineResult.Failure -> clResult.detail ?: clResult.type }
+            val matchedKeywords = if (cvJson.isNullOrEmpty()) emptyList() else { try { val json = org.json.JSONObject(cvJson); val arr = json.getJSONArray("matchedKeywords"); (0 until arr.length()).map { arr.getString(it) } } catch (e: Exception) { throw IllegalStateException("Failed to parse matchedKeywords from cvJson", e) } }
             val cycle = GenerationCycle(jobTitle = jobTitle, company = company, jobDescription = jobDescription, profileSnapshot = profile, compatibility = compatibility, matchedKeywords = matchedKeywords, cvContent = cvJson, coverLetterContent = coverLetterBody, cvErrorMessage = cvError, coverLetterErrorMessage = coverLetterError, title = improvementContext, isVisibleInHistory = true)
             historyStore.saveCycle(cycle)
             val durationMs = System.currentTimeMillis() - startMs
-            PipelineTrace.exit("full_pipeline", durationMs, mapOf("correlationId" to correlationId, "status" to "success", "score" to compatibility.score, "cvError" to (cvError ?: "none"), "coverLetterError" to (coverLetterError ?: "none")))
+            PipelineTrace.exit("full_pipeline", durationMs, mapOf("correlationId" to correlationId, "status" to GenerationOutcome.traceStatus(GenerationOutcome.of(cycle, request)), "score" to compatibility.score, "cvError" to (cvError ?: "none"), "coverLetterError" to (coverLetterError ?: "none")))
             cycle
         } catch (e: Exception) {
             val durationMs = System.currentTimeMillis() - startMs
@@ -422,7 +429,7 @@ $jobDescription
         }
     }
 
-    suspend fun applyDesign(cycleId: String, design: DesignConfig): GenerationCycle {
+    override suspend fun applyDesign(cycleId: String, design: DesignConfig): GenerationCycle {
         val correlationId = UUID.randomUUID().toString().take(8)
         val startMs = System.currentTimeMillis()
         PipelineTrace.entry("apply_design", mapOf("correlationId" to correlationId, "cycleId" to cycleId, "designId" to design.templateId))
@@ -440,18 +447,18 @@ $jobDescription
         } catch (e: Exception) { val durationMs = System.currentTimeMillis() - startMs; PipelineTrace.error("apply_design", e.message ?: "unknown", e, correlationId); PipelineTrace.exit("apply_design", durationMs, mapOf("correlationId" to correlationId, "status" to "failure", "error" to (e.message ?: "unknown"))); throw e }
     }
 
-    suspend fun generateCv(profile: UserProfile, jobDescription: String, designId: String, schemeId: String, jobTitle: String, company: String, onResult: (EngineResult) -> Unit) {
+    suspend fun generateCv(profile: UserProfile, jobDescription: String, designId: String, schemeId: String, jobTitle: String, company: String, onResult: (EngineResult) -> Unit, reviewedRequirements: ReviewedJobRequirements? = null) {
         val correlationId = UUID.randomUUID().toString().take(8)
-        generatorEngine.generateCv(profile = profile, jobDescription = jobDescription, designId = designId, schemeId = schemeId, jobTitle = jobTitle, company = company, correlationId = correlationId, onResult = onResult)
+        generatorEngine.generateCv(profile = profile, jobDescription = jobDescription, designId = designId, schemeId = schemeId, jobTitle = jobTitle, company = company, correlationId = correlationId, onResult = onResult, reviewedRequirements = reviewedRequirements)
     }
 
-    suspend fun generateCoverLetter(profile: UserProfile, jobDescription: String, designId: String, schemeId: String, jobTitle: String, company: String, onResult: (EngineResult) -> Unit) {
+    suspend fun generateCoverLetter(profile: UserProfile, jobDescription: String, designId: String, schemeId: String, jobTitle: String, company: String, onResult: (EngineResult) -> Unit, reviewedRequirements: ReviewedJobRequirements? = null) {
         val correlationId = UUID.randomUUID().toString().take(8)
-        generatorEngine.generateCoverLetter(profile = profile, jobDescription = jobDescription, designId = designId, schemeId = schemeId, jobTitle = jobTitle, company = company, correlationId = correlationId, onResult = onResult)
+        generatorEngine.generateCoverLetter(profile = profile, jobDescription = jobDescription, designId = designId, schemeId = schemeId, jobTitle = jobTitle, company = company, correlationId = correlationId, onResult = onResult, reviewedRequirements = reviewedRequirements)
     }
 
-    suspend fun generateCvDocx(profile: UserProfile, jobDescription: String, onResult: (EngineResult) -> Unit) {
+    suspend fun generateCvDocx(profile: UserProfile, jobDescription: String, onResult: (EngineResult) -> Unit, reviewedRequirements: ReviewedJobRequirements? = null) {
         val correlationId = UUID.randomUUID().toString().take(8)
-        generatorEngine.generateCvDocx(profile = profile, jobDescription = jobDescription, correlationId = correlationId, onResult = onResult)
+        generatorEngine.generateCvDocx(profile = profile, jobDescription = jobDescription, correlationId = correlationId, onResult = onResult, reviewedRequirements = reviewedRequirements)
     }
 }

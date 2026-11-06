@@ -20,6 +20,11 @@ object PipelineTrace {
         LogSink.write("INFO", stage, correlationId, "EXIT $stage duration=${durationMs}ms $summ")
     }
 
+    fun info(stage: String, message: String, correlationId: String? = null) {
+        Log.i(TAG, "[PIPELINE] INFO $stage $message")
+        LogSink.write("INFO", stage, correlationId, "INFO $stage $message")
+    }
+
     fun error(
         stage: String,
         reason: String,

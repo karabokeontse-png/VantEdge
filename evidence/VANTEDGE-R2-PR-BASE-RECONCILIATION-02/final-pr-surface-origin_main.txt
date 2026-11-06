@@ -1,0 +1,53 @@
+ref=origin/main
+simulated_final_commit=eight-path corrective commit (not created)
+commits_entering_pr:
+  06bb4ac fix(r2): preserve unknown requirement evidence
+  3f23859 R2: unknown-state integrity implementation (milestone)
+  ed83a02 fix(AC10): gate eligibility claims on confirmed gaps
+  5609322 fix(P0-A): forward structured requirements to every analysis branch
+  PROPOSED eight-path corrective commit
+path_count=41
+diffstat:
+  files=41 insertions=3173 deletions=197
+path_list:
+  A	app/src/main/java/com/vantedge/app/data/domain/ScoreCompleteness.kt
+  A	app/src/main/java/com/vantedge/app/data/model/RequirementAssessment.kt
+  A	app/src/main/java/com/vantedge/app/data/viewmodel/CycleScoreAggregation.kt
+  A	app/src/main/java/com/vantedge/app/ui/screens/ScorePresentation.kt
+  A	app/src/test/java/com/vantedge/app/data/engine/extraction/ConfidenceEngineUnknownTest.kt
+  A	app/src/test/java/com/vantedge/app/data/storage/CompatibilityRecordLegacyJsonTest.kt
+  A	app/src/test/java/com/vantedge/app/data/viewmodel/CycleScoreAggregationTest.kt
+  A	app/src/test/java/com/vantedge/app/domain/extraction/ExtractionDecisionCoordinatorUnknownTest.kt
+  A	app/src/test/java/com/vantedge/app/ui/screens/ScorePresentationTest.kt
+  A	app/src/test/java/com/vantedge/app/ui/screens/UnassessedPresentationTest.kt
+  A	app/src/test/java/com/vantedge/app/w5/scoring/CorrectiveUnknownStateTest.kt
+  A	app/src/test/java/com/vantedge/app/w5/scoring/HintBuilderMeasurednessTest.kt
+  A	app/src/test/java/com/vantedge/app/w5/scoring/JobTitleRoleRelevanceProductionTest.kt
+  A	app/src/test/java/com/vantedge/app/w5/scoring/ProvisionalScoreTest.kt
+  A	app/src/test/java/com/vantedge/app/w5/scoring/RequirementCoverageTest.kt
+  A	app/src/test/java/com/vantedge/app/w6/improvement/W6UnknownAxisTest.kt
+  M	app/src/main/java/com/vantedge/app/data/domain/CompatibilityRecordMapper.kt
+  M	app/src/main/java/com/vantedge/app/data/engine/extraction/ConfidenceEngine.kt
+  M	app/src/main/java/com/vantedge/app/data/model/CompatibilityRecord.kt
+  M	app/src/main/java/com/vantedge/app/data/model/extraction/FieldConfidence.kt
+  M	app/src/main/java/com/vantedge/app/data/viewmodel/CycleViewModel.kt
+  M	app/src/main/java/com/vantedge/app/domain/extraction/ExtractionDecisionCoordinator.kt
+  M	app/src/main/java/com/vantedge/app/domain/extraction/JobExtractionOrchestrator.kt
+  M	app/src/main/java/com/vantedge/app/narrative/W5Evidence.kt
+  M	app/src/main/java/com/vantedge/app/ui/screens/AdvancedAnalysisScreen.kt
+  M	app/src/main/java/com/vantedge/app/ui/screens/AnalysisResultScreen.kt
+  M	app/src/main/java/com/vantedge/app/ui/screens/CompatibilityResultScreen.kt
+  M	app/src/main/java/com/vantedge/app/ui/screens/CycleHistoryScreen.kt
+  M	app/src/main/java/com/vantedge/app/ui/screens/DashboardScreen.kt
+  M	app/src/main/java/com/vantedge/app/ui/screens/ResultScreen.kt
+  M	app/src/main/java/com/vantedge/app/w5/scoring/AxisEvaluators.kt
+  M	app/src/main/java/com/vantedge/app/w5/scoring/DeterministicCompatibilityEngine.kt
+  M	app/src/main/java/com/vantedge/app/w5/scoring/GapAnalyzer.kt
+  M	app/src/main/java/com/vantedge/app/w5/scoring/HintBuilder.kt
+  M	app/src/main/java/com/vantedge/app/w5/scoring/JobRequirementAdapter.kt
+  M	app/src/main/java/com/vantedge/app/w5/scoring/RequirementEvidence.kt
+  M	app/src/main/java/com/vantedge/app/w5/scoring/W5ScoreEngine.kt
+  M	app/src/main/java/com/vantedge/app/w5/scoring/W5Types.kt
+  M	app/src/main/java/com/vantedge/app/w6/improvement/W6Rules.kt
+  M	app/src/test/java/com/vantedge/app/w5/scoring/JobRequirementAdapterTest.kt
+  M	app/src/test/java/com/vantedge/app/w5/scoring/W5ScoreEngineTest.kt

@@ -1,0 +1,24 @@
+FULL-SUITE CORRECTIVE COMMIT CANDIDATE (8 paths; includes current micro-patch):
+  app/src/main/java/com/vantedge/app/data/domain/CompatibilityRecordMapper.kt
+  app/src/main/java/com/vantedge/app/w5/scoring/W5Types.kt
+  app/src/test/java/com/vantedge/app/data/storage/CompatibilityRecordLegacyJsonTest.kt
+  app/src/test/java/com/vantedge/app/data/viewmodel/CycleScoreAggregationTest.kt
+  app/src/test/java/com/vantedge/app/w5/scoring/ProvisionalScoreTest.kt
+  app/src/test/java/com/vantedge/app/w5/scoring/RequirementCoverageTest.kt
+  app/src/test/java/com/vantedge/app/w5/scoring/W5ScoreEngineTest.kt
+  app/src/test/java/com/vantedge/pipeline/validation/P2VerificationHarnessTest.kt
+
+NARROW B1/AC6/AC7/AC8 COMMIT CANDIDATE (4 changed paths):
+  app/src/main/java/com/vantedge/app/data/domain/CompatibilityRecordMapper.kt
+  app/src/main/java/com/vantedge/app/w5/scoring/W5Types.kt
+  app/src/test/java/com/vantedge/app/w5/scoring/ProvisionalScoreTest.kt
+  app/src/test/java/com/vantedge/app/w5/scoring/RequirementCoverageTest.kt
+
+ALREADY TRACKED AT HEAD, UNCHANGED, RETAINED REGRESSION TEST:
+  app/src/test/java/com/vantedge/app/w5/scoring/CorrectiveUnknownStateTest.kt
+
+EXCLUDE FROM CORRECTIVE COMMIT:
+  settings.gradle (HEAD version is correct; worktree drift is not part of corrective)
+  gradle.properties (pre-existing build-speed drift; not corrective)
+  all paths classified PREEXISTING_UNRELATED in path-classification.txt
+  evidence/ (audit output only)

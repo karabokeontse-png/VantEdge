@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import com.vantedge.app.data.domain.ProfileEligibility
 import com.vantedge.app.data.model.Certification
 import com.vantedge.app.data.model.UserProfile
 import com.vantedge.app.data.model.WorkExperience
@@ -65,8 +66,8 @@ fun EditProfileScreen(
         mutableStateOf<MutableList<Certification>>(initialProfile?.certifications?.toMutableList() ?: mutableListOf())
     }
 
-    // Continue is enabled once minimum fields are filled
-    val canContinue = name.isNotBlank() && email.isNotBlank() && skills.isNotEmpty()
+    // Continue is enabled once the shared profile-eligibility contract is met
+    val canContinue = ProfileEligibility.isEligible(UserProfile(name = name, email = email))
 
     var showContent by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { showContent = true }

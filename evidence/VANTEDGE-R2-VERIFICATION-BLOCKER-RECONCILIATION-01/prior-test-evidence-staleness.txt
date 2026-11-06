@@ -1,0 +1,16 @@
+=== stale prior test XML header ===
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.vantedge.app.w5.scoring.RequirementCoverageTest" tests="19" skipped="0" failures="0" errors="0" timestamp="2026-11-04T00:45:04.513Z" hostname="localhost" time="0.159">
+  <properties/>
+=== current source mtime/hash ===
+2026-11-04 02:20:52.615602472 +0000 app/src/test/java/com/vantedge/app/w5/scoring/RequirementCoverageTest.kt
+9db3e123c05ef5ab3cf9e9f0f57b5c54d5327862c829fbaf52fdfc6237cb4f92  app/src/test/java/com/vantedge/app/w5/scoring/RequirementCoverageTest.kt
+=== prior successful logs (prior corrective, not current micro-patch) ===
+
+BUILD SUCCESSFUL in 2m 41s
+29 actionable tasks: 1 executed, 28 up-to-date
+Configuration cache entry reused.
+
+BUILD SUCCESSFUL in 9m 46s
+29 actionable tasks: 8 executed, 21 up-to-date
+Configuration cache entry reused.

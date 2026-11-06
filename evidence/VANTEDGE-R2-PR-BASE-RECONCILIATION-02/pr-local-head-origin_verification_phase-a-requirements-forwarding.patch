@@ -1,0 +1,3942 @@
+diff --git a/app/src/main/java/com/vantedge/app/data/domain/CompatibilityRecordMapper.kt b/app/src/main/java/com/vantedge/app/data/domain/CompatibilityRecordMapper.kt
+index 46cf6df..c129ff1 100644
+--- a/app/src/main/java/com/vantedge/app/data/domain/CompatibilityRecordMapper.kt
++++ b/app/src/main/java/com/vantedge/app/data/domain/CompatibilityRecordMapper.kt
+@@ -49,28 +49,46 @@ class CompatibilityRecordMapper {
+ 
+         val score = (scoreResult.totalScore.coerceIn(0.0, 1.0) * 100).toInt()
+ 
+-        val skillMatch = scoreResult.axisScores.first { it.axisName == "SkillMatch" }.score
+-        val experienceAlignment = scoreResult.axisScores.first { it.axisName == "ExperienceAlignment" }.score
+-        val constraintCompliance = scoreResult.axisScores.first { it.axisName == "ConstraintCompliance" }.score
++        val skillMatchAxis = scoreResult.axisScores.first { it.axisName == "SkillMatch" }
++        val skillMatch = skillMatchAxis.score
++        val experienceAlignmentAxis = scoreResult.axisScores.first { it.axisName == "ExperienceAlignment" }
++        val experienceAlignment = experienceAlignmentAxis.score
++        val constraintAxis = scoreResult.axisScores.first { it.axisName == "ConstraintCompliance" }
++        val constraintCompliance = constraintAxis.score
+         val vacancyScore = (
+             (skillMatch * 0.5) + (experienceAlignment * 0.3) + (constraintCompliance * 0.2)
+         ).coerceIn(0.0, 1.0).times(100).toInt()
+ 
++        val provisionalScore = scoreResult.provisionalTotalScore
++            ?.coerceIn(0.0, 1.0)
++            ?.let { (it * 100).toInt() }
++
++        val vacancyComponents = listOf(
++            Triple("SkillMatch", 0.5, skillMatchAxis),
++            Triple("ExperienceAlignment", 0.3, experienceAlignmentAxis),
++            Triple("ConstraintCompliance", 0.2, constraintAxis)
++        )
++        val measuredVacancyComponents = vacancyComponents.filter { it.third.isMeasured }
++        val measuredVacancyWeight = measuredVacancyComponents.sumOf { it.second }
++        val hasVacancyEvidence = measuredVacancyComponents.any {
++            it.first == "SkillMatch" || it.first == "ExperienceAlignment"
++        }
++        val provisionalVacancyScore = if (!hasVacancyEvidence || measuredVacancyWeight <= 1e-9) {
++            null
++        } else {
++            (measuredVacancyComponents.sumOf { it.third.score * it.second } / measuredVacancyWeight)
++                .coerceIn(0.0, 1.0)
++                .times(100)
++                .toInt()
++        }
++
+         val w5Evidence = W5Evidence(
+             skillMatch = skillMatch,
+-            experienceAlignment = experienceAlignment,
++            experienceAlignment = experienceAlignmentAxis.takeIf { it.isMeasured }?.score,
+             constraintCompliance = constraintCompliance,
+             confidence = scoreResult.confidence
+         )
+ 
+-        val gaps = gapAnalysis.missing.map {
+-            GapItem(skill = it, importance = "MANDATORY", description = "", experienceGap = false, platformGap = false, courses = emptyList())
+-        } + gapAnalysis.weak.map {
+-            GapItem(skill = it, importance = "IMPORTANT", description = "", experienceGap = false, platformGap = false, courses = emptyList())
+-        }
+-
+-        val criticalGapCount = gaps.count { it.importance == "MANDATORY" }
+-
+         val relevancyItems = gapAnalysis.matched.map {
+             RelevancyItem(
+                 name = it.name,
+@@ -107,26 +125,48 @@ class CompatibilityRecordMapper {
+             "Derived from deterministic profile evidence"
+         }
+ 
+-        val matchedQualifications = validatedJob.requiredQualifications.filter { jobReq ->
+-            validatedProfile.qualifications.any { profileQual ->
+-                profileQual.category == jobReq.category &&
+-                jaccard(
+-                    tokenize(profileQual.originalText, emptySet()).toSet(),
+-                    tokenize(jobReq.originalText, emptySet()).toSet()
+-                ) > 0.3
++        val qualificationRequirementsPresent = validatedJob.requiredQualifications.isNotEmpty()
++        val profileQualificationsAssessed = validatedProfile.qualifications.isNotEmpty()
++        val qualificationsAssessed = !qualificationRequirementsPresent || profileQualificationsAssessed
++
++        val matchedQualifications = if (qualificationsAssessed) {
++            validatedJob.requiredQualifications.filter { jobReq ->
++                validatedProfile.qualifications.any { profileQual ->
++                    profileQual.category == jobReq.category &&
++                    jaccard(
++                        tokenize(profileQual.originalText, emptySet()).toSet(),
++                        tokenize(jobReq.originalText, emptySet()).toSet()
++                    ) > 0.3
++                }
+             }
++        } else {
++            emptyList()
+         }
+ 
+-        val missingQualifications = validatedJob.requiredQualifications.filterNot { jobReq ->
+-            validatedProfile.qualifications.any { profileQual ->
+-                profileQual.category == jobReq.category &&
+-                jaccard(
+-                    tokenize(profileQual.originalText, emptySet()).toSet(),
+-                    tokenize(jobReq.originalText, emptySet()).toSet()
+-                ) > 0.3
++        val missingQualifications = if (qualificationsAssessed) {
++            validatedJob.requiredQualifications.filterNot { jobReq ->
++                validatedProfile.qualifications.any { profileQual ->
++                    profileQual.category == jobReq.category &&
++                    jaccard(
++                        tokenize(profileQual.originalText, emptySet()).toSet(),
++                        tokenize(jobReq.originalText, emptySet()).toSet()
++                    ) > 0.3
++                }
+             }
++        } else {
++            emptyList()
+         }
+ 
++        val gaps = gapAnalysis.missing.map {
++            GapItem(skill = it, importance = "MANDATORY", description = "", experienceGap = false, platformGap = false, courses = emptyList())
++        } + gapAnalysis.weak.map {
++            GapItem(skill = it, importance = "IMPORTANT", description = "", experienceGap = false, platformGap = false, courses = emptyList())
++        } + missingQualifications.map {
++            GapItem(skill = "${it.category}: ${it.originalText}", importance = "MANDATORY", description = "", experienceGap = false, platformGap = false, courses = emptyList())
++        }
++
++        val criticalGapCount = gaps.count { it.importance == "MANDATORY" }
++
+         val qualificationNote = when {
+             missingQualifications.isNotEmpty() && matchedQualifications.isNotEmpty() -> {
+                 " Matched: ${matchedQualifications.joinToString(", ") { "${it.category}: ${it.originalText}" }}. Missing: ${missingQualifications.joinToString(", ") { "${it.category}: ${it.originalText}" }}"
+@@ -151,6 +191,18 @@ class CompatibilityRecordMapper {
+             dataIntegrityNote = dataIntegrityNote
+         )
+ 
++        val requirementAssessments = buildRequirementAssessments(
++            validatedJob = validatedJob,
++            inventory = diagnostics.inventory,
++            gapAnalysis = gapAnalysis,
++            matchedQualifications = matchedQualifications,
++            missingQualifications = missingQualifications,
++            qualificationsAssessed = qualificationsAssessed
++        )
++        val blockingUnassessed = requirementAssessments.any {
++            it.state == RequirementAssessmentState.UNASSESSED && it.importance != "PREFERRED"
++        }
++
+         val record = CompatibilityRecord(
+             jobTitle = jobTitle,
+             company = company,
+@@ -165,7 +217,11 @@ class CompatibilityRecordMapper {
+             relevancyItems = relevancyItems,
+             gaps = gaps,
+             criticalGapCount = criticalGapCount,
+-            analysisSource = CompatibilityAnalysisSource.DETERMINISTIC_W5
++            analysisSource = CompatibilityAnalysisSource.DETERMINISTIC_W5,
++            evaluationComplete = scoreResult.isComplete && qualificationsAssessed && !blockingUnassessed,
++            provisionalScore = provisionalScore,
++            provisionalVacancyScore = provisionalVacancyScore,
++            requirementAssessments = requirementAssessments
+         )
+ 
+         val durationMs = System.currentTimeMillis() - startMs
+@@ -181,7 +237,12 @@ class CompatibilityRecordMapper {
+                 "matchedCount" to record.relevancyItems.size,
+                 "dataIntegrityNote" to record.dataIntegrityNote,
+                 "unmappedRequirementCount" to evidenceReport.summary.totalUnmapped,
+-                "classificationWarningCount" to evidenceReport.diagnostics.size
++                "classificationWarningCount" to evidenceReport.diagnostics.size,
++                "provisionalScore" to (record.provisionalScore ?: "unknown"),
++                "provisionalVacancyScore" to (record.provisionalVacancyScore ?: "unknown"),
++                "unassessedRequirementCount" to requirementAssessments.count {
++                    it.state == RequirementAssessmentState.UNASSESSED
++                }
+             ),
+             correlationId = correlationId
+         )
+@@ -198,4 +259,184 @@ class CompatibilityRecordMapper {
+             w5Evidence = w5Evidence
+         )
+     }
++
++    private val qualificationCategories = setOf(
++        RequirementCategory.DEGREE,
++        RequirementCategory.CERTIFICATION,
++        RequirementCategory.LICENCE,
++        RequirementCategory.SECURITY_CLEARANCE
++    )
++
++    private fun buildRequirementAssessments(
++        validatedJob: ValidatedJob,
++        inventory: List<RequirementEvidence>,
++        gapAnalysis: GapAnalysis,
++        matchedQualifications: List<RequirementEvidence>,
++        missingQualifications: List<RequirementEvidence>,
++        qualificationsAssessed: Boolean
++    ): List<RequirementAssessment> {
++        val source = if (inventory.isNotEmpty()) {
++            inventory
++        } else {
++            synthesizeRequirementInventory(validatedJob)
++        }
++        val matchedSkills = gapAnalysis.matched.map { it.name }.toSet()
++        val weakSkills = gapAnalysis.weak.toSet()
++        val missingSkills = gapAnalysis.missing.toSet()
++
++        return source.map { evidence ->
++            when {
++                evidence.category == RequirementCategory.SKILL ->
++                    assessSkill(evidence, matchedSkills, weakSkills, missingSkills)
++                evidence.category in qualificationCategories ->
++                    assessQualification(
++                        evidence,
++                        matchedQualifications,
++                        missingQualifications,
++                        qualificationsAssessed
++                    )
++                evidence.classificationStatus == ClassificationStatus.UNMAPPED ->
++                    unassessed(evidence, UnassessedReason.TAXONOMY_MISS)
++                else ->
++                    unassessed(evidence, UnassessedReason.UNSUPPORTED_CATEGORY)
++            }
++        }.distinctBy {
++            listOf(it.text, it.category, it.canonical, it.importance)
++        }
++    }
++
++    private fun assessSkill(
++        evidence: RequirementEvidence,
++        matchedSkills: Set<String>,
++        weakSkills: Set<String>,
++        missingSkills: Set<String>
++    ): RequirementAssessment {
++        val canonical = evidence.matchedTaxonomySkill
++            ?: return unassessed(
++                evidence,
++                if (evidence.classificationStatus == ClassificationStatus.UNSUPPORTED) {
++                    UnassessedReason.UNSUPPORTED_CATEGORY
++                } else {
++                    UnassessedReason.TAXONOMY_MISS
++                }
++            )
++
++        if (evidence.importance == "PREFERRED") {
++            return unassessed(evidence, UnassessedReason.PREFERENCE_NOT_ASSESSED)
++        }
++
++        val matched = canonical in matchedSkills || evidence.originalText in matchedSkills
++        val weak = canonical in weakSkills || evidence.originalText in weakSkills
++        val missing = canonical in missingSkills || evidence.originalText in missingSkills
++
++        return when {
++            matched -> RequirementAssessment(
++                text = evidence.originalText,
++                state = RequirementAssessmentState.MATCHED,
++                canonical = canonical,
++                category = evidence.category.name,
++                importance = evidence.importance ?: "MANDATORY"
++            )
++            weak -> RequirementAssessment(
++                text = evidence.originalText,
++                state = RequirementAssessmentState.CONFIRMED_GAP,
++                canonical = canonical,
++                category = evidence.category.name,
++                importance = "IMPORTANT"
++            )
++            missing -> RequirementAssessment(
++                text = evidence.originalText,
++                state = RequirementAssessmentState.CONFIRMED_GAP,
++                canonical = canonical,
++                category = evidence.category.name,
++                importance = "MANDATORY"
++            )
++            else -> unassessed(evidence, UnassessedReason.PROFILE_SKILL_EVIDENCE_ABSENT)
++        }
++    }
++
++    private fun assessQualification(
++        evidence: RequirementEvidence,
++        matchedQualifications: List<RequirementEvidence>,
++        missingQualifications: List<RequirementEvidence>,
++        qualificationsAssessed: Boolean
++    ): RequirementAssessment {
++        val canonical = "${evidence.category}: ${evidence.originalText}"
++        val importance = evidence.importance ?: "MANDATORY"
++
++        if (!qualificationsAssessed) {
++            return RequirementAssessment(
++                text = evidence.originalText,
++                state = RequirementAssessmentState.UNASSESSED,
++                canonical = canonical,
++                reason = UnassessedReason.PROFILE_QUALIFICATION_EVIDENCE_ABSENT.name,
++                category = evidence.category.name,
++                importance = importance
++            )
++        }
++
++        val matched = matchedQualifications.any {
++            it.category == evidence.category && it.originalText == evidence.originalText
++        }
++        val missing = missingQualifications.any {
++            it.category == evidence.category && it.originalText == evidence.originalText
++        }
++
++        return when {
++            matched -> RequirementAssessment(
++                text = evidence.originalText,
++                state = RequirementAssessmentState.MATCHED,
++                canonical = canonical,
++                category = evidence.category.name,
++                importance = importance
++            )
++            missing -> RequirementAssessment(
++                text = evidence.originalText,
++                state = RequirementAssessmentState.CONFIRMED_GAP,
++                canonical = canonical,
++                category = evidence.category.name,
++                importance = "MANDATORY"
++            )
++            else -> RequirementAssessment(
++                text = evidence.originalText,
++                state = RequirementAssessmentState.UNASSESSED,
++                canonical = canonical,
++                reason = UnassessedReason.PROFILE_QUALIFICATION_EVIDENCE_ABSENT.name,
++                category = evidence.category.name,
++                importance = importance
++            )
++        }
++    }
++
++    private fun unassessed(
++        evidence: RequirementEvidence,
++        reason: UnassessedReason
++    ): RequirementAssessment = RequirementAssessment(
++        text = evidence.originalText,
++        state = RequirementAssessmentState.UNASSESSED,
++        canonical = evidence.matchedTaxonomySkill,
++        reason = reason.name,
++        category = evidence.category.name,
++        importance = evidence.importance ?: "MANDATORY"
++    )
++
++    private fun synthesizeRequirementInventory(validatedJob: ValidatedJob): List<RequirementEvidence> =
++        validatedJob.requiredSkills.map {
++            RequirementEvidence(
++                originalText = it,
++                category = RequirementCategory.SKILL,
++                classificationStatus = ClassificationStatus.NORMALIZED,
++                matchedTaxonomySkill = it,
++                importance = "MANDATORY"
++            )
++        } + validatedJob.requiredQualifications.map {
++            RequirementEvidence(
++                originalText = it.originalText,
++                category = it.category,
++                classificationStatus = it.classificationStatus,
++                matchedTaxonomySkill = it.matchedTaxonomySkill,
++                importance = it.importance ?: "MANDATORY"
++            )
++        }
++
+ }
+diff --git a/app/src/main/java/com/vantedge/app/data/domain/ScoreCompleteness.kt b/app/src/main/java/com/vantedge/app/data/domain/ScoreCompleteness.kt
+new file mode 100644
+index 0000000..3243f5e
+--- /dev/null
++++ b/app/src/main/java/com/vantedge/app/data/domain/ScoreCompleteness.kt
+@@ -0,0 +1,8 @@
++package com.vantedge.app.data.domain
++
++import com.vantedge.app.data.model.CompatibilityRecord
++
++object ScoreCompleteness {
++    fun isAuthoritative(record: CompatibilityRecord?): Boolean =
++        record?.evaluationComplete == true
++}
+diff --git a/app/src/main/java/com/vantedge/app/data/engine/extraction/ConfidenceEngine.kt b/app/src/main/java/com/vantedge/app/data/engine/extraction/ConfidenceEngine.kt
+index 14e0a47..340141a 100644
+--- a/app/src/main/java/com/vantedge/app/data/engine/extraction/ConfidenceEngine.kt
++++ b/app/src/main/java/com/vantedge/app/data/engine/extraction/ConfidenceEngine.kt
+@@ -6,7 +6,7 @@ import com.vantedge.app.data.model.extraction.FieldConfidence
+ 
+ data class ConfidenceResult(
+     val fieldConfidenceMap: Map<String, FieldConfidence>,
+-    val overallConfidence: Float
++    val overallConfidence: Float?
+ )
+ 
+ object ConfidenceEngine {
+@@ -31,15 +31,18 @@ object ConfidenceEngine {
+         val allFields = (llmConfidenceMap.keys + semanticAdjustments.keys + schemaFailures).toSet().sorted()
+ 
+         for (field in allFields) {
+-            val llmConf = llmConfidenceMap[field] ?: 0.3f
++            val llmConf = llmConfidenceMap[field]
+ 
+             val validationConf = if (field in schemaFailures) 0.0f else 1.0f
+ 
+             val semanticAdj = semanticAdjustments[field] ?: 0f
+             val consistencyConf = (1.0f + semanticAdj).coerceIn(0.0f, 1.0f)
+ 
+-            val overall = (llmConf * 0.5f + validationConf * 0.3f + consistencyConf * 0.2f)
+-                .coerceIn(0.0f, 1.0f)
++            val overall: Float? = if (llmConf != null) {
++                (llmConf * 0.5f + validationConf * 0.3f + consistencyConf * 0.2f).coerceIn(0.0f, 1.0f)
++            } else {
++                null
++            }
+ 
+             fieldConfidenceMap[field] = FieldConfidence(
+                 value = null,
+@@ -52,18 +55,21 @@ object ConfidenceEngine {
+             )
+         }
+ 
+-        val overall = if (fieldConfidenceMap.isNotEmpty()) {
+-            fieldConfidenceMap.values.sumOf { it.overallConfidence.toDouble() }.toFloat() / fieldConfidenceMap.size
+-        } else 0.0f
++        val measuredOveralls = fieldConfidenceMap.values.mapNotNull { it.overallConfidence }
++        val overall: Float? = if (measuredOveralls.isNotEmpty()) {
++            measuredOveralls.average().toFloat()
++        } else {
++            null
++        }
+ 
+         val durationMs = System.currentTimeMillis() - startMs
+         val fieldDetails = fieldConfidenceMap.keys.sorted().joinToString(", ") { name ->
+             val fc = fieldConfidenceMap[name]!!
+-            "${name}=llm=${"%.2f".format(fc.llmConfidence)} val=${"%.2f".format(fc.validationConfidence)} con=${"%.2f".format(fc.consistencyConfidence)} overall=${"%.2f".format(fc.overallConfidence)}"
++            "${name}=llm=${fc.llmConfidence?.let { "%.2f".format(it) } ?: "unknown"} val=${"%.2f".format(fc.validationConfidence)} con=${"%.2f".format(fc.consistencyConfidence)} overall=${fc.overallConfidence?.let { "%.2f".format(it) } ?: "unknown"}"
+         }
+         val schemaDetail = if (schemaFailures.isNotEmpty()) schemaFailures.joinToString(", ") else "none"
+         PipelineTrace.exit("ConfidenceEngine", durationMs, mapOf(
+-            "overall" to "%.2f".format(overall),
++            "overall" to (overall?.let { "%.2f".format(it) } ?: "unknown"),
+             "fields" to fieldConfidenceMap.size,
+             "method" to source,
+             "schemaFailures" to "[$schemaDetail]",
+diff --git a/app/src/main/java/com/vantedge/app/data/model/CompatibilityRecord.kt b/app/src/main/java/com/vantedge/app/data/model/CompatibilityRecord.kt
+index 063412e..11ce276 100644
+--- a/app/src/main/java/com/vantedge/app/data/model/CompatibilityRecord.kt
++++ b/app/src/main/java/com/vantedge/app/data/model/CompatibilityRecord.kt
+@@ -36,5 +36,14 @@ data class CompatibilityRecord(
+      * never deterministic. See [CompatibilityAnalysisSource].
+      */
+     val analysisSource: CompatibilityAnalysisSource? = null,
+-    val createdAt: Long = System.currentTimeMillis()
++    /**
++     * Nullable by design: plain Gson does not apply Kotlin defaults, so records
++     * persisted before this field existed deserialize to null. null means
++     * UNKNOWN/LEGACY and must never be treated as complete.
++     */
++    val evaluationComplete: Boolean? = null,
++    val createdAt: Long = System.currentTimeMillis(),
++    val provisionalScore: Int? = null,
++    val provisionalVacancyScore: Int? = null,
++    val requirementAssessments: List<RequirementAssessment>? = null
+ )
+\ No newline at end of file
+diff --git a/app/src/main/java/com/vantedge/app/data/model/RequirementAssessment.kt b/app/src/main/java/com/vantedge/app/data/model/RequirementAssessment.kt
+new file mode 100644
+index 0000000..4aff26d
+--- /dev/null
++++ b/app/src/main/java/com/vantedge/app/data/model/RequirementAssessment.kt
+@@ -0,0 +1,16 @@
++package com.vantedge.app.data.model
++
++enum class RequirementAssessmentState {
++    MATCHED,
++    CONFIRMED_GAP,
++    UNASSESSED
++}
++
++data class RequirementAssessment(
++    val text: String,
++    val state: RequirementAssessmentState,
++    val canonical: String? = null,
++    val reason: String? = null,
++    val category: String? = null,
++    val importance: String? = null
++)
+diff --git a/app/src/main/java/com/vantedge/app/data/model/extraction/FieldConfidence.kt b/app/src/main/java/com/vantedge/app/data/model/extraction/FieldConfidence.kt
+index 7dd9e15..35adb25 100644
+--- a/app/src/main/java/com/vantedge/app/data/model/extraction/FieldConfidence.kt
++++ b/app/src/main/java/com/vantedge/app/data/model/extraction/FieldConfidence.kt
+@@ -2,10 +2,10 @@ package com.vantedge.app.data.model.extraction
+ 
+ data class FieldConfidence(
+     val value: String?,
+-    val llmConfidence: Float,
++    val llmConfidence: Float?,
+     val validationConfidence: Float,
+     val consistencyConfidence: Float,
+-    val overallConfidence: Float,
++    val overallConfidence: Float?,
+     val source: ExtractionMethod,
+     val validationFailures: List<String>
+ )
+diff --git a/app/src/main/java/com/vantedge/app/data/viewmodel/CycleScoreAggregation.kt b/app/src/main/java/com/vantedge/app/data/viewmodel/CycleScoreAggregation.kt
+new file mode 100644
+index 0000000..778aebf
+--- /dev/null
++++ b/app/src/main/java/com/vantedge/app/data/viewmodel/CycleScoreAggregation.kt
+@@ -0,0 +1,55 @@
++package com.vantedge.app.data.viewmodel
++
++import com.vantedge.app.data.domain.ScoreCompleteness
++import com.vantedge.app.data.model.GenerationCycle
++
++object CycleScoreAggregation {
++
++    fun completeScore(cycle: GenerationCycle): Int? =
++        cycle.compatibility
++            ?.takeIf { ScoreCompleteness.isAuthoritative(it) }
++            ?.score
++
++    fun previousScore(cycles: List<GenerationCycle>, cycle: GenerationCycle): Int? {
++        if (completeScore(cycle) == null) return null
++        val currentVersion = cycle.version ?: return null
++        if (currentVersion <= 1) return null
++        return cycles
++            .filter { other ->
++                other.id != cycle.id &&
++                    other.jobTitle.equals(cycle.jobTitle, ignoreCase = true) &&
++                    other.company.equals(cycle.company, ignoreCase = true) &&
++                    other.version == currentVersion - 1
++            }
++            .mapNotNull { completeScore(it) }
++            .firstOrNull()
++    }
++
++    fun improvedApplicationsCount(cycles: List<GenerationCycle>): Int =
++        cycles
++            .filter { it.isVisibleInHistory }
++            .count { cycle ->
++                val current = completeScore(cycle)
++                val previous = previousScore(cycles, cycle)
++                current != null && previous != null && current > previous
++            }
++
++    fun averageScore(cycles: List<GenerationCycle>): Int? {
++        val scores = cycles
++            .filter { it.isVisibleInHistory }
++            .mapNotNull { completeScore(it) }
++        return if (scores.isEmpty()) null else scores.average().toInt()
++    }
++
++    fun bestScoringRole(cycles: List<GenerationCycle>): String? =
++        cycles
++            .filter { it.isVisibleInHistory }
++            .mapNotNull { cycle ->
++                completeScore(cycle)?.let { score -> cycle.jobTitle to score }
++            }
++            .maxByOrNull { it.second }
++            ?.first
++
++    fun incompleteScoreCount(cycles: List<GenerationCycle>): Int =
++        cycles.count { it.isVisibleInHistory && completeScore(it) == null }
++}
+diff --git a/app/src/main/java/com/vantedge/app/data/viewmodel/CycleViewModel.kt b/app/src/main/java/com/vantedge/app/data/viewmodel/CycleViewModel.kt
+index 215b7e3..2733d7f 100644
+--- a/app/src/main/java/com/vantedge/app/data/viewmodel/CycleViewModel.kt
++++ b/app/src/main/java/com/vantedge/app/data/viewmodel/CycleViewModel.kt
+@@ -130,22 +130,11 @@ class CycleViewModel(
+         }
+     }
+ 
+-    fun getPreviousScore(cycle: GenerationCycle): Int? {
+-        val currentVersion = cycle.version ?: return null
+-        if (currentVersion <= 1) return null
+-        return historyStore.cyclesFlow.value
+-            .filter { other ->
+-                other.id != cycle.id &&
+-                other.jobTitle.equals(cycle.jobTitle, ignoreCase = true) &&
+-                other.company.equals(cycle.company, ignoreCase = true) &&
+-                other.version == currentVersion - 1
+-            }
+-            .mapNotNull { other -> other.compatibility?.score }
+-            .firstOrNull()
+-    }
++    fun getPreviousScore(cycle: GenerationCycle): Int? =
++        CycleScoreAggregation.previousScore(historyStore.cyclesFlow.value, cycle)
+ 
+     fun getScoreForCycle(cycle: GenerationCycle): Int? =
+-        cycle.compatibility?.score
++        CycleScoreAggregation.completeScore(cycle)
+ 
+     fun getGapsForCycle(cycle: GenerationCycle): List<String> =
+         cycle.compatibility?.gaps?.map { it.skill } ?: emptyList()
+@@ -153,23 +142,17 @@ class CycleViewModel(
+     fun totalSavedApplications(): Int =
+         historyStore.cyclesFlow.value.count { it.isVisibleInHistory }
+ 
+-    fun averageScore(): Int? {
+-        val scores = historyStore.cyclesFlow.value
+-            .filter { it.isVisibleInHistory }
+-            .mapNotNull { getScoreForCycle(it) }
+-        return if (scores.isEmpty()) null else scores.average().toInt()
+-    }
++    fun averageScore(): Int? =
++        CycleScoreAggregation.averageScore(historyStore.cyclesFlow.value)
+ 
+     fun bestScoringRole(): String? =
+-        historyStore.cyclesFlow.value
+-            .filter { it.isVisibleInHistory }
+-            .maxByOrNull { getScoreForCycle(it) ?: 0 }
+-            ?.jobTitle
++        CycleScoreAggregation.bestScoringRole(historyStore.cyclesFlow.value)
++
++    fun incompleteScoreCount(): Int =
++        CycleScoreAggregation.incompleteScoreCount(historyStore.cyclesFlow.value)
+ 
+     fun improvedApplicationsCount(): Int =
+-        historyStore.cyclesFlow.value.count {
+-            it.isVisibleInHistory && (it.version ?: 0) >= 2
+-        }
++        CycleScoreAggregation.improvedApplicationsCount(historyStore.cyclesFlow.value)
+ 
+     fun findExistingCycleForJob(
+         jobTitle: String,
+diff --git a/app/src/main/java/com/vantedge/app/domain/extraction/ExtractionDecisionCoordinator.kt b/app/src/main/java/com/vantedge/app/domain/extraction/ExtractionDecisionCoordinator.kt
+index f21e142..b92cf3a 100644
+--- a/app/src/main/java/com/vantedge/app/domain/extraction/ExtractionDecisionCoordinator.kt
++++ b/app/src/main/java/com/vantedge/app/domain/extraction/ExtractionDecisionCoordinator.kt
+@@ -36,11 +36,26 @@ object ExtractionDecisionCoordinator {
+         val lowConfidenceFields = mutableMapOf<String, FieldConfidence>()
+         for (key in sortedKeys) {
+             val conf = fieldConfidenceMap[key]!!
+-            if (conf.overallConfidence < ACCEPT_THRESHOLD) {
++            val overall = conf.overallConfidence
++            if (overall == null || overall < ACCEPT_THRESHOLD) {
+                 lowConfidenceFields[key] = conf
+             }
+         }
+ 
++        if (lowConfidenceFields.size == fieldConfidenceMap.size &&
++            lowConfidenceFields.values.all { it.overallConfidence == null }
++        ) {
++            val durationMs = System.currentTimeMillis() - startMs
++            PipelineTrace.exit("ExtractionDecisionCoordinator", durationMs, mapOf(
++                "decision" to "Failure",
++                "reason" to "UNRECOVERABLE_PARSE_ERROR",
++                "detail" to "NO_MEASURED_CONFIDENCE",
++                "method" to source,
++                "correlationId" to correlationId
++            ))
++            return ExtractionDecision.Failure(FailureReason.UNRECOVERABLE_PARSE_ERROR)
++        }
++
+         if (lowConfidenceFields.isEmpty()) {
+             val durationMs = System.currentTimeMillis() - startMs
+             PipelineTrace.exit("ExtractionDecisionCoordinator", durationMs, mapOf(
+@@ -55,7 +70,8 @@ object ExtractionDecisionCoordinator {
+         val criticalLow = lowConfidenceFields.filter { it.key in criticalFields }
+ 
+         val criticalBelowReview = criticalLow.filter { (_, conf) ->
+-            conf.overallConfidence < USER_REVIEW_THRESHOLD
++            val overall = conf.overallConfidence
++            overall == null || overall < USER_REVIEW_THRESHOLD
+         }
+ 
+         if (criticalBelowReview.isNotEmpty()) {
+@@ -63,11 +79,11 @@ object ExtractionDecisionCoordinator {
+                 FieldReview(
+                     fieldName = field,
+                     confidence = conf,
+-                    reviewReason = "Overall confidence ${"%.2f".format(conf.overallConfidence)} below review threshold $USER_REVIEW_THRESHOLD"
++                    reviewReason = "Overall confidence ${conf.overallConfidence?.let { "%.2f".format(it) } ?: "unknown"} below review threshold $USER_REVIEW_THRESHOLD"
+                 )
+             }
+             val durationMs = System.currentTimeMillis() - startMs
+-            val reviewFields = reviews.joinToString(", ") { "${it.fieldName}=${"%.2f".format(it.confidence.overallConfidence)}" }
++            val reviewFields = reviews.joinToString(", ") { "${it.fieldName}=${it.confidence.overallConfidence?.let { v -> "%.2f".format(v) } ?: "unknown"}" }
+             PipelineTrace.exit("ExtractionDecisionCoordinator", durationMs, mapOf(
+                 "decision" to "UserReview",
+                 "reason" to "criticalFieldsBelowThreshold",
+@@ -79,7 +95,8 @@ object ExtractionDecisionCoordinator {
+         }
+ 
+         val acceptWithWarning = lowConfidenceFields.all { (_, conf) ->
+-            conf.overallConfidence >= ACCEPT_WARNING_THRESHOLD
++            val overall = conf.overallConfidence
++            overall != null && overall >= ACCEPT_WARNING_THRESHOLD
+         }
+         if (acceptWithWarning) {
+             val durationMs = System.currentTimeMillis() - startMs
+@@ -96,11 +113,11 @@ object ExtractionDecisionCoordinator {
+             FieldReview(
+                 fieldName = field,
+                 confidence = conf,
+-                reviewReason = "Confidence ${"%.2f".format(conf.overallConfidence)} below warning threshold $ACCEPT_WARNING_THRESHOLD"
++                reviewReason = "Confidence ${conf.overallConfidence?.let { "%.2f".format(it) } ?: "unknown"} below warning threshold $ACCEPT_WARNING_THRESHOLD"
+             )
+         }
+         val durationMs = System.currentTimeMillis() - startMs
+-        val reviewFields = reviews.joinToString(", ") { "${it.fieldName}=${"%.2f".format(it.confidence.overallConfidence)}" }
++        val reviewFields = reviews.joinToString(", ") { "${it.fieldName}=${it.confidence.overallConfidence?.let { v -> "%.2f".format(v) } ?: "unknown"}" }
+         PipelineTrace.exit("ExtractionDecisionCoordinator", durationMs, mapOf(
+             "decision" to "UserReview",
+             "reason" to "fieldsBelowWarningThreshold",
+diff --git a/app/src/main/java/com/vantedge/app/domain/extraction/JobExtractionOrchestrator.kt b/app/src/main/java/com/vantedge/app/domain/extraction/JobExtractionOrchestrator.kt
+index 2ce590f..5b9e20f 100644
+--- a/app/src/main/java/com/vantedge/app/domain/extraction/JobExtractionOrchestrator.kt
++++ b/app/src/main/java/com/vantedge/app/domain/extraction/JobExtractionOrchestrator.kt
+@@ -103,11 +103,20 @@ class JobExtractionOrchestrator(
+                         PipelineTrace.warn("JobExtractionOrchestrator", "Retry requested: ${decision.reason}", correlationId)
+                     }
+                     is ExtractionDecision.UserReview -> {
+-                        val reviewFields = decision.fields.joinToString(", ") { "${it.fieldName}=${"%.2f".format(it.confidence.overallConfidence)}" }
++                        val reviewFields = decision.fields.joinToString(", ") { "${it.fieldName}=${it.confidence.overallConfidence?.let { v -> "%.2f".format(v) } ?: "unknown"}" }
+                         PipelineTrace.warn("JobExtractionOrchestrator", "User review needed: ${decision.fields.size} fields [$reviewFields]", correlationId)
+                     }
+                     is ExtractionDecision.Failure -> {
+                         PipelineTrace.error("JobExtractionOrchestrator", "Extraction failed: ${decision.reason}", correlationId = correlationId)
++                        PipelineTrace.exit("JobExtractionOrchestrator", durMs, mapOf(
++                            "status" to "REJECTED_EXTRACTION_DECISION_FAILURE",
++                            "reason" to decision.reason,
++                            "method" to extractionMethod,
++                            "correlationId" to correlationId
++                        ))
++                        return Result.success(
++                            ExtractionOutcome.Rejected("EXTRACTION_DECISION_FAILURE: ${decision.reason}", correlationId)
++                        )
+                     }
+                 }
+ 
+@@ -116,6 +125,19 @@ class JobExtractionOrchestrator(
+                 val description = llmResult.description ?: buildFallbackDescription(structuredDoc.blocks.joinToString("\n") { it.text })
+ 
+                 val overallConf = confidenceResult.overallConfidence
++                if (overallConf == null) {
++                    PipelineTrace.exit("JobExtractionOrchestrator", durMs, mapOf(
++                        "status" to "REJECTED_CONFIDENCE_UNKNOWN",
++                        "method" to extractionMethod,
++                        "correlationId" to correlationId
++                    ))
++                    return Result.success(
++                        ExtractionOutcome.Rejected(
++                            "CONFIDENCE_UNKNOWN: no measured confidence evidence",
++                            correlationId
++                        )
++                    )
++                }
+ 
+                 val result = buildJobExtractionResult(
+                     title = title,
+diff --git a/app/src/main/java/com/vantedge/app/narrative/W5Evidence.kt b/app/src/main/java/com/vantedge/app/narrative/W5Evidence.kt
+index fdc437a..0e33713 100644
+--- a/app/src/main/java/com/vantedge/app/narrative/W5Evidence.kt
++++ b/app/src/main/java/com/vantedge/app/narrative/W5Evidence.kt
+@@ -2,7 +2,7 @@ package com.vantedge.app.narrative
+ 
+ data class W5Evidence(
+     val skillMatch: Double,
+-    val experienceAlignment: Double,
++    val experienceAlignment: Double?,
+     val constraintCompliance: Double,
+     val confidence: Double
+ )
+diff --git a/app/src/main/java/com/vantedge/app/ui/screens/AdvancedAnalysisScreen.kt b/app/src/main/java/com/vantedge/app/ui/screens/AdvancedAnalysisScreen.kt
+index 3d3709b..0e7d861 100644
+--- a/app/src/main/java/com/vantedge/app/ui/screens/AdvancedAnalysisScreen.kt
++++ b/app/src/main/java/com/vantedge/app/ui/screens/AdvancedAnalysisScreen.kt
+@@ -154,10 +154,15 @@ private fun SkillsMatchContent(compatibility: CompatibilityRecord) {
+     ) {
+         if (compatibility.relevancyItems.isEmpty()) {
+             item {
+-                val (icon, message) = when {
+-                    compatibility.score >= 80 ->
++                val complete = ScorePresentation.isAuthoritative(compatibility)
++                val (icon, message) = when (ScorePresentation.skillsMatchEmptyState(compatibility)) {
++                    SkillsMatchEmptyState.INCOMPLETE ->
++                        "ℹ" to "Evaluation incomplete — requirements could not all be assessed."
++                    SkillsMatchEmptyState.CONFIRMED_GAPS ->
++                        "⚠" to "Confirmed gaps remain — review the Gap Analysis tab before treating this as a full eligibility result."
++                    SkillsMatchEmptyState.EXCEED ->
+                         "⚡" to "You exceed what this role requires — every skill you have is relevant."
+-                    else ->
++                    SkillsMatchEmptyState.MEET ->
+                         "✓" to "You meet the requirements for this role."
+                 }
+                 Card(
+@@ -165,7 +170,7 @@ private fun SkillsMatchContent(compatibility: CompatibilityRecord) {
+                         .fillMaxWidth()
+                         .padding(16.dp),
+                     colors = CardDefaults.cardColors(
+-                        containerColor = AppColors.Analysis.copy(alpha = 0.08f)
++                        containerColor = (if (complete) AppColors.Analysis else AppColors.Warning).copy(alpha = 0.08f)
+                     ),
+                     shape = RoundedCornerShape(10.dp)
+                 ) {
+@@ -303,7 +308,13 @@ private fun GapAnalysisContent(compatibility: CompatibilityRecord) {
+     ) {
+         if (compatibility.gaps.isEmpty()) {
+             item {
++                val complete = compatibility.evaluationComplete == true
+                 val (icon, title, message) = when {
++                    !complete -> Triple(
++                        "ℹ",
++                        "Evaluation incomplete",
++                        "Some requirements could not be assessed, so this result is not authoritative."
++                    )
+                     compatibility.score >= 80 -> Triple(
+                         "⚡",
+                         "You're overqualified for this role",
+@@ -320,7 +331,7 @@ private fun GapAnalysisContent(compatibility: CompatibilityRecord) {
+                         .fillMaxWidth()
+                         .padding(16.dp),
+                     colors = CardDefaults.cardColors(
+-                        containerColor = AppColors.Success.copy(alpha = 0.08f)
++                        containerColor = (if (complete) AppColors.Success else AppColors.Warning).copy(alpha = 0.08f)
+                     ),
+                     shape = RoundedCornerShape(10.dp)
+                 ) {
+@@ -332,7 +343,7 @@ private fun GapAnalysisContent(compatibility: CompatibilityRecord) {
+                             Text(icon, fontSize = 20.sp)
+                             Text(
+                                 title,
+-                                color = AppColors.Success,
++                                color = if (complete) AppColors.Success else AppColors.Warning,
+                                 fontWeight = FontWeight.Bold,
+                                 fontSize = 14.sp
+                             )
+diff --git a/app/src/main/java/com/vantedge/app/ui/screens/AnalysisResultScreen.kt b/app/src/main/java/com/vantedge/app/ui/screens/AnalysisResultScreen.kt
+index a51b3bb..c3a80a4 100644
+--- a/app/src/main/java/com/vantedge/app/ui/screens/AnalysisResultScreen.kt
++++ b/app/src/main/java/com/vantedge/app/ui/screens/AnalysisResultScreen.kt
+@@ -199,7 +199,7 @@ fun AnalysisResultScreen(
+             }
+ 
+             // How you fit
+-            if (compatibility.eligibilitySummary.isNotBlank()) {
++            if (compatibility.eligibilitySummary.isNotBlank() || compatibility.evaluationComplete != true) {
+                 item {
+                     Card(
+                         modifier = Modifier
+@@ -210,14 +210,14 @@ fun AnalysisResultScreen(
+                     ) {
+                         Column(modifier = Modifier.padding(16.dp)) {
+                             Text(
+-                                "How you fit",
++                                ScorePresentation.eligibilityHeading(compatibility),
+                                 color = AppColors.Analysis,
+                                 fontWeight = FontWeight.Bold,
+                                 fontSize = 12.sp
+                             )
+                             Spacer(modifier = Modifier.height(8.dp))
+                             Text(
+-                                compatibility.eligibilitySummary,
++                                ScorePresentation.eligibilityBody(compatibility),
+                                 color = AppColors.OnBackground,
+                                 fontSize = 13.sp,
+                                 lineHeight = 20.sp
+@@ -229,7 +229,10 @@ fun AnalysisResultScreen(
+ 
+             // Gap signal banner
+             item {
++                val complete = compatibility.evaluationComplete == true
+                 val gapMessage = when {
++                    !complete ->
++                        "Evaluation incomplete — some requirements could not be assessed. This score is not authoritative."
+                     compatibility.gaps.isEmpty() && compatibility.score >= 80 ->
+                         "You exceed the requirements for this role — you're overqualified."
+                     compatibility.gaps.isEmpty() ->
+@@ -240,12 +243,14 @@ fun AnalysisResultScreen(
+                         "You have ${compatibility.gaps.size} gap${if (compatibility.gaps.size > 1) "s" else ""} worth reviewing before applying."
+                 }
+                 val gapColor = when {
++                    !complete -> AppColors.Warning
+                     compatibility.gaps.isEmpty() && compatibility.score >= 80 -> AppColors.Warning
+                     compatibility.gaps.isEmpty() -> AppColors.Success
+                     compatibility.criticalGapCount > 0 -> AppColors.Destructive
+                     else -> AppColors.Warning
+                 }
+                 val icon = when {
++                    !complete -> "ℹ"
+                     compatibility.gaps.isEmpty() && compatibility.score >= 80 -> "⚡"
+                     compatibility.gaps.isEmpty() -> "✓"
+                     compatibility.criticalGapCount > 0 -> "⚠"
+@@ -343,7 +348,22 @@ fun AnalysisResultScreen(
+ 
+             // Tab content — Gap Analysis
+             if (selectedTab == 1) {
+-                if (compatibility.gaps.isEmpty()) {
++                if (compatibility.gaps.isEmpty() && compatibility.evaluationComplete != true) {
++                    item {
++                        Box(
++                            modifier = Modifier
++                                .fillMaxWidth()
++                                .padding(32.dp),
++                            contentAlignment = Alignment.Center
++                        ) {
++                            Text(
++                                "Evaluation incomplete — some requirements could not be assessed.",
++                                color = AppColors.Warning,
++                                fontSize = 13.sp
++                            )
++                        }
++                    }
++                } else if (compatibility.gaps.isEmpty()) {
+                     item {
+                         Box(
+                             modifier = Modifier
+@@ -543,19 +563,16 @@ private fun GapCard(gap: GapItem, context: android.content.Context) {
+ 
+ @Composable
+ private fun ScoreCircle(compatibility: CompatibilityRecord) {
++    val complete = ScorePresentation.isAuthoritative(compatibility)
+     val scoreColor = when {
++        !complete -> AppColors.Subtle
+         compatibility.score >= 75 -> AppColors.Success
+         compatibility.score >= 50 -> AppColors.Warning
+         else -> AppColors.Destructive
+     }
+-    val scoreLabel = when {
+-        compatibility.score >= 80 -> "Strong match"
+-        compatibility.score >= 60 -> "Decent match"
+-        compatibility.score >= 40 -> "Partial match"
+-        else -> "Weak match"
+-    }
++    val scoreLabel = ScorePresentation.scoreLabel(compatibility)
+     val sweep by animateFloatAsState(
+-        targetValue = (compatibility.score / 100f) * 270f,
++        targetValue = ScorePresentation.sweepDegrees(compatibility),
+         animationSpec = tween(1000),
+         label = "score"
+     )
+@@ -591,12 +608,12 @@ private fun ScoreCircle(compatibility: CompatibilityRecord) {
+             }
+             Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                 Text(
+-                    "${compatibility.score}%",
++                    ScorePresentation.scoreText(compatibility),
+                     color = scoreColor,
+                     fontSize = 26.sp,
+                     fontWeight = FontWeight.Bold
+                 )
+-                Text("Match", color = AppColors.Subtle, fontSize = 11.sp)
++                Text(if (complete) "Match" else "Incomplete", color = AppColors.Subtle, fontSize = 11.sp)
+             }
+         }
+         Spacer(modifier = Modifier.height(8.dp))
+diff --git a/app/src/main/java/com/vantedge/app/ui/screens/CompatibilityResultScreen.kt b/app/src/main/java/com/vantedge/app/ui/screens/CompatibilityResultScreen.kt
+index 41d660d..0c1da4a 100644
+--- a/app/src/main/java/com/vantedge/app/ui/screens/CompatibilityResultScreen.kt
++++ b/app/src/main/java/com/vantedge/app/ui/screens/CompatibilityResultScreen.kt
+@@ -52,6 +52,7 @@ fun CompatibilityResultScreen(
+     var selectedTab by remember { mutableStateOf(1) }
+ 
+     val scoreColor = when {
++        !ScorePresentation.isAuthoritative(record) -> Color.Gray
+         record.score >= 75 -> Color(0xFF4CAF50)
+         record.score >= 50 -> CAmber
+         else -> Color(0xFFE53935)
+@@ -202,9 +203,10 @@ fun CompatibilityResultScreen(
+ 
+ @Composable
+ private fun ScoreHeader(record: CompatibilityRecord, color: Color) {
++    val complete = ScorePresentation.isAuthoritative(record)
+ 
+     val sweep by animateFloatAsState(
+-        targetValue = (record.score / 100f) * 270f,
++        targetValue = ScorePresentation.sweepDegrees(record),
+         animationSpec = tween(1000),
+         label = ""
+     )
+@@ -252,17 +254,25 @@ private fun ScoreHeader(record: CompatibilityRecord, color: Color) {
+                 }
+ 
+                 Text(
+-                    text = "${record.score}%",
++                    text = ScorePresentation.scoreText(record),
+                     color = color,
+                     fontSize = 24.sp,
+                     fontWeight = FontWeight.Bold
+                 )
+             }
+ 
++            if (!complete) {
++                Text(
++                    text = "Evaluation incomplete — score not authoritative",
++                    color = Color.Gray,
++                    fontSize = 12.sp
++                )
++            }
++
+             Spacer(modifier = Modifier.height(10.dp))
+ 
+             Text(
+-                text = record.eligibilitySummary,
++                text = ScorePresentation.eligibilityBody(record),
+                 color = Color.Gray,
+                 fontSize = 12.sp
+             )
+diff --git a/app/src/main/java/com/vantedge/app/ui/screens/CycleHistoryScreen.kt b/app/src/main/java/com/vantedge/app/ui/screens/CycleHistoryScreen.kt
+index a5845ac..d5462e8 100644
+--- a/app/src/main/java/com/vantedge/app/ui/screens/CycleHistoryScreen.kt
++++ b/app/src/main/java/com/vantedge/app/ui/screens/CycleHistoryScreen.kt
+@@ -18,6 +18,7 @@ import androidx.compose.ui.unit.sp
+ import com.vantedge.app.data.model.CompatibilityRecord
+ import com.vantedge.app.data.model.GenerationCycle
+ import com.vantedge.app.data.viewmodel.CycleViewModel
++import com.vantedge.app.ui.screens.ScorePresentation
+ import java.text.SimpleDateFormat
+ import java.util.Date
+ import java.util.Locale
+@@ -71,16 +72,22 @@ fun CycleHistoryScreen(
+                 items(cycles, key = { it.id }) { cycle ->
+ 
+                     val compatibility = cycle.compatibility
++                    val complete = compatibility?.evaluationComplete == true
+ 
+-                    val score = compatibility?.score ?: 0
++                    val score = compatibility?.score
+                     val scoreColor = when {
++                        !complete || score == null -> Color.Gray
+                         score >= 75 -> Color(0xFF4CAF50)
+                         score >= 50 -> CHAmber
+                         else -> Color(0xFFE53935)
+                     }
+ 
+                     val previousScore = viewModel.getPreviousScore(cycle)
+-                    val delta = if (previousScore != null) score - previousScore else null
++                    val delta = if (complete && score != null && previousScore != null) {
++                        score - previousScore
++                    } else {
++                        null
++                    }
+ 
+                     val date = SimpleDateFormat("dd MMM yyyy", Locale.getDefault())
+                         .format(Date(cycle.createdAt))
+@@ -115,7 +122,7 @@ fun CycleHistoryScreen(
+                                     verticalAlignment = Alignment.CenterVertically
+                                 ) {
+                                     Text(
+-                                        "Score: $score%",
++                                        ScorePresentation.historyScoreText(compatibility),
+                                         color = scoreColor,
+                                         fontSize = 12.sp,
+                                         fontWeight = FontWeight.Bold
+diff --git a/app/src/main/java/com/vantedge/app/ui/screens/DashboardScreen.kt b/app/src/main/java/com/vantedge/app/ui/screens/DashboardScreen.kt
+index f84d473..6ac6da7 100644
+--- a/app/src/main/java/com/vantedge/app/ui/screens/DashboardScreen.kt
++++ b/app/src/main/java/com/vantedge/app/ui/screens/DashboardScreen.kt
+@@ -46,6 +46,7 @@ fun DashboardScreen(
+     val totalSaved = cycleViewModel.totalSavedApplications()
+     val bestRole = cycleViewModel.bestScoringRole()
+     val avgScore = cycleViewModel.averageScore()
++    val incompleteCount = cycleViewModel.incompleteScoreCount()
+     val improved = cycleViewModel.improvedApplicationsCount()
+ 
+     Scaffold(
+@@ -113,6 +114,8 @@ fun DashboardScreen(
+                                         else -> Color(0xFFE53935)
+                                     }
+                                 )
++                            } else {
++                                InsightStat("Avg Score", "—", Color.Gray)
+                             }
+ 
+                             if (improved > 0) {
+@@ -123,6 +126,22 @@ fun DashboardScreen(
+                         if (bestRole != null) {
+                             Spacer(modifier = Modifier.height(12.dp))
+                             Text("🏆 Best role: $bestRole", color = Color.Gray, fontSize = 12.sp)
++                        } else {
++                            Spacer(modifier = Modifier.height(12.dp))
++                            Text(
++                                "Best role unavailable — no complete evaluations",
++                                color = Color.Gray,
++                                fontSize = 12.sp
++                            )
++                        }
++
++                        if (incompleteCount > 0) {
++                            Spacer(modifier = Modifier.height(8.dp))
++                            Text(
++                                "$incompleteCount incomplete evaluation${if (incompleteCount == 1) "" else "s"} excluded from score and ranking",
++                                color = Color.Gray,
++                                fontSize = 11.sp
++                            )
+                         }
+                     }
+                 }
+diff --git a/app/src/main/java/com/vantedge/app/ui/screens/ResultScreen.kt b/app/src/main/java/com/vantedge/app/ui/screens/ResultScreen.kt
+index f405e5f..6fdea2e 100644
+--- a/app/src/main/java/com/vantedge/app/ui/screens/ResultScreen.kt
++++ b/app/src/main/java/com/vantedge/app/ui/screens/ResultScreen.kt
+@@ -45,6 +45,7 @@ import com.vantedge.app.data.engine.CVTemplate
+ import com.vantedge.app.data.model.CompatibilityRecord
+ import com.vantedge.app.data.model.GapItem
+ import com.vantedge.app.data.model.GenerationCycle
++import com.vantedge.app.data.model.RequirementAssessment
+ import com.vantedge.app.data.viewmodel.CycleViewModel
+ import kotlinx.coroutines.launch
+ import java.io.File
+@@ -89,20 +90,17 @@ fun ResultScreen(
+     val context = LocalContext.current
+     var webViewRef by remember { mutableStateOf<WebView?>(null) }
+     val currentDocContent = if (selectedTab == 0) cvContent else coverLetterContent
++    val complete = compatibility?.evaluationComplete == true
+     val score = compatibility?.score ?: 0
+     val scoreColor = when {
++        !complete -> Color.Gray
+         score >= 75 -> Color(0xFF4CAF50)
+         score >= 50 -> RAmber
+         else -> Color(0xFFE53935)
+     }
+-    val scoreLabel = when {
+-        score >= 80 -> "Strong match"
+-        score >= 60 -> "Decent match"
+-        score >= 40 -> "Partial match"
+-        else -> "Weak match"
+-    }
++    val scoreLabel = compatibility?.let { ScorePresentation.scoreLabel(it) } ?: "—"
+     val previousScore = viewModel.getPreviousScore(cycle)
+-    val delta = if (previousScore != null) score - previousScore else null
++    val delta = if (complete && previousScore != null) score - previousScore else null
+ 
+     fun savePdf(label: String) {
+         val webView = webViewRef ?: run {
+@@ -438,8 +436,9 @@ private fun AnalysisTab(
+     scoreLabel: String,
+     delta: Int?
+ ) {
++    val complete = ScorePresentation.isAuthoritative(compatibility)
+     val sweep by animateFloatAsState(
+-        targetValue = (compatibility.score / 100f) * 270f,
++        targetValue = ScorePresentation.sweepDegrees(compatibility),
+         animationSpec = tween(1000),
+         label = ""
+     )
+@@ -483,7 +482,7 @@ private fun AnalysisTab(
+                         )
+                     }
+                     Text(
+-                        "${compatibility.score}%",
++                        ScorePresentation.scoreText(compatibility),
+                         color = scoreColor,
+                         fontSize = 26.sp,
+                         fontWeight = FontWeight.Bold
+@@ -535,14 +534,48 @@ private fun AnalysisTab(
+             }
+         }
+         // ── How you fit ───────────────────────────────────────────────
+-        if (compatibility.eligibilitySummary.isNotBlank()) {
++        if (compatibility.eligibilitySummary.isNotBlank() || !complete) {
++            item {
++                AnalysisSectionCard(
++                    heading = ScorePresentation.eligibilityHeading(compatibility),
++                    body = ScorePresentation.eligibilityBody(compatibility)
++                )
++                Spacer(modifier = Modifier.height(12.dp))
++            }
++        }
++        // ── Unassessed requirements ───────────────────────────────────
++        val coverageKnown = ScorePresentation.hasRecordedCoverage(compatibility)
++        val unassessed = ScorePresentation.unassessedRequirements(compatibility)
++        if (!coverageKnown) {
+             item {
+                 AnalysisSectionCard(
+-                    heading = "How you fit",
+-                    body = compatibility.eligibilitySummary
++                    heading = "Coverage not recorded",
++                    body = "This saved analysis predates structured requirement coverage. " +
++                        "Unassessed requirements cannot be reconstructed for it."
+                 )
+                 Spacer(modifier = Modifier.height(12.dp))
+             }
++        } else if (unassessed.isNotEmpty()) {
++            item {
++                Spacer(modifier = Modifier.height(12.dp))
++                Text(
++                    "Not assessed (${unassessed.size})",
++                    color = RAmber,
++                    fontWeight = FontWeight.SemiBold,
++                    fontSize = 12.sp,
++                    modifier = Modifier.padding(start = 16.dp, bottom = 4.dp)
++                )
++                Text(
++                    "These requirements could not be assessed from your profile. " +
++                        "They are neither matches nor confirmed gaps.",
++                    color = Color.Gray,
++                    fontSize = 11.sp,
++                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 4.dp)
++                )
++            }
++            items(unassessed) { item ->
++                UnassessedCard(item)
++            }
+         }
+         // ── Advanced toggle ───────────────────────────────────────────
+         item {
+@@ -869,6 +902,33 @@ private fun RelevancyCard(
+         }
+     }
+ }
++@Composable
++private fun UnassessedCard(item: RequirementAssessment) {
++    Surface(
++        modifier = Modifier
++            .fillMaxWidth()
++            .padding(horizontal = 16.dp, vertical = 4.dp),
++        color = RCard,
++        shape = RoundedCornerShape(8.dp),
++        border = BorderStroke(1.dp, RAmber.copy(alpha = 0.35f))
++    ) {
++        Column(modifier = Modifier.padding(12.dp)) {
++            Text(
++                item.text,
++                color = ROnBg,
++                fontSize = 13.sp,
++                fontWeight = FontWeight.Medium
++            )
++            Spacer(modifier = Modifier.height(2.dp))
++            Text(
++                ScorePresentation.unassessedReasonLabel(item.reason),
++                color = RAmber,
++                fontSize = 11.sp
++            )
++        }
++    }
++}
++
+ /* ============================================================
+    APPEND-ONLY EXTENSION BLOCK (SAFE - NO EXISTING MODIFICATION)
+    ============================================================ */
+diff --git a/app/src/main/java/com/vantedge/app/ui/screens/ScorePresentation.kt b/app/src/main/java/com/vantedge/app/ui/screens/ScorePresentation.kt
+new file mode 100644
+index 0000000..881b904
+--- /dev/null
++++ b/app/src/main/java/com/vantedge/app/ui/screens/ScorePresentation.kt
+@@ -0,0 +1,82 @@
++package com.vantedge.app.ui.screens
++
++import com.vantedge.app.data.domain.ScoreCompleteness
++import com.vantedge.app.data.model.CompatibilityRecord
++import com.vantedge.app.data.model.RequirementAssessment
++import com.vantedge.app.data.model.RequirementAssessmentState
++
++enum class SkillsMatchEmptyState {
++    INCOMPLETE,
++    CONFIRMED_GAPS,
++    EXCEED,
++    MEET
++}
++
++object ScorePresentation {
++
++    fun isAuthoritative(record: CompatibilityRecord): Boolean =
++        ScoreCompleteness.isAuthoritative(record)
++
++    fun eligibilityClaimAllowed(record: CompatibilityRecord): Boolean =
++        isAuthoritative(record) && record.gaps.isEmpty()
++
++    fun scoreText(record: CompatibilityRecord): String =
++        if (isAuthoritative(record)) "${record.score}%" else "—"
++
++    fun scoreLabel(record: CompatibilityRecord): String {
++        if (!isAuthoritative(record)) return "Incomplete evaluation"
++        return when {
++            record.score >= 80 -> "Strong match"
++            record.score >= 60 -> "Decent match"
++            record.score >= 40 -> "Partial match"
++            else -> "Weak match"
++        }
++    }
++
++    fun sweepDegrees(record: CompatibilityRecord): Float =
++        if (isAuthoritative(record)) (record.score / 100f) * 270f else 0f
++
++    fun historyScoreText(record: CompatibilityRecord?): String =
++        if (record != null && isAuthoritative(record)) "${record.score}%" else "Incomplete evaluation"
++
++    fun eligibilityHeading(record: CompatibilityRecord): String = when {
++        !isAuthoritative(record) -> "How you fit — not fully assessed"
++        eligibilityClaimAllowed(record) -> "How you fit"
++        else -> "How you fit — confirmed gaps"
++    }
++
++    fun eligibilityBody(record: CompatibilityRecord): String = when {
++        !isAuthoritative(record) ->
++            "Eligibility is not definitive because the evaluation is incomplete. Confirmed gaps are listed separately."
++        eligibilityClaimAllowed(record) -> record.eligibilitySummary
++        else ->
++            "Confirmed gaps remain for this role. Review the gap analysis before treating this as a full eligibility result."
++    }
++
++    fun skillsMatchEmptyState(record: CompatibilityRecord): SkillsMatchEmptyState = when {
++        !isAuthoritative(record) -> SkillsMatchEmptyState.INCOMPLETE
++        !eligibilityClaimAllowed(record) -> SkillsMatchEmptyState.CONFIRMED_GAPS
++        record.score >= 80 -> SkillsMatchEmptyState.EXCEED
++        else -> SkillsMatchEmptyState.MEET
++    }
++
++    fun hasRecordedCoverage(record: CompatibilityRecord): Boolean =
++        record.requirementAssessments != null
++
++    fun unassessedCount(record: CompatibilityRecord): Int? =
++        record.requirementAssessments?.count { it.state == RequirementAssessmentState.UNASSESSED }
++
++    fun unassessedRequirements(record: CompatibilityRecord): List<RequirementAssessment> =
++        record.requirementAssessments
++            ?.filter { it.state == RequirementAssessmentState.UNASSESSED }
++            ?: emptyList()
++
++    fun unassessedReasonLabel(reason: String?): String = when (reason) {
++        "PROFILE_SKILL_EVIDENCE_ABSENT" -> "No skill evidence in your profile"
++        "PROFILE_QUALIFICATION_EVIDENCE_ABSENT" -> "No qualification evidence in your profile"
++        "TAXONOMY_MISS" -> "Not in the assessed requirement list"
++        "UNSUPPORTED_CATEGORY" -> "This requirement type is not assessed yet"
++        "PREFERENCE_NOT_ASSESSED" -> "Preferred item, not assessed"
++        else -> "Could not be assessed"
++    }
++}
+diff --git a/app/src/main/java/com/vantedge/app/w5/scoring/AxisEvaluators.kt b/app/src/main/java/com/vantedge/app/w5/scoring/AxisEvaluators.kt
+index 90149ff..125072e 100644
+--- a/app/src/main/java/com/vantedge/app/w5/scoring/AxisEvaluators.kt
++++ b/app/src/main/java/com/vantedge/app/w5/scoring/AxisEvaluators.kt
+@@ -13,8 +13,8 @@ object AxisEvaluators {
+         return jaccard(filteredProfile, filteredJob)
+     }
+ 
+-    fun experienceAlignment(profile: ValidatedProfile, job: ValidatedJob): Double {
+-        val required = job.requiredYears ?: return 0.0
++    fun experienceAlignment(profile: ValidatedProfile, job: ValidatedJob): Double? {
++        val required = job.requiredYears ?: return null
+         if (required == 0) return 1.0
+         return min(profile.experienceYears.toDouble() / required, 1.0)
+     }
+@@ -31,8 +31,8 @@ object AxisEvaluators {
+         return jaccard(filteredProfile, filteredJob)
+     }
+ 
+-    fun keywordCoverage(profile: ValidatedProfile, job: ValidatedJob, assets: ValidationAssets): Double {
+-        if (job.keywords.isEmpty()) return 1.0
++    fun keywordCoverage(profile: ValidatedProfile, job: ValidatedJob, assets: ValidationAssets): Double? {
++        if (job.keywords.isEmpty()) return null
+         val profileTokens = profile.skills.flatMap { tokenize(it, emptySet()) }.toSet()
+         val expandedProfile = expand(profileTokens, assets.keywordDictionary)
+         val filteredProfile = expandedProfile.filter { it !in assets.stopWords }.toSet()
+@@ -45,10 +45,13 @@ object AxisEvaluators {
+         return matched.toDouble() / job.keywords.size
+     }
+ 
+-    fun seniorityFit(profile: ValidatedProfile, job: ValidatedJob): Double {
++    fun seniorityFit(profile: ValidatedProfile, job: ValidatedJob): Double =
++        seniorityFitMeasured(profile, job) ?: 0.0
++
++    fun seniorityFitMeasured(profile: ValidatedProfile, job: ValidatedJob): Double? {
+         val profileIndex = SeniorityDeriver.toIndex(profile.seniorityLevel)
+         val jobIndex = SeniorityDeriver.toIndex(job.seniorityLevel)
+-        if (profileIndex == null || jobIndex == null) return 0.0
++        if (profileIndex == null || jobIndex == null) return null
+         val maxDistance = (SeniorityDeriver.levelCount - 1).toDouble()
+         return 1.0 - kotlin.math.abs(profileIndex - jobIndex) / maxDistance
+     }
+diff --git a/app/src/main/java/com/vantedge/app/w5/scoring/DeterministicCompatibilityEngine.kt b/app/src/main/java/com/vantedge/app/w5/scoring/DeterministicCompatibilityEngine.kt
+index ddb376b..7791d51 100644
+--- a/app/src/main/java/com/vantedge/app/w5/scoring/DeterministicCompatibilityEngine.kt
++++ b/app/src/main/java/com/vantedge/app/w5/scoring/DeterministicCompatibilityEngine.kt
+@@ -55,6 +55,7 @@ class DeterministicCompatibilityEngine(
+ 
+         val adaptationResult = JobRequirementAdapter.adapt(
+             jobDescription = jobDescription,
++            jobTitle = jobTitle,
+             requiredSkills = requiredSkills,
+             preferredSkills = preferredSkills,
+             educationRequired = educationRequired,
+diff --git a/app/src/main/java/com/vantedge/app/w5/scoring/GapAnalyzer.kt b/app/src/main/java/com/vantedge/app/w5/scoring/GapAnalyzer.kt
+index 1edad12..d4a3877 100644
+--- a/app/src/main/java/com/vantedge/app/w5/scoring/GapAnalyzer.kt
++++ b/app/src/main/java/com/vantedge/app/w5/scoring/GapAnalyzer.kt
+@@ -2,6 +2,18 @@ package com.vantedge.app.w5.scoring
+ 
+ object GapAnalyzer {
+     fun analyze(profile: ValidatedProfile, job: ValidatedJob, assets: ValidationAssets): GapAnalysis {
++        if (profile.skills.isEmpty()) {
++            val unassessed = job.requiredSkills.map {
++                UnassessedRequirement(it, UnassessedReason.PROFILE_SKILL_EVIDENCE_ABSENT)
++            }
++            return GapAnalysis(
++                missing = emptyList(),
++                weak = emptyList(),
++                matched = emptyList(),
++                unassessed = unassessed
++            )
++        }
++
+         val missing = mutableListOf<String>()
+         val weak = mutableListOf<String>()
+         val matched = mutableListOf<MatchEvidence>()
+@@ -10,14 +22,10 @@ object GapAnalyzer {
+             val skillTokens = tokenize(requiredSkill, emptySet()).toSet()
+             val expandedSkillTokens = expand(skillTokens, assets.keywordDictionary).filter { it !in assets.stopWords }.toSet()
+ 
+-            val maxSimilarity = if (profile.skills.isEmpty()) {
+-                0.0
+-            } else {
+-                profile.skills.maxOf { profileSkill ->
+-                    val profileTokens = tokenize(profileSkill, emptySet()).toSet()
+-                    val expandedProfileTokens = expand(profileTokens, assets.keywordDictionary).filter { it !in assets.stopWords }.toSet()
+-                    jaccard(expandedSkillTokens, expandedProfileTokens)
+-                }
++            val maxSimilarity = profile.skills.maxOf { profileSkill ->
++                val profileTokens = tokenize(profileSkill, emptySet()).toSet()
++                val expandedProfileTokens = expand(profileTokens, assets.keywordDictionary).filter { it !in assets.stopWords }.toSet()
++                jaccard(expandedSkillTokens, expandedProfileTokens)
+             }
+ 
+             when {
+diff --git a/app/src/main/java/com/vantedge/app/w5/scoring/HintBuilder.kt b/app/src/main/java/com/vantedge/app/w5/scoring/HintBuilder.kt
+index e7375d5..beb582e 100644
+--- a/app/src/main/java/com/vantedge/app/w5/scoring/HintBuilder.kt
++++ b/app/src/main/java/com/vantedge/app/w5/scoring/HintBuilder.kt
+@@ -13,12 +13,12 @@ object HintBuilder {
+         }
+ 
+         val experienceAxis = axisScores.find { it.axisName == "ExperienceAlignment" }
+-        if (experienceAxis != null && experienceAxis.score < 0.5) {
++        if (experienceAxis?.isMeasured == true && experienceAxis.score < 0.5) {
+             hints.add("Increase exposure to target domain based on ExperienceAlignment")
+         }
+ 
+         val seniorityAxis = axisScores.find { it.axisName == "SeniorityFit" }
+-        if (seniorityAxis != null && seniorityAxis.score < 0.5) {
++        if (seniorityAxis?.isMeasured == true && seniorityAxis.score < 0.5) {
+             hints.add("Re-evaluate trajectory based on SeniorityFit")
+         }
+ 
+diff --git a/app/src/main/java/com/vantedge/app/w5/scoring/JobRequirementAdapter.kt b/app/src/main/java/com/vantedge/app/w5/scoring/JobRequirementAdapter.kt
+index 89ed7dd..fe42a47 100644
+--- a/app/src/main/java/com/vantedge/app/w5/scoring/JobRequirementAdapter.kt
++++ b/app/src/main/java/com/vantedge/app/w5/scoring/JobRequirementAdapter.kt
+@@ -8,7 +8,8 @@ data class AdaptedJobInput(
+     val requiredQualifications: List<RequirementEvidence> = emptyList(),
+     val requiredYears: Int?,
+     val keywords: List<String>,
+-    val unmappedRequirements: List<RequirementEvidence>
++    val unmappedRequirements: List<RequirementEvidence>,
++    val requirementInventory: List<RequirementEvidence> = emptyList()
+ )
+ 
+ enum class RequirementDiagnosticType {
+@@ -29,7 +30,8 @@ data class DiagnosticsSummary(
+ 
+ data class RequirementDiagnostics(
+     val diagnostics: List<RequirementDiagnostic>,
+-    val summary: DiagnosticsSummary
++    val summary: DiagnosticsSummary,
++    val inventory: List<RequirementEvidence> = emptyList()
+ )
+ 
+ data class AdaptationResult(
+@@ -44,6 +46,7 @@ object JobRequirementAdapter {
+ 
+     fun adapt(
+         jobDescription: String,
++        jobTitle: String,
+         requiredSkills: List<String> = emptyList(),
+         preferredSkills: List<String> = emptyList(),
+         educationRequired: String? = null,
+@@ -114,10 +117,11 @@ object JobRequirementAdapter {
+ 
+         val diagnostics = RequirementDiagnostics(
+             diagnostics = diagnosticsList,
+-            summary = summary
++            summary = summary,
++            inventory = adaptedInput.requirementInventory
+         )
+ 
+-        val validatedJob = toValidatedJob(adaptedInput, "", correlationId)
++        val validatedJob = toValidatedJob(adaptedInput, jobTitle, correlationId)
+ 
+         PipelineTrace.dataQuality(
+             stage = "JobRequirementAdapter.adapt",
+@@ -156,11 +160,19 @@ object JobRequirementAdapter {
+         val matchedPreferred = mutableListOf<String>()
+         val requiredQualifications = mutableListOf<RequirementEvidence>()
+         val unmapped = mutableListOf<RequirementEvidence>()
++        val inventory = mutableListOf<RequirementEvidence>()
+ 
+         for (skill in requiredSkills) {
+             val matched = matchTaxonomy(skill, skillTaxonomy)
+             if (matched != null) {
+                 matchedRequired.add(matched)
++                inventory.add(RequirementEvidence(
++                    originalText = skill,
++                    category = RequirementCategory.SKILL,
++                    classificationStatus = ClassificationStatus.NORMALIZED,
++                    matchedTaxonomySkill = matched,
++                    importance = "MANDATORY"
++                ))
+             } else {
+                 val category = classifyRequirement(skill)
+                 when (category) {
+@@ -168,11 +180,14 @@ object JobRequirementAdapter {
+                     RequirementCategory.CERTIFICATION,
+                     RequirementCategory.LICENCE,
+                     RequirementCategory.SECURITY_CLEARANCE -> {
+-                        requiredQualifications.add(RequirementEvidence(
++                        val evidence = RequirementEvidence(
+                             originalText = skill,
+                             category = category,
+-                            classificationStatus = ClassificationStatus.NORMALIZED
+-                        ))
++                            classificationStatus = ClassificationStatus.NORMALIZED,
++                            importance = "MANDATORY"
++                        )
++                        requiredQualifications.add(evidence)
++                        inventory.add(evidence)
+                     }
+                     else -> {
+                         val status = if (category == RequirementCategory.UNCLASSIFIED) {
+@@ -180,12 +195,15 @@ object JobRequirementAdapter {
+                         } else {
+                             ClassificationStatus.UNSUPPORTED
+                         }
+-                        unmapped.add(RequirementEvidence(
++                        val evidence = RequirementEvidence(
+                             originalText = skill,
+                             category = category,
+                             classificationStatus = status,
+-                            matchedTaxonomySkill = null
+-                        ))
++                            matchedTaxonomySkill = null,
++                            importance = "MANDATORY"
++                        )
++                        unmapped.add(evidence)
++                        inventory.add(evidence)
+                     }
+                 }
+             }
+@@ -195,6 +213,13 @@ object JobRequirementAdapter {
+             val matched = matchTaxonomy(skill, skillTaxonomy)
+             if (matched != null) {
+                 matchedPreferred.add(matched)
++                inventory.add(RequirementEvidence(
++                    originalText = skill,
++                    category = RequirementCategory.SKILL,
++                    classificationStatus = ClassificationStatus.NORMALIZED,
++                    matchedTaxonomySkill = matched,
++                    importance = "PREFERRED"
++                ))
+             } else {
+                 val category = classifyRequirement(skill)
+                 when (category) {
+@@ -202,11 +227,14 @@ object JobRequirementAdapter {
+                     RequirementCategory.CERTIFICATION,
+                     RequirementCategory.LICENCE,
+                     RequirementCategory.SECURITY_CLEARANCE -> {
+-                        requiredQualifications.add(RequirementEvidence(
++                        val evidence = RequirementEvidence(
+                             originalText = skill,
+                             category = category,
+-                            classificationStatus = ClassificationStatus.NORMALIZED
+-                        ))
++                            classificationStatus = ClassificationStatus.NORMALIZED,
++                            importance = "MANDATORY"
++                        )
++                        requiredQualifications.add(evidence)
++                        inventory.add(evidence)
+                     }
+                     else -> {
+                         val status = if (category == RequirementCategory.UNCLASSIFIED) {
+@@ -214,12 +242,15 @@ object JobRequirementAdapter {
+                         } else {
+                             ClassificationStatus.UNSUPPORTED
+                         }
+-                        unmapped.add(RequirementEvidence(
++                        val evidence = RequirementEvidence(
+                             originalText = skill,
+                             category = category,
+                             classificationStatus = status,
+-                            matchedTaxonomySkill = null
+-                        ))
++                            matchedTaxonomySkill = null,
++                            importance = "PREFERRED"
++                        )
++                        unmapped.add(evidence)
++                        inventory.add(evidence)
+                     }
+                 }
+             }
+@@ -244,7 +275,8 @@ object JobRequirementAdapter {
+                     originalText = fragment,
+                     category = category,
+                     classificationStatus = if (isSupported) ClassificationStatus.NORMALIZED else ClassificationStatus.UNMAPPED,
+-                    matchedTaxonomySkill = null
++                    matchedTaxonomySkill = null,
++                    importance = "MANDATORY"
+                 )
+ 
+                 if (isSupported) {
+@@ -252,6 +284,7 @@ object JobRequirementAdapter {
+                 } else {
+                     unmapped.add(evidence)
+                 }
++                inventory.add(evidence)
+             }
+         }
+ 
+@@ -261,7 +294,8 @@ object JobRequirementAdapter {
+             requiredQualifications = requiredQualifications,
+             requiredYears = requiredYears,
+             keywords = (matchedRequired + matchedPreferred).distinct(),
+-            unmappedRequirements = unmapped
++            unmappedRequirements = unmapped,
++            requirementInventory = inventory
+         )
+     }
+ 
+@@ -287,6 +321,7 @@ object JobRequirementAdapter {
+ 
+         val required = mutableListOf<String>()
+         val preferred = mutableListOf<String>()
++        val inventory = mutableListOf<RequirementEvidence>()
+ 
+         for (skill in matchedSkills) {
+             val skillTokens = skill.split(" ")
+@@ -294,13 +329,38 @@ object JobRequirementAdapter {
+                 .indexOfFirst { it == skillTokens }
+             if (skillIndex == -1) {
+                 required.add(skill)
++                inventory.add(RequirementEvidence(
++                    originalText = skill,
++                    category = RequirementCategory.SKILL,
++                    classificationStatus = ClassificationStatus.NORMALIZED,
++                    matchedTaxonomySkill = skill,
++                    importance = "MANDATORY"
++                ))
+                 continue
+             }
+             val precedingWindow = if (skillIndex > 5) tokens.subList(skillIndex - 5, skillIndex) else tokens.subList(0, skillIndex)
+             val windowText = precedingWindow.joinToString(" ")
+             when {
+-                preferredMarkers.any { windowText.contains(it) } -> preferred.add(skill)
+-                else -> required.add(skill)
++                preferredMarkers.any { windowText.contains(it) } -> {
++                    preferred.add(skill)
++                    inventory.add(RequirementEvidence(
++                        originalText = skill,
++                        category = RequirementCategory.SKILL,
++                        classificationStatus = ClassificationStatus.NORMALIZED,
++                        matchedTaxonomySkill = skill,
++                        importance = "PREFERRED"
++                    ))
++                }
++                else -> {
++                    required.add(skill)
++                    inventory.add(RequirementEvidence(
++                        originalText = skill,
++                        category = RequirementCategory.SKILL,
++                        classificationStatus = ClassificationStatus.NORMALIZED,
++                        matchedTaxonomySkill = skill,
++                        importance = "MANDATORY"
++                    ))
++                }
+             }
+         }
+ 
+@@ -315,12 +375,15 @@ object JobRequirementAdapter {
+ 
+         for (phrase in phrases) {
+             if (phrase.length > 150) {
+-                extractedUnmapped.add(RequirementEvidence(
++                val evidence = RequirementEvidence(
+                     originalText = phrase,
+                     category = RequirementCategory.UNCLASSIFIED,
+                     classificationStatus = ClassificationStatus.UNMAPPED,
+-                    matchedTaxonomySkill = null
+-                ))
++                    matchedTaxonomySkill = null,
++                    importance = "MANDATORY"
++                )
++                extractedUnmapped.add(evidence)
++                inventory.add(evidence)
+                 continue
+             }
+ 
+@@ -339,11 +402,13 @@ object JobRequirementAdapter {
+                 originalText = phrase,
+                 category = category,
+                 classificationStatus = status,
+-                matchedTaxonomySkill = null
++                matchedTaxonomySkill = null,
++                importance = "MANDATORY"
+             )
+ 
+             if (isSupported) extractedQualifications.add(evidence)
+             else extractedUnmapped.add(evidence)
++            inventory.add(evidence)
+         }
+ 
+         return AdaptedJobInput(
+@@ -352,7 +417,8 @@ object JobRequirementAdapter {
+             requiredQualifications = extractedQualifications,
+             requiredYears = requiredYears,
+             keywords = (required + preferred).distinct(),
+-            unmappedRequirements = extractedUnmapped
++            unmappedRequirements = extractedUnmapped,
++            requirementInventory = inventory
+         )
+     }
+ 
+@@ -412,7 +478,7 @@ object JobRequirementAdapter {
+             "unmappedCount" to jobInput.unmappedRequirements.size
+         ))
+ 
+-        val seniorityLevel = SeniorityDeriver.derive(jobTitle, jobInput.requiredYears)
++        val seniorityLevel = SeniorityDeriver.derive(null, jobInput.requiredYears)
+         val completedFields = mutableSetOf<String>()
+         if (jobInput.requiredSkills.isNotEmpty()) completedFields.add("requiredSkills")
+         if (jobTitle.isNotEmpty()) completedFields.add("title")
+diff --git a/app/src/main/java/com/vantedge/app/w5/scoring/RequirementEvidence.kt b/app/src/main/java/com/vantedge/app/w5/scoring/RequirementEvidence.kt
+index c9e0423..1d732b9 100644
+--- a/app/src/main/java/com/vantedge/app/w5/scoring/RequirementEvidence.kt
++++ b/app/src/main/java/com/vantedge/app/w5/scoring/RequirementEvidence.kt
+@@ -30,5 +30,6 @@ data class RequirementEvidence(
+     val originalText: String,
+     val category: RequirementCategory,
+     val classificationStatus: ClassificationStatus,
+-    val matchedTaxonomySkill: String? = null
++    val matchedTaxonomySkill: String? = null,
++    val importance: String? = null
+ )
+diff --git a/app/src/main/java/com/vantedge/app/w5/scoring/W5ScoreEngine.kt b/app/src/main/java/com/vantedge/app/w5/scoring/W5ScoreEngine.kt
+index e93b788..f82af5a 100644
+--- a/app/src/main/java/com/vantedge/app/w5/scoring/W5ScoreEngine.kt
++++ b/app/src/main/java/com/vantedge/app/w5/scoring/W5ScoreEngine.kt
+@@ -18,24 +18,52 @@ class W5ScoreEngine(private val assets: ValidationAssets) {
+         val experienceAlignment = AxisEvaluators.experienceAlignment(profile, job)
+         val roleRelevance = AxisEvaluators.roleRelevance(profile, job, assets)
+         val keywordCoverage = AxisEvaluators.keywordCoverage(profile, job, assets)
+-        val seniorityFit = AxisEvaluators.seniorityFit(profile, job)
++        val seniorityFit = AxisEvaluators.seniorityFitMeasured(profile, job)
+         val structuralCompleteness = AxisEvaluators.structuralCompleteness(profile, job)
+         val constraintCompliance = AxisEvaluators.constraintCompliance(profile, job)
+ 
+         val axisScores = listOf(
+-            AxisScore("SkillMatch", skillMatch),
+-            AxisScore("ExperienceAlignment", experienceAlignment),
+-            AxisScore("RoleRelevance", roleRelevance),
+-            AxisScore("KeywordCoverage", keywordCoverage),
+-            AxisScore("SeniorityFit", seniorityFit),
+-            AxisScore("StructuralCompleteness", structuralCompleteness),
+-            AxisScore("ConstraintCompliance", constraintCompliance)
++            AxisScore(
++                "SkillMatch",
++                skillMatch,
++                profile.skills.isNotEmpty() && job.requiredSkills.isNotEmpty()
++            ),
++            AxisScore("ExperienceAlignment", experienceAlignment ?: 0.0, experienceAlignment != null),
++            AxisScore(
++                "RoleRelevance",
++                roleRelevance,
++                (profile.roles.isNotEmpty() || !profile.currentTitle.isNullOrBlank()) &&
++                    job.title.isNotBlank()
++            ),
++            AxisScore("KeywordCoverage", keywordCoverage ?: 0.0, keywordCoverage != null),
++            AxisScore("SeniorityFit", seniorityFit ?: 0.0, seniorityFit != null),
++            AxisScore("StructuralCompleteness", structuralCompleteness, true),
++            AxisScore("ConstraintCompliance", constraintCompliance, true)
+         )
+ 
++        val unknownAxes = axisScores.filterNot { it.isMeasured }.map { it.axisName }
++
+         val totalScore = axisScores.sumOf { axis ->
+             axis.score * AxisWeights.get(axis.axisName)
+         }
+ 
++        val evidenceAxes = setOf(
++            "SkillMatch",
++            "ExperienceAlignment",
++            "RoleRelevance",
++            "KeywordCoverage",
++            "SeniorityFit"
++        )
++        val measuredAxes = axisScores.filter { it.isMeasured }
++        val hasMeasuredEvidenceAxis = measuredAxes.any { it.axisName in evidenceAxes }
++        val measuredWeight = measuredAxes.sumOf { AxisWeights.get(it.axisName) }
++        val provisionalTotalScore = when {
++            !hasMeasuredEvidenceAxis || measuredWeight <= 1e-9 -> null
++            unknownAxes.isEmpty() -> totalScore
++            else -> (measuredAxes.sumOf { it.score * AxisWeights.get(it.axisName) } / measuredWeight)
++                .coerceIn(0.0, 1.0)
++        }
++
+         val profileCompleteness = profile.completedFields.intersect(RequiredProfileFields.fields).size.toDouble() / RequiredProfileFields.fields.size
+         val jobCompleteness = job.completedFields.intersect(RequiredJobFields.fields).size.toDouble() / RequiredJobFields.fields.size
+         val completenessRatio = (profileCompleteness + jobCompleteness) / 2.0
+@@ -81,8 +109,10 @@ class W5ScoreEngine(private val assets: ValidationAssets) {
+                 "totalScore" to totalScore,
+                 "confidence" to confidence,
+                 "skillMatch" to skillMatch,
+-                "experienceAlignment" to experienceAlignment,
++                "experienceAlignment" to (experienceAlignment ?: "unknown"),
+                 "constraintCompliance" to constraintCompliance,
++                "unknownAxes" to unknownAxes.joinToString(","),
++                "provisionalTotalScore" to (provisionalTotalScore ?: "unknown"),
+                 "missingCount" to gapAnalysis.missing.size,
+                 "weakCount" to gapAnalysis.weak.size,
+                 "matchedCount" to gapAnalysis.matched.size
+@@ -104,7 +134,9 @@ class W5ScoreEngine(private val assets: ValidationAssets) {
+             breakdown = breakdown,
+             gapAnalysis = gapAnalysis,
+             hints = hints,
+-            trace = trace
++            trace = trace,
++            unknownAxes = unknownAxes,
++            provisionalTotalScore = provisionalTotalScore
+         )
+     }
+ }
+diff --git a/app/src/main/java/com/vantedge/app/w5/scoring/W5Types.kt b/app/src/main/java/com/vantedge/app/w5/scoring/W5Types.kt
+index 8ad10fa..623ee7b 100644
+--- a/app/src/main/java/com/vantedge/app/w5/scoring/W5Types.kt
++++ b/app/src/main/java/com/vantedge/app/w5/scoring/W5Types.kt
+@@ -46,12 +46,17 @@ data class ScoreResult(
+     val breakdown: ScoreBreakdown,
+     val gapAnalysis: GapAnalysis,
+     val hints: RecommendationHints,
+-    val trace: W5TraceContext
+-)
++    val trace: W5TraceContext,
++    val unknownAxes: List<String> = emptyList(),
++    val provisionalTotalScore: Double? = null
++) {
++    val isComplete: Boolean get() = unknownAxes.isEmpty()
++}
+ 
+ data class AxisScore(
+     val axisName: String,
+-    val score: Double
++    val score: Double,
++    val isMeasured: Boolean = true
+ )
+ 
+ data class ScoreBreakdown(
+@@ -86,7 +91,21 @@ data class GapAnalysis(
+     val missing: List<String>,
+     val weak: List<String>,
+     val matched: List<MatchEvidence>,
+-    val qualificationGaps: List<QualificationGap> = emptyList()
++    val qualificationGaps: List<QualificationGap> = emptyList(),
++    val unassessed: List<UnassessedRequirement> = emptyList()
++)
++
++enum class UnassessedReason {
++    PROFILE_SKILL_EVIDENCE_ABSENT,
++    PROFILE_QUALIFICATION_EVIDENCE_ABSENT,
++    TAXONOMY_MISS,
++    UNSUPPORTED_CATEGORY,
++    PREFERENCE_NOT_ASSESSED
++}
++
++data class UnassessedRequirement(
++    val text: String,
++    val reason: UnassessedReason
+ )
+ 
+ data class RecommendationHints(
+diff --git a/app/src/main/java/com/vantedge/app/w6/improvement/W6Rules.kt b/app/src/main/java/com/vantedge/app/w6/improvement/W6Rules.kt
+index d256bd8..4be24e1 100644
+--- a/app/src/main/java/com/vantedge/app/w6/improvement/W6Rules.kt
++++ b/app/src/main/java/com/vantedge/app/w6/improvement/W6Rules.kt
+@@ -14,7 +14,9 @@ object W6Rules {
+     ): List<GapClosureAction> {
+         val actions = mutableListOf<GapClosureAction>()
+ 
+-        val skillMatchScore = score.axisScores.find { it.axisName == "SkillMatch" }?.score ?: 0.0
++        val skillMatch = score.axisScores.find { it.axisName == "SkillMatch" }
++        if (skillMatch?.isMeasured != true) return emptyList()
++        val skillMatchScore = skillMatch.score
+ 
+         for (skill in gaps.missing) {
+             val impact = computeEstimatedImpact(skillMatchScore)
+@@ -54,9 +56,9 @@ object W6Rules {
+     ): List<ProfileImprovement> {
+         val improvements = mutableListOf<ProfileImprovement>()
+ 
+-        val experienceScore = score.axisScores.find { it.axisName == "ExperienceAlignment" }?.score ?: 0.0
+-        if (experienceScore < 1.0) {
+-            val impact = computeEstimatedImpact(experienceScore)
++        val experience = score.axisScores.find { it.axisName == "ExperienceAlignment" }
++        if (experience?.isMeasured == true && experience.score < 1.0) {
++            val impact = computeEstimatedImpact(experience.score)
+             improvements.add(
+                 ProfileImprovement(
+                     fieldName = "workHistory",
+@@ -67,9 +69,9 @@ object W6Rules {
+             )
+         }
+ 
+-        val seniorityScore = score.axisScores.find { it.axisName == "SeniorityFit" }?.score ?: 0.0
+-        if (seniorityScore < 1.0) {
+-            val impact = computeEstimatedImpact(seniorityScore)
++        val seniority = score.axisScores.find { it.axisName == "SeniorityFit" }
++        if (seniority?.isMeasured == true && seniority.score < 1.0) {
++            val impact = computeEstimatedImpact(seniority.score)
+             val targetLevel = profile.seniorityLevel ?: "appropriate"
+             improvements.add(
+                 ProfileImprovement(
+@@ -81,11 +83,11 @@ object W6Rules {
+             )
+         }
+ 
+-        val structuralScore = score.axisScores.find { it.axisName == "StructuralCompleteness" }?.score ?: 0.0
+-        if (structuralScore < 1.0) {
++        val structural = score.axisScores.find { it.axisName == "StructuralCompleteness" }
++        if (structural?.isMeasured == true && structural.score < 1.0) {
+             val missingFields = computeMissingProfileFields(profile)
+             for (field in missingFields) {
+-                val impact = computeEstimatedImpact(structuralScore)
++                val impact = computeEstimatedImpact(structural.score)
+                 improvements.add(
+                     ProfileImprovement(
+                         fieldName = field,
+@@ -109,9 +111,9 @@ object W6Rules {
+     ): List<JobImprovement> {
+         val improvements = mutableListOf<JobImprovement>()
+ 
+-        val roleScore = score.axisScores.find { it.axisName == "RoleRelevance" }?.score ?: 0.0
+-        if (roleScore < 1.0) {
+-            val impact = computeEstimatedImpact(roleScore)
++        val role = score.axisScores.find { it.axisName == "RoleRelevance" }
++        if (role?.isMeasured == true && role.score < 1.0) {
++            val impact = computeEstimatedImpact(role.score)
+             improvements.add(
+                 JobImprovement(
+                     fieldName = "title",
+@@ -134,7 +136,7 @@ object W6Rules {
+         val projections = mutableListOf<ImpactProjection>()
+ 
+         for (axisScore in score.axisScores) {
+-            if (axisScore.score < 1.0) {
++            if (axisScore.isMeasured && axisScore.score < 1.0) {
+                 val axisName = AxisNameMapping.fromW5AxisName(axisScore.axisName)
+                 val delta = computeProjectedDelta(axisScore.score)
+                 val actionType = when (axisName) {
+diff --git a/app/src/test/java/com/vantedge/app/data/engine/extraction/ConfidenceEngineUnknownTest.kt b/app/src/test/java/com/vantedge/app/data/engine/extraction/ConfidenceEngineUnknownTest.kt
+new file mode 100644
+index 0000000..47488b2
+--- /dev/null
++++ b/app/src/test/java/com/vantedge/app/data/engine/extraction/ConfidenceEngineUnknownTest.kt
+@@ -0,0 +1,51 @@
++package com.vantedge.app.data.engine.extraction
++
++import com.vantedge.app.data.model.extraction.ExtractionMethod
++import org.junit.Assert.assertEquals
++import org.junit.Assert.assertNull
++import org.junit.Test
++
++class ConfidenceEngineUnknownTest {
++
++    @Test
++    fun `missing llm confidence is not fabricated as a fallback`() {
++        val result = ConfidenceEngine.compute(
++            llmConfidenceMap = emptyMap(),
++            semanticAdjustments = mapOf("title" to 0.1f),
++            schemaFailures = emptyList(),
++            source = ExtractionMethod.LLM
++        )
++
++        val field = result.fieldConfidenceMap.getValue("title")
++        assertNull(field.llmConfidence)
++
++        assertNull(field.overallConfidence)
++        assertNull(result.overallConfidence)
++    }
++
++    @Test
++    fun `missing confidence is not diluted by measured confidence`() {
++        val result = ConfidenceEngine.compute(
++            llmConfidenceMap = mapOf("title" to 0.8f),
++            semanticAdjustments = mapOf("company" to -0.1f),
++            schemaFailures = emptyList(),
++            source = ExtractionMethod.LLM
++        )
++
++        assertNull(result.fieldConfidenceMap.getValue("company").overallConfidence)
++        assertEquals(0.9f, result.overallConfidence!!, 1e-6f)
++    }
++
++    @Test
++    fun `present llm confidence is preserved unchanged`() {
++        val result = ConfidenceEngine.compute(
++            llmConfidenceMap = mapOf("title" to 0.9f),
++            semanticAdjustments = emptyMap(),
++            schemaFailures = emptyList(),
++            source = ExtractionMethod.LLM
++        )
++
++        val field = result.fieldConfidenceMap.getValue("title")
++        assertEquals(0.9f, field.llmConfidence!!, 1e-6f)
++    }
++}
+diff --git a/app/src/test/java/com/vantedge/app/data/storage/CompatibilityRecordLegacyJsonTest.kt b/app/src/test/java/com/vantedge/app/data/storage/CompatibilityRecordLegacyJsonTest.kt
+new file mode 100644
+index 0000000..f25a86b
+--- /dev/null
++++ b/app/src/test/java/com/vantedge/app/data/storage/CompatibilityRecordLegacyJsonTest.kt
+@@ -0,0 +1,176 @@
++package com.vantedge.app.data.storage
++
++import com.google.gson.Gson
++import com.vantedge.app.data.domain.ScoreCompleteness
++import com.vantedge.app.data.model.CompatibilityRecord
++import com.vantedge.app.data.model.RequirementAssessmentState
++import com.vantedge.app.ui.screens.ScorePresentation
++import org.junit.Assert.assertEquals
++import org.junit.Assert.assertFalse
++import org.junit.Assert.assertNotNull
++import org.junit.Assert.assertNull
++import org.junit.Assert.assertTrue
++import org.junit.Test
++
++class CompatibilityRecordLegacyJsonTest {
++
++    private val gson = Gson()
++
++    private fun legacyJson(extra: String = "") = """
++        {
++          "id": 1,
++          "jobTitle": "Developer",
++          "company": "Acme",
++          "jobDescription": "Developer",
++          "score": 85,
++          "vacancyScore": 80,
++          "roleSummary": "",
++          "eligibilitySummary": "You meet all requirements.",
++          "dataIntegrityNote": "",
++          "profileStats": {
++            "yearsExperience": 5,
++            "certificationCount": 0,
++            "skillCount": 1,
++            "matchedCount": 1,
++            "gapCount": 0,
++            "dataIntegrityNote": ""
++          },
++          "qualificationRatio": { "matched": 1, "total": 1, "gaps": 0 },
++          "relevancyItems": [],
++          "gaps": [],
++          "criticalGapCount": 0,
++          "analysisSource": "DETERMINISTIC_W5",
++          "createdAt": 123
++          ${if (extra.isBlank()) "" else ", $extra"}
++        }
++    """.trimIndent()
++
++    @Test
++    fun `missing evaluationComplete deserializes to unknown`() {
++        val record = gson.fromJson(legacyJson(), CompatibilityRecord::class.java)
++
++        assertNull(record.evaluationComplete)
++        assertFalse(ScoreCompleteness.isAuthoritative(record))
++        assertFalse(ScorePresentation.eligibilityClaimAllowed(record))
++    }
++
++    @Test
++    fun `explicit null evaluationComplete remains unknown`() {
++        val record = gson.fromJson(
++            legacyJson("\"evaluationComplete\": null"),
++            CompatibilityRecord::class.java
++        )
++
++        assertNull(record.evaluationComplete)
++        assertFalse(ScoreCompleteness.isAuthoritative(record))
++    }
++
++    @Test
++    fun `existing record fields remain preserved`() {
++        val record = gson.fromJson(legacyJson(), CompatibilityRecord::class.java)
++
++        assertEquals("Developer", record.jobTitle)
++        assertEquals("Acme", record.company)
++        assertEquals(85, record.score)
++        assertEquals(5, record.profileStats.yearsExperience)
++    }
++
++    @Test
++    fun `explicit true remains authoritative when the record permits it`() {
++        val record = gson.fromJson(
++            legacyJson("\"evaluationComplete\": true"),
++            CompatibilityRecord::class.java
++        )
++
++        assertEquals(true, record.evaluationComplete)
++        assertTrue(ScoreCompleteness.isAuthoritative(record))
++        assertTrue(ScorePresentation.eligibilityClaimAllowed(record))
++    }
++
++    @Test
++    fun `gaps prevent a positive eligibility claim`() {
++        val record = gson.fromJson(
++            legacyJson(
++                "\"evaluationComplete\": true, \"gaps\": [" +
++                    "{\"skill\": \"Kubernetes\", \"importance\": \"MANDATORY\", \"description\": \"\", \"courses\": []}" +
++                    "]"
++            ),
++            CompatibilityRecord::class.java
++        )
++
++        assertTrue(ScoreCompleteness.isAuthoritative(record))
++        assertFalse(ScorePresentation.eligibilityClaimAllowed(record))
++        assertFalse(ScorePresentation.eligibilityBody(record).contains("You meet all requirements."))
++        assertTrue(ScorePresentation.eligibilityBody(record).contains("Confirmed gaps"))
++    }
++
++    @Test
++    fun `serialization round trip preserves unknown state`() {
++        val record = gson.fromJson(legacyJson(), CompatibilityRecord::class.java)
++        val roundTripped = gson.fromJson(gson.toJson(record), CompatibilityRecord::class.java)
++
++        assertNull(roundTripped.evaluationComplete)
++        assertFalse(ScoreCompleteness.isAuthoritative(roundTripped))
++    }
++    @Test
++    fun `missing coverage fields deserialize to unknown`() {
++        val record = gson.fromJson(legacyJson(), CompatibilityRecord::class.java)
++
++        assertNull(record.requirementAssessments)
++        assertNull(record.provisionalScore)
++        assertNull(record.provisionalVacancyScore)
++    }
++
++    @Test
++    fun `recorded coverage and provisional values round trip`() {
++        val record = gson.fromJson(
++            legacyJson(
++                "\"provisionalScore\": 72, \"provisionalVacancyScore\": 68, " +
++                    "\"requirementAssessments\": [" +
++                    "{\"text\": \"Kotlin\", \"state\": \"MATCHED\", \"canonical\": \"Kotlin\", \"importance\": \"MANDATORY\"}" +
++                    "]"
++            ),
++            CompatibilityRecord::class.java
++        )
++
++        assertNotNull(record.requirementAssessments)
++        assertEquals(1, record.requirementAssessments!!.size)
++        assertEquals(RequirementAssessmentState.MATCHED, record.requirementAssessments!!.first().state)
++        assertEquals(72, record.provisionalScore)
++        assertEquals(68, record.provisionalVacancyScore)
++
++        val roundTripped = gson.fromJson(gson.toJson(record), CompatibilityRecord::class.java)
++        assertNotNull(roundTripped.requirementAssessments)
++        assertEquals(RequirementAssessmentState.MATCHED, roundTripped.requirementAssessments!!.first().state)
++        assertEquals(72, roundTripped.provisionalScore)
++    }
++
++    @Test
++    fun `unassessed reason survives serialization`() {
++        val record = gson.fromJson(
++            legacyJson(
++                "\"requirementAssessments\": [" +
++                    "{\"text\": \"Data Protection\", \"state\": \"UNASSESSED\", \"reason\": \"TAXONOMY_MISS\", \"importance\": \"MANDATORY\"}" +
++                    "]"
++            ),
++            CompatibilityRecord::class.java
++        )
++
++        val roundTripped = gson.fromJson(gson.toJson(record), CompatibilityRecord::class.java)
++        val assessment = roundTripped.requirementAssessments!!.first()
++        assertEquals(RequirementAssessmentState.UNASSESSED, assessment.state)
++        assertEquals("TAXONOMY_MISS", assessment.reason)
++    }
++
++    @Test
++    fun `recorded empty inventory stays distinct from unknown coverage`() {
++        val record = gson.fromJson(
++            legacyJson("\"requirementAssessments\": []"),
++            CompatibilityRecord::class.java
++        )
++
++        assertNotNull(record.requirementAssessments)
++        assertTrue(record.requirementAssessments!!.isEmpty())
++    }
++
++}
+diff --git a/app/src/test/java/com/vantedge/app/data/viewmodel/CycleScoreAggregationTest.kt b/app/src/test/java/com/vantedge/app/data/viewmodel/CycleScoreAggregationTest.kt
+new file mode 100644
+index 0000000..e4e05c0
+--- /dev/null
++++ b/app/src/test/java/com/vantedge/app/data/viewmodel/CycleScoreAggregationTest.kt
+@@ -0,0 +1,199 @@
++package com.vantedge.app.data.viewmodel
++
++import com.vantedge.app.data.model.CompatibilityRecord
++import com.vantedge.app.data.model.GenerationCycle
++import com.vantedge.app.data.model.ProfileStats
++import com.vantedge.app.data.model.UserProfile
++import org.junit.Assert.assertEquals
++import org.junit.Assert.assertNull
++import org.junit.Test
++
++class CycleScoreAggregationTest {
++
++    private fun record(score: Int, complete: Boolean?, provisional: Int? = null) = CompatibilityRecord(
++        jobTitle = "Developer",
++        company = "Acme",
++        jobDescription = "Developer",
++        score = score,
++        roleSummary = "",
++        eligibilitySummary = "",
++        profileStats = ProfileStats(0, 0, 0, 0, 0, ""),
++        relevancyItems = emptyList(),
++        gaps = emptyList(),
++        criticalGapCount = 0,
++        evaluationComplete = complete,
++        provisionalScore = provisional
++    )
++
++    private fun cycle(
++        id: String,
++        title: String,
++        score: Int,
++        complete: Boolean?,
++        provisional: Int? = null,
++        version: Int? = null,
++        visible: Boolean = true
++    ) = GenerationCycle(
++        id = id,
++        jobTitle = title,
++        company = "Acme",
++        jobDescription = "Developer",
++        profileSnapshot = UserProfile(),
++        version = version,
++        isVisibleInHistory = visible,
++        compatibility = record(score, complete, provisional)
++    )
++
++    @Test
++    fun `average excludes incomplete and legacy records`() {
++        val cycles = listOf(
++            cycle("a", "Engineer A", 80, true),
++            cycle("b", "Engineer B", 40, false),
++            cycle("c", "Engineer C", 100, null),
++            cycle("d", "Engineer D", 60, true)
++        )
++
++        assertEquals(70, CycleScoreAggregation.averageScore(cycles))
++        assertEquals(2, CycleScoreAggregation.incompleteScoreCount(cycles))
++    }
++
++    @Test
++    fun `best role ignores incomplete higher score`() {
++        val cycles = listOf(
++            cycle("a", "Engineer A", 80, true),
++            cycle("b", "Engineer B", 100, false),
++            cycle("c", "Engineer C", 95, null)
++        )
++
++        assertEquals("Engineer A", CycleScoreAggregation.bestScoringRole(cycles))
++    }
++
++    @Test
++    fun `previous score is hidden when either side is incomplete`() {
++        val previousIncomplete = cycle("p", "Engineer", 50, false, version = 1)
++        val current = cycle("c", "Engineer", 90, true, version = 2)
++        assertNull(CycleScoreAggregation.previousScore(listOf(previousIncomplete, current), current))
++
++        val previousComplete = cycle("p2", "Engineer", 70, true, version = 1)
++        assertEquals(
++            70,
++            CycleScoreAggregation.previousScore(listOf(previousComplete, current), current)
++        )
++
++        val currentIncomplete = cycle("c2", "Engineer", 90, null, version = 2)
++        assertNull(
++            CycleScoreAggregation.previousScore(listOf(previousComplete, currentIncomplete), currentIncomplete)
++        )
++    }
++
++    @Test
++    fun `no complete evaluations returns unavailable aggregates`() {
++        val cycles = listOf(
++            cycle("a", "Engineer A", 80, false),
++            cycle("b", "Engineer B", 90, null)
++        )
++
++        assertNull(CycleScoreAggregation.averageScore(cycles))
++        assertNull(CycleScoreAggregation.bestScoringRole(cycles))
++        assertEquals(2, CycleScoreAggregation.incompleteScoreCount(cycles))
++    }
++
++    @Test
++    fun `invisible incomplete records are excluded from aggregates and count`() {
++        val cycles = listOf(
++            cycle("a", "Engineer A", 80, true),
++            cycle("b", "Engineer B", 100, false, visible = false)
++        )
++
++        assertEquals(80, CycleScoreAggregation.averageScore(cycles))
++        assertEquals("Engineer A", CycleScoreAggregation.bestScoringRole(cycles))
++        assertEquals(0, CycleScoreAggregation.incompleteScoreCount(cycles))
++    }
++
++    @Test
++    fun `improved count excludes incomplete later version`() {
++        val previous = cycle("p", "Engineer", 60, true, version = 1)
++        val current = cycle("c", "Engineer", 90, false, version = 2)
++
++        assertEquals(0, CycleScoreAggregation.improvedApplicationsCount(listOf(previous, current)))
++    }
++
++    @Test
++    fun `improved count excludes complete lower score`() {
++        val previous = cycle("p", "Engineer", 80, true, version = 1)
++        val current = cycle("c", "Engineer", 70, true, version = 2)
++
++        assertEquals(0, CycleScoreAggregation.improvedApplicationsCount(listOf(previous, current)))
++    }
++
++    @Test
++    fun `improved count excludes complete equal score`() {
++        val previous = cycle("p", "Engineer", 80, true, version = 1)
++        val current = cycle("c", "Engineer", 80, true, version = 2)
++
++        assertEquals(0, CycleScoreAggregation.improvedApplicationsCount(listOf(previous, current)))
++    }
++
++    @Test
++    fun `improved count includes complete strictly higher comparable score`() {
++        val previous = cycle("p", "Engineer", 60, true, version = 1)
++        val current = cycle("c", "Engineer", 90, true, version = 2)
++
++        assertEquals(1, CycleScoreAggregation.improvedApplicationsCount(listOf(previous, current)))
++    }
++
++    @Test
++    fun `improved count excludes unavailable or invalid comparison`() {
++        val noPrior = cycle("c", "Engineer", 90, true, version = 2)
++        assertEquals(0, CycleScoreAggregation.improvedApplicationsCount(listOf(noPrior)))
++
++        val incompletePrior = cycle("p", "Engineer", 60, false, version = 1)
++        val current = cycle("c2", "Engineer", 90, true, version = 2)
++        assertEquals(0, CycleScoreAggregation.improvedApplicationsCount(listOf(incompletePrior, current)))
++
++        val noVersion = cycle("n", "Engineer", 90, true, version = null)
++        assertEquals(0, CycleScoreAggregation.improvedApplicationsCount(listOf(noVersion)))
++    }
++
++    @Test
++    fun `improved count does not compare unrelated contexts`() {
++        val previous = cycle("p", "Engineer", 60, true, version = 1)
++        val differentTitle = cycle("c", "Manager", 90, true, version = 2)
++        assertEquals(0, CycleScoreAggregation.improvedApplicationsCount(listOf(previous, differentTitle)))
++
++        val differentCompany = cycle("c2", "Engineer", 90, true, version = 2).copy(company = "Other")
++        assertEquals(0, CycleScoreAggregation.improvedApplicationsCount(listOf(previous, differentCompany)))
++    }
++
++    @Test
++    fun `version number alone cannot establish improvement`() {
++        val completeV2WithoutPrior = cycle("v2", "Engineer", 90, true, version = 2)
++        assertEquals(0, CycleScoreAggregation.improvedApplicationsCount(listOf(completeV2WithoutPrior)))
++
++        val incompleteV2 = cycle("v2i", "Engineer", 70, false, version = 2)
++        val completeV3 = cycle("v3", "Engineer", 95, true, version = 3)
++        assertEquals(0, CycleScoreAggregation.improvedApplicationsCount(listOf(incompleteV2, completeV3)))
++    }
++    @Test
++    fun `authoritative aggregates ignore provisional scores`() {
++        val cycles = listOf(
++            cycle("a", "Engineer A", 80, true, provisional = 100),
++            cycle("b", "Engineer B", 60, true, provisional = 10)
++        )
++
++        assertEquals(70, CycleScoreAggregation.averageScore(cycles))
++        assertEquals("Engineer A", CycleScoreAggregation.bestScoringRole(cycles))
++    }
++
++    @Test
++    fun `incomplete record with provisional score is still excluded`() {
++        val cycles = listOf(
++            cycle("a", "Engineer A", 80, true, provisional = 80),
++            cycle("b", "Engineer B", 100, false, provisional = 100)
++        )
++
++        assertEquals(80, CycleScoreAggregation.averageScore(cycles))
++        assertEquals(1, CycleScoreAggregation.incompleteScoreCount(cycles))
++    }
++
++}
+diff --git a/app/src/test/java/com/vantedge/app/domain/extraction/ExtractionDecisionCoordinatorUnknownTest.kt b/app/src/test/java/com/vantedge/app/domain/extraction/ExtractionDecisionCoordinatorUnknownTest.kt
+new file mode 100644
+index 0000000..1b96e2e
+--- /dev/null
++++ b/app/src/test/java/com/vantedge/app/domain/extraction/ExtractionDecisionCoordinatorUnknownTest.kt
+@@ -0,0 +1,81 @@
++package com.vantedge.app.domain.extraction
++
++import com.vantedge.app.data.model.extraction.ExtractionMethod
++import com.vantedge.app.data.model.extraction.FieldConfidence
++import org.junit.Assert.assertEquals
++import org.junit.Assert.assertTrue
++import org.junit.Test
++
++class ExtractionDecisionCoordinatorUnknownTest {
++
++    private fun field(overall: Float?, llm: Float? = overall) = FieldConfidence(
++        value = null,
++        llmConfidence = llm,
++        validationConfidence = 1.0f,
++        consistencyConfidence = 1.0f,
++        overallConfidence = overall,
++        source = ExtractionMethod.LLM,
++        validationFailures = emptyList()
++    )
++
++    @Test
++    fun `all confidence values null fail unrecoverably`() {
++        val decision = ExtractionDecisionCoordinator.decide(
++            mapOf(
++                "jobTitle" to field(null),
++                "company" to field(null),
++                "description" to field(null)
++            )
++        )
++
++        assertTrue(decision is ExtractionDecision.Failure)
++        assertEquals(
++            FailureReason.UNRECOVERABLE_PARSE_ERROR,
++            (decision as ExtractionDecision.Failure).reason
++        )
++    }
++
++    @Test
++    fun `critical field with null confidence requires review and preserves unknown reason`() {
++        val decision = ExtractionDecisionCoordinator.decide(
++            mapOf(
++                "jobTitle" to field(null),
++                "company" to field(0.95f),
++                "description" to field(0.95f)
++            )
++        )
++
++        assertTrue(decision is ExtractionDecision.UserReview)
++        val review = (decision as ExtractionDecision.UserReview).fields.single()
++        assertEquals("jobTitle", review.fieldName)
++        assertTrue(review.reviewReason.contains("unknown"))
++    }
++
++    @Test
++    fun `noncritical field with null confidence is not accepted as measured evidence`() {
++        val decision = ExtractionDecisionCoordinator.decide(
++            mapOf(
++                "jobTitle" to field(0.95f),
++                "company" to field(0.95f),
++                "description" to field(0.95f),
++                "skills" to field(null)
++            )
++        )
++
++        assertTrue(decision is ExtractionDecision.UserReview)
++        val review = (decision as ExtractionDecision.UserReview).fields.single()
++        assertEquals("skills", review.fieldName)
++        assertTrue(review.reviewReason.contains("unknown"))
++    }
++
++    @Test
++    fun `empty confidence map fails unrecoverably`() {
++        val decision = ExtractionDecisionCoordinator.decide(emptyMap())
++
++        assertTrue(decision is ExtractionDecision.Failure)
++        assertEquals(
++            FailureReason.UNRECOVERABLE_PARSE_ERROR,
++            (decision as ExtractionDecision.Failure).reason
++        )
++    }
++}
+diff --git a/app/src/test/java/com/vantedge/app/ui/screens/ScorePresentationTest.kt b/app/src/test/java/com/vantedge/app/ui/screens/ScorePresentationTest.kt
+new file mode 100644
+index 0000000..02c1789
+--- /dev/null
++++ b/app/src/test/java/com/vantedge/app/ui/screens/ScorePresentationTest.kt
+@@ -0,0 +1,200 @@
++package com.vantedge.app.ui.screens
++
++import com.vantedge.app.data.model.CompatibilityRecord
++import com.vantedge.app.data.model.GapItem
++import com.vantedge.app.data.model.ProfileStats
++import com.vantedge.app.data.model.RequirementAssessment
++import com.vantedge.app.data.model.RequirementAssessmentState
++import org.junit.Assert.assertEquals
++import org.junit.Assert.assertFalse
++import org.junit.Assert.assertTrue
++import org.junit.Test
++
++class ScorePresentationTest {
++
++    private fun gap(skill: String) = GapItem(
++        skill = skill,
++        importance = "MANDATORY",
++        description = "",
++        courses = emptyList()
++    )
++
++    private fun record(score: Int, complete: Boolean?) = CompatibilityRecord(
++        jobTitle = "Developer",
++        company = "Acme",
++        jobDescription = "Developer",
++        score = score,
++        roleSummary = "",
++        eligibilitySummary = "",
++        profileStats = ProfileStats(
++            yearsExperience = 0,
++            certificationCount = 0,
++            skillCount = 0,
++            matchedCount = 0,
++            gapCount = 0,
++            dataIntegrityNote = ""
++        ),
++        relevancyItems = emptyList(),
++        gaps = emptyList(),
++        criticalGapCount = 0,
++        evaluationComplete = complete
++    )
++
++    @Test
++    fun `complete record presents the score`() {
++        val r = record(score = 85, complete = true)
++
++        assertTrue(ScorePresentation.isAuthoritative(r))
++        assertTrue(ScorePresentation.eligibilityClaimAllowed(r))
++        assertEquals("85%", ScorePresentation.scoreText(r))
++        assertEquals("Strong match", ScorePresentation.scoreLabel(r))
++        assertEquals(229.5f, ScorePresentation.sweepDegrees(r), 1e-6f)
++    }
++
++    @Test
++    fun `incomplete live record hides the score`() {
++        val r = record(score = 85, complete = false)
++
++        assertFalse(ScorePresentation.isAuthoritative(r))
++        assertFalse(ScorePresentation.eligibilityClaimAllowed(r))
++        assertEquals(SkillsMatchEmptyState.INCOMPLETE, ScorePresentation.skillsMatchEmptyState(r))
++        assertEquals("—", ScorePresentation.scoreText(r))
++        assertEquals("Incomplete evaluation", ScorePresentation.scoreLabel(r))
++        assertEquals(0f, ScorePresentation.sweepDegrees(r), 1e-6f)
++    }
++
++    @Test
++    fun `legacy record with null completeness hides the score`() {
++        val r = record(score = 85, complete = null)
++
++        assertFalse(ScorePresentation.isAuthoritative(r))
++        assertFalse(ScorePresentation.eligibilityClaimAllowed(r))
++        assertEquals(SkillsMatchEmptyState.INCOMPLETE, ScorePresentation.skillsMatchEmptyState(r))
++        assertEquals("—", ScorePresentation.scoreText(r))
++        assertEquals("Incomplete evaluation", ScorePresentation.scoreLabel(r))
++        assertEquals(0f, ScorePresentation.sweepDegrees(r), 1e-6f)
++    }
++
++    @Test
++    fun `complete record presents the eligibility summary`() {
++        val r = record(score = 85, complete = true).copy(
++            eligibilitySummary = "You meet the listed requirements."
++        )
++
++        assertTrue(ScorePresentation.eligibilityClaimAllowed(r))
++        assertEquals("How you fit", ScorePresentation.eligibilityHeading(r))
++        assertEquals("You meet the listed requirements.", ScorePresentation.eligibilityBody(r))
++        assertEquals(SkillsMatchEmptyState.EXCEED, ScorePresentation.skillsMatchEmptyState(r))
++        assertEquals(SkillsMatchEmptyState.MEET, ScorePresentation.skillsMatchEmptyState(r.copy(score = 75)))
++    }
++
++    @Test
++    fun `incomplete record does not present eligibility as definitive`() {
++        val r = record(score = 85, complete = false).copy(
++            eligibilitySummary = "You meet all requirements."
++        )
++
++        assertFalse(ScorePresentation.eligibilityClaimAllowed(r))
++        assertEquals("How you fit — not fully assessed", ScorePresentation.eligibilityHeading(r))
++        assertFalse(ScorePresentation.eligibilityBody(r).contains("You meet all requirements."))
++        assertTrue(ScorePresentation.eligibilityBody(r).contains("not definitive"))
++        assertEquals(SkillsMatchEmptyState.INCOMPLETE, ScorePresentation.skillsMatchEmptyState(r))
++    }
++
++    @Test
++    fun `legacy null completeness does not present eligibility as definitive`() {
++        val r = record(score = 85, complete = null).copy(
++            eligibilitySummary = "You meet all requirements."
++        )
++
++        assertFalse(ScorePresentation.eligibilityClaimAllowed(r))
++        assertFalse(ScorePresentation.eligibilityBody(r).contains("You meet all requirements."))
++        assertTrue(ScorePresentation.eligibilityBody(r).contains("not definitive"))
++        assertEquals(SkillsMatchEmptyState.INCOMPLETE, ScorePresentation.skillsMatchEmptyState(r))
++    }
++
++    @Test
++    fun `unassessed requirements do not allow an authoritative positive claim`() {
++        val r = record(score = 85, complete = false).copy(
++            eligibilitySummary = "You meet all requirements."
++        )
++
++        assertFalse(ScorePresentation.eligibilityClaimAllowed(r))
++        assertFalse(ScorePresentation.eligibilityBody(r).contains("You meet all requirements."))
++        assertTrue(ScorePresentation.eligibilityBody(r).contains("not definitive"))
++        assertEquals(SkillsMatchEmptyState.INCOMPLETE, ScorePresentation.skillsMatchEmptyState(r))
++    }
++
++    @Test
++    fun `complete record with confirmed gaps does not allow an eligibility claim`() {
++        val r = record(score = 85, complete = true).copy(
++            gaps = listOf(gap("Kubernetes")),
++            eligibilitySummary = "You meet all requirements."
++        )
++
++        assertFalse(ScorePresentation.eligibilityClaimAllowed(r))
++        assertEquals("How you fit — confirmed gaps", ScorePresentation.eligibilityHeading(r))
++        assertTrue(ScorePresentation.eligibilityBody(r).contains("Confirmed gaps"))
++        assertFalse(ScorePresentation.eligibilityBody(r).contains("You meet all requirements."))
++        assertEquals(SkillsMatchEmptyState.CONFIRMED_GAPS, ScorePresentation.skillsMatchEmptyState(r))
++    }
++
++    @Test
++    fun `unsupported AI claim is suppressed when gaps remain`() {
++        val r = record(score = 85, complete = true).copy(
++            gaps = listOf(gap("Kubernetes")),
++            eligibilitySummary = "You meet all requirements."
++        )
++
++        assertFalse(ScorePresentation.eligibilityBody(r).contains("You meet all requirements."))
++        assertTrue(ScorePresentation.eligibilityBody(r).contains("Confirmed gaps"))
++    }
++
++    @Test
++    fun `alternative positive AI claim is suppressed when gaps remain`() {
++        val r = record(score = 85, complete = true).copy(
++            gaps = listOf(gap("Kubernetes")),
++            eligibilitySummary = "You are fully qualified for this role."
++        )
++
++        assertFalse(ScorePresentation.eligibilityBody(r).contains("fully qualified"))
++        assertTrue(ScorePresentation.eligibilityBody(r).contains("Confirmed gaps"))
++    }
++
++    @Test
++    fun `confirmed gaps suppress both Skills Match positive branches`() {
++        val highScore = record(score = 85, complete = true).copy(gaps = listOf(gap("Kubernetes")))
++        val lowScore = record(score = 75, complete = true).copy(gaps = listOf(gap("Kubernetes")))
++
++        assertEquals(SkillsMatchEmptyState.CONFIRMED_GAPS, ScorePresentation.skillsMatchEmptyState(highScore))
++        assertEquals(SkillsMatchEmptyState.CONFIRMED_GAPS, ScorePresentation.skillsMatchEmptyState(lowScore))
++    }
++
++    @Test
++    fun `history score text hides null and incomplete records`() {
++        assertEquals("Incomplete evaluation", ScorePresentation.historyScoreText(null))
++        assertEquals("Incomplete evaluation", ScorePresentation.historyScoreText(record(85, false)))
++        assertEquals("Incomplete evaluation", ScorePresentation.historyScoreText(record(85, null)))
++        assertEquals("85%", ScorePresentation.historyScoreText(record(85, true)))
++    }
++    @Test
++    fun `coverage helpers distinguish legacy from recorded inventories`() {
++        val legacy = record(score = 85, complete = false)
++        assertFalse(ScorePresentation.hasRecordedCoverage(legacy))
++        assertEquals(null, ScorePresentation.unassessedCount(legacy))
++
++        val recorded = legacy.copy(
++            requirementAssessments = listOf(
++                RequirementAssessment(
++                    text = "Kotlin",
++                    state = RequirementAssessmentState.UNASSESSED,
++                    reason = "TAXONOMY_MISS"
++                )
++            )
++        )
++        assertTrue(ScorePresentation.hasRecordedCoverage(recorded))
++        assertEquals(1, ScorePresentation.unassessedCount(recorded))
++        assertEquals(listOf("Kotlin"), ScorePresentation.unassessedRequirements(recorded).map { it.text })
++    }
++
++}
+diff --git a/app/src/test/java/com/vantedge/app/ui/screens/UnassessedPresentationTest.kt b/app/src/test/java/com/vantedge/app/ui/screens/UnassessedPresentationTest.kt
+new file mode 100644
+index 0000000..6ac5ae7
+--- /dev/null
++++ b/app/src/test/java/com/vantedge/app/ui/screens/UnassessedPresentationTest.kt
+@@ -0,0 +1,112 @@
++package com.vantedge.app.ui.screens
++
++import com.vantedge.app.data.model.CompatibilityRecord
++import com.vantedge.app.data.model.ProfileStats
++import com.vantedge.app.data.model.RequirementAssessment
++import com.vantedge.app.data.model.RequirementAssessmentState
++import org.junit.Assert.assertEquals
++import org.junit.Assert.assertFalse
++import org.junit.Assert.assertNull
++import org.junit.Assert.assertTrue
++import org.junit.Test
++
++class UnassessedPresentationTest {
++
++    private fun record(assessments: List<RequirementAssessment>?) = CompatibilityRecord(
++        jobTitle = "Developer",
++        company = "Acme",
++        jobDescription = "Developer",
++        score = 80,
++        roleSummary = "",
++        eligibilitySummary = "",
++        profileStats = ProfileStats(0, 0, 0, 0, 0, ""),
++        relevancyItems = emptyList(),
++        gaps = emptyList(),
++        criticalGapCount = 0,
++        evaluationComplete = false,
++        requirementAssessments = assessments
++    )
++
++    private fun unassessed(text: String, reason: String? = "TAXONOMY_MISS") =
++        RequirementAssessment(
++            text = text,
++            state = RequirementAssessmentState.UNASSESSED,
++            reason = reason
++        )
++
++    @Test
++    fun `legacy record has unknown coverage`() {
++        val r = record(null)
++
++        assertFalse(ScorePresentation.hasRecordedCoverage(r))
++        assertNull(ScorePresentation.unassessedCount(r))
++        assertTrue(ScorePresentation.unassessedRequirements(r).isEmpty())
++    }
++
++    @Test
++    fun `recorded empty coverage is distinct from unknown coverage`() {
++        val r = record(emptyList())
++
++        assertTrue(ScorePresentation.hasRecordedCoverage(r))
++        assertEquals(0, ScorePresentation.unassessedCount(r))
++        assertTrue(ScorePresentation.unassessedRequirements(r).isEmpty())
++    }
++
++    @Test
++    fun `unassessed requirements are counted and listed`() {
++        val r = record(
++            listOf(
++                unassessed("Kubernetes", "PROFILE_SKILL_EVIDENCE_ABSENT"),
++                RequirementAssessment(
++                    text = "Kotlin",
++                    state = RequirementAssessmentState.MATCHED,
++                    canonical = "Kotlin"
++                ),
++                unassessed("Security clearance", "UNSUPPORTED_CATEGORY")
++            )
++        )
++
++        assertEquals(2, ScorePresentation.unassessedCount(r))
++        assertEquals(
++            listOf("Kubernetes", "Security clearance"),
++            ScorePresentation.unassessedRequirements(r).map { it.text }
++        )
++    }
++
++    @Test
++    fun `reason labels are stable and readable`() {
++        assertEquals(
++            "No skill evidence in your profile",
++            ScorePresentation.unassessedReasonLabel("PROFILE_SKILL_EVIDENCE_ABSENT")
++        )
++        assertEquals(
++            "No qualification evidence in your profile",
++            ScorePresentation.unassessedReasonLabel("PROFILE_QUALIFICATION_EVIDENCE_ABSENT")
++        )
++        assertEquals(
++            "Not in the assessed requirement list",
++            ScorePresentation.unassessedReasonLabel("TAXONOMY_MISS")
++        )
++        assertEquals(
++            "This requirement type is not assessed yet",
++            ScorePresentation.unassessedReasonLabel("UNSUPPORTED_CATEGORY")
++        )
++        assertEquals(
++            "Preferred item, not assessed",
++            ScorePresentation.unassessedReasonLabel("PREFERENCE_NOT_ASSESSED")
++        )
++        assertEquals(
++            "Could not be assessed",
++            ScorePresentation.unassessedReasonLabel(null)
++        )
++    }
++
++    @Test
++    fun `coverage does not make an incomplete record authoritative`() {
++        val r = record(listOf(unassessed("Kubernetes")))
++
++        assertFalse(ScorePresentation.isAuthoritative(r))
++        assertFalse(ScorePresentation.eligibilityClaimAllowed(r))
++        assertEquals("—", ScorePresentation.scoreText(r))
++    }
++}
+diff --git a/app/src/test/java/com/vantedge/app/w5/scoring/CorrectiveUnknownStateTest.kt b/app/src/test/java/com/vantedge/app/w5/scoring/CorrectiveUnknownStateTest.kt
+new file mode 100644
+index 0000000..6a14f86
+--- /dev/null
++++ b/app/src/test/java/com/vantedge/app/w5/scoring/CorrectiveUnknownStateTest.kt
+@@ -0,0 +1,190 @@
++package com.vantedge.app.w5.scoring
++
++import com.vantedge.app.data.domain.CompatibilityRecordMapper
++import com.vantedge.app.data.model.RequirementAssessmentState
++import com.vantedge.app.data.model.UserProfile
++import org.junit.Assert.assertEquals
++import org.junit.Assert.assertFalse
++import org.junit.Assert.assertTrue
++import org.junit.Test
++
++class CorrectiveUnknownStateTest {
++
++    private val assets = ValidationAssets(stopWords = emptySet(), keywordDictionary = emptyMap())
++
++    private fun profile(skills: List<String> = listOf("Kotlin")) = ValidatedProfile(
++        correlationId = "corrective",
++        skills = skills,
++        qualifications = emptyList(),
++        roles = listOf("Developer"),
++        currentTitle = "Developer",
++        experienceYears = 5,
++        seniorityLevel = "senior",
++        completedFields = setOf("skills", "roles", "currentTitle", "experienceYears", "seniorityLevel"),
++        isAccepted = true,
++        isDegraded = false
++    )
++
++    private fun job(qualification: RequirementEvidence? = null) = ValidatedJob(
++        correlationId = "corrective",
++        requiredSkills = listOf("Kotlin"),
++        requiredQualifications = listOfNotNull(qualification),
++        title = "Developer",
++        keywords = listOf("Kotlin"),
++        requiredYears = 5,
++        seniorityLevel = "senior",
++        completedFields = setOf("requiredSkills", "title", "keywords", "requiredYears", "seniorityLevel"),
++        isAccepted = true,
++        isDegraded = false
++    )
++
++    private fun degree(text: String) = RequirementEvidence(
++        originalText = text,
++        category = RequirementCategory.DEGREE,
++        classificationStatus = ClassificationStatus.NORMALIZED
++    )
++
++    private fun map(
++        validatedProfile: ValidatedProfile,
++        validatedJob: ValidatedJob
++    ) = CompatibilityRecordMapper().map(
++        scoreResult = W5ScoreEngine(assets).evaluate(
++            validatedProfile,
++            validatedJob,
++            W5TraceContext("corrective", "", 0L)
++        ),
++        profile = UserProfile(),
++        normalizedProfile = NormalizedProfile(
++            skills = validatedProfile.skills,
++            certifications = emptyList(),
++            workHistory = emptyList(),
++            education = emptyList(),
++            languages = emptyList(),
++            summary = "",
++            audit = SanitizationAudit(emptyList())
++        ),
++        validatedProfile = validatedProfile,
++        jobTitle = validatedJob.title,
++        company = "Acme",
++        jobDescription = "Developer with Kotlin",
++        roleSummary = "",
++        eligibilitySummary = "",
++        currentYear = 2026,
++        validatedJob = validatedJob,
++        diagnostics = RequirementDiagnostics(emptyList(), DiagnosticsSummary(0, 0, 0))
++    )
++
++    @Test
++    fun `unassessed skills are not classified as confirmed gaps`() {
++        val gap = GapAnalyzer.analyze(profile(skills = emptyList()), job(), assets)
++
++        assertTrue(gap.missing.isEmpty())
++        assertTrue(gap.weak.isEmpty())
++        assertTrue(gap.matched.isEmpty())
++    }
++
++    @Test
++    fun `evidence-supported skill gaps are preserved`() {
++        val gap = GapAnalyzer.analyze(profile(), job(), assets)
++
++        assertTrue(gap.missing.isEmpty())
++        val gap2 = GapAnalyzer.analyze(
++            profile(),
++            job().copy(requiredSkills = listOf("Kotlin", "Kubernetes")),
++            assets
++        )
++        assertTrue(gap2.missing.contains("Kubernetes"))
++    }
++
++    @Test
++    fun `empty skill evidence keeps the evaluation incomplete`() {
++        val result = W5ScoreEngine(assets).evaluate(
++            profile(skills = emptyList()),
++            job(),
++            W5TraceContext("corrective", "", 0L)
++        )
++
++        val skillMatch = result.axisScores.first { it.axisName == "SkillMatch" }
++        assertFalse(skillMatch.isMeasured)
++        assertTrue(result.unknownAxes.contains("SkillMatch"))
++        assertFalse(result.isComplete)
++    }
++
++    @Test
++    fun `unassessed qualification evidence is not a mandatory gap and is incomplete`() {
++        val mapped = map(profile(), job(degree("Bachelor of Science")))
++
++        assertFalse(mapped.record.evaluationComplete!!)
++        assertTrue(mapped.record.gaps.none { it.skill.startsWith("DEGREE:") })
++    }
++
++    @Test
++    fun `evidence-supported qualification gaps are preserved and complete`() {
++        val assessed = profile().copy(qualifications = listOf(degree("Master of Business")))
++        val mapped = map(assessed, job(degree("Bachelor of Science")))
++
++        assertEquals(true, mapped.record.evaluationComplete)
++        assertTrue(mapped.record.gaps.any { it.skill == "DEGREE: Bachelor of Science" && it.importance == "MANDATORY" })
++    }
++
++    @Test
++    fun `matching qualification evidence produces no gap and stays complete`() {
++        val assessed = profile().copy(qualifications = listOf(degree("Bachelor of Science")))
++        val mapped = map(assessed, job(degree("Bachelor of Science")))
++
++        assertEquals(true, mapped.record.evaluationComplete)
++        assertTrue(mapped.record.gaps.none { it.skill.startsWith("DEGREE:") })
++    }
++
++    @Test
++    fun `empty job required skills keeps skill match unmeasured`() {
++        val result = W5ScoreEngine(assets).evaluate(
++            profile(),
++            job().copy(requiredSkills = emptyList()),
++            W5TraceContext("corrective", "", 0L)
++        )
++
++        val skillMatch = result.axisScores.first { it.axisName == "SkillMatch" }
++        assertFalse(skillMatch.isMeasured)
++        assertTrue(result.unknownAxes.contains("SkillMatch"))
++        assertFalse(result.isComplete)
++    }
++
++    @Test
++    fun `empty profile roles and title keeps role relevance unmeasured`() {
++        val result = W5ScoreEngine(assets).evaluate(
++            profile().copy(roles = emptyList(), currentTitle = null),
++            job(),
++            W5TraceContext("corrective", "", 0L)
++        )
++
++        val roleRelevance = result.axisScores.first { it.axisName == "RoleRelevance" }
++        assertFalse(roleRelevance.isMeasured)
++        assertTrue(result.unknownAxes.contains("RoleRelevance"))
++        assertFalse(result.isComplete)
++    }
++
++    @Test
++    fun `blank job title keeps role relevance unmeasured`() {
++        val result = W5ScoreEngine(assets).evaluate(
++            profile(),
++            job().copy(title = ""),
++            W5TraceContext("corrective", "", 0L)
++        )
++
++        val roleRelevance = result.axisScores.first { it.axisName == "RoleRelevance" }
++        assertFalse(roleRelevance.isMeasured)
++        assertTrue(result.unknownAxes.contains("RoleRelevance"))
++        assertFalse(result.isComplete)
++    }
++    @Test
++    fun `empty skills preserve mapped requirements as unassessed inventory`() {
++        val mapped = map(profile(skills = emptyList()), job())
++
++        val assessment = mapped.record.requirementAssessments!!.first { it.text == "Kotlin" }
++        assertEquals(RequirementAssessmentState.UNASSESSED, assessment.state)
++        assertEquals("PROFILE_SKILL_EVIDENCE_ABSENT", assessment.reason)
++        assertFalse(mapped.record.evaluationComplete!!)
++    }
++
++}
+diff --git a/app/src/test/java/com/vantedge/app/w5/scoring/HintBuilderMeasurednessTest.kt b/app/src/test/java/com/vantedge/app/w5/scoring/HintBuilderMeasurednessTest.kt
+new file mode 100644
+index 0000000..6ec3add
+--- /dev/null
++++ b/app/src/test/java/com/vantedge/app/w5/scoring/HintBuilderMeasurednessTest.kt
+@@ -0,0 +1,74 @@
++package com.vantedge.app.w5.scoring
++
++import org.junit.Assert.assertEquals
++import org.junit.Assert.assertFalse
++import org.junit.Assert.assertTrue
++import org.junit.Test
++
++class HintBuilderMeasurednessTest {
++
++    private fun gap(missing: List<String> = emptyList()) =
++        GapAnalysis(missing = missing, weak = emptyList(), matched = emptyList())
++
++    private fun hints(vararg axes: AxisScore): List<String> =
++        HintBuilder.build(gap(), axes.toList()).hints
++
++    @Test
++    fun `unmeasured experience score does not generate an experience hint`() {
++        val result = hints(AxisScore("ExperienceAlignment", 0.0, false))
++
++        assertFalse(result.any { it.contains("ExperienceAlignment") })
++    }
++
++    @Test
++    fun `measured low experience score still generates the existing hint`() {
++        val result = hints(AxisScore("ExperienceAlignment", 0.3, true))
++
++        assertTrue(result.any { it == "Increase exposure to target domain based on ExperienceAlignment" })
++    }
++
++    @Test
++    fun `measured experience score above the threshold does not generate a hint`() {
++        val result = hints(AxisScore("ExperienceAlignment", 0.8, true))
++
++        assertFalse(result.any { it.contains("ExperienceAlignment") })
++    }
++
++    @Test
++    fun `unmeasured seniority score does not generate a seniority hint`() {
++        val result = hints(AxisScore("SeniorityFit", 0.0, false))
++
++        assertFalse(result.any { it.contains("SeniorityFit") })
++    }
++
++    @Test
++    fun `measured low seniority score still generates the existing hint`() {
++        val result = hints(AxisScore("SeniorityFit", 0.2, true))
++
++        assertTrue(result.any { it == "Re-evaluate trajectory based on SeniorityFit" })
++    }
++
++    @Test
++    fun `unmeasured axes do not suppress a measured skill hint`() {
++        val result = HintBuilder.build(
++            gap(missing = listOf("Kubernetes")),
++            listOf(
++                AxisScore("ExperienceAlignment", 0.0, false),
++                AxisScore("SeniorityFit", 0.0, false)
++            )
++        ).hints
++
++        assertEquals(listOf("Acquire based on SkillMatch: Kubernetes"), result)
++    }
++
++    @Test
++    fun `unmeasured experience does not suppress a measured seniority hint`() {
++        val result = hints(
++            AxisScore("ExperienceAlignment", 0.0, false),
++            AxisScore("SeniorityFit", 0.2, true)
++        )
++
++        assertFalse(result.any { it.contains("ExperienceAlignment") })
++        assertTrue(result.any { it == "Re-evaluate trajectory based on SeniorityFit" })
++    }
++}
+diff --git a/app/src/test/java/com/vantedge/app/w5/scoring/JobRequirementAdapterTest.kt b/app/src/test/java/com/vantedge/app/w5/scoring/JobRequirementAdapterTest.kt
+index 7c9925c..5394116 100644
+--- a/app/src/test/java/com/vantedge/app/w5/scoring/JobRequirementAdapterTest.kt
++++ b/app/src/test/java/com/vantedge/app/w5/scoring/JobRequirementAdapterTest.kt
+@@ -10,6 +10,7 @@ class JobRequirementAdapterTest {
+         val adapter = JobRequirementAdapter
+         val result = adapter.adapt(
+             jobDescription = "Data Protection Manager. Requires Master's Degree in Law and CIPP certification. Must have security clearance.",
++            jobTitle = "",
+             requiredSkills = emptyList(),
+             preferredSkills = emptyList(),
+             educationRequired = null,
+@@ -40,6 +41,7 @@ class JobRequirementAdapterTest {
+ 
+         val result = adapter.adapt(
+             jobDescription = description,
++            jobTitle = "",
+             requiredSkills = emptyList(),
+             preferredSkills = emptyList(),
+             educationRequired = null,
+diff --git a/app/src/test/java/com/vantedge/app/w5/scoring/JobTitleRoleRelevanceProductionTest.kt b/app/src/test/java/com/vantedge/app/w5/scoring/JobTitleRoleRelevanceProductionTest.kt
+new file mode 100644
+index 0000000..35d9f72
+--- /dev/null
++++ b/app/src/test/java/com/vantedge/app/w5/scoring/JobTitleRoleRelevanceProductionTest.kt
+@@ -0,0 +1,182 @@
++package com.vantedge.app.w5.scoring
++
++import com.vantedge.app.data.domain.CompatibilityRecordMapper
++import com.vantedge.app.data.model.UserProfile
++import com.vantedge.app.data.model.WorkExperience
++import kotlinx.coroutines.runBlocking
++import org.junit.Assert.assertEquals
++import org.junit.Assert.assertNull
++import org.junit.Assert.assertTrue
++import org.junit.Test
++
++class JobTitleRoleRelevanceProductionTest {
++
++    private val taxonomy = setOf("Kotlin", "Java", "AWS")
++    private val stopWords = setOf("the", "and", "a", "to", "of", "for")
++
++    private fun assets() = ValidationAssets(
++        stopWords = stopWords,
++        keywordDictionary = emptyMap()
++    )
++
++    private fun adapt(
++        jobDescription: String,
++        jobTitle: String,
++        skills: List<String> = listOf("Kotlin")
++    ): ValidatedJob = JobRequirementAdapter.adapt(
++        jobDescription = jobDescription,
++        jobTitle = jobTitle,
++        requiredSkills = skills,
++        skillTaxonomy = taxonomy,
++        stopWords = stopWords,
++        correlationId = "a1-test"
++    ).validatedJob
++
++    private fun userProfile() = UserProfile(
++        name = "Test User",
++        summary = "",
++        skills = listOf("Kotlin", "Java"),
++        workHistory = listOf(
++            WorkExperience(
++                role = "Backend Engineer",
++                company = "Acme",
++                startDate = "2018",
++                endDate = "2021",
++                description = "Built backend services"
++            )
++        )
++    )
++
++    private fun normalizedProfile() = NormalizedProfile(
++        skills = listOf("Kotlin", "Java"),
++        certifications = emptyList(),
++        workHistory = listOf("Backend Engineer at Acme (2018-2021): Built backend services"),
++        education = emptyList(),
++        languages = emptyList(),
++        summary = "",
++        audit = SanitizationAudit(emptyList())
++    )
++
++    private fun validatedProfile(correlationId: String = "a1-test"): ValidatedProfile =
++        DirectW5InputAdapter.adaptProfile(
++            profile = userProfile(),
++            normalizedProfile = normalizedProfile(),
++            correlationId = correlationId,
++            currentYear = 2021
++        )
++
++    @Test
++    fun `adapter returns exact supplied vacancy title`() {
++        val job = adapt(
++            jobDescription = "We need a platform engineer.",
++            jobTitle = "Staff Platform Engineer"
++        )
++        assertEquals("Staff Platform Engineer", job.title)
++    }
++
++    @Test
++    fun `job seniority derives from requiredYears alone even when title keyword conflicts`() {
++        val job = adapt(
++            jobDescription = "We require 10 years experience.",
++            jobTitle = "Junior Engineer"
++        )
++        assertEquals(10, job.requiredYears)
++        assertEquals("senior", job.seniorityLevel)
++    }
++
++    @Test
++    fun `missing required years leaves job seniority unknown`() {
++        val job = adapt(
++            jobDescription = "We need a platform engineer.",
++            jobTitle = "Senior Engineer"
++        )
++        assertNull(job.requiredYears)
++        assertNull(job.seniorityLevel)
++    }
++
++    @Test
++    fun `production analysis path computes positive role relevance from supplied title`() {
++        val vp = validatedProfile()
++        val vj = adapt(
++            jobDescription = "Backend Engineer required.",
++            jobTitle = "Backend Engineer"
++        )
++        val result = W5ScoreEngine(assets()).evaluate(vp, vj, W5TraceContext("a1-test", "hash", 0L))
++        val roleRelevance = result.axisScores.first { it.axisName == "RoleRelevance" }.score
++        assertEquals(1.0, roleRelevance, 1e-9)
++        assertTrue("RoleRelevance must be demonstrably positive", roleRelevance > 0.0)
++    }
++
++    @Test
++    fun `structural completeness reflects populated title field`() {
++        val vp = validatedProfile()
++        val vj = adapt(
++            jobDescription = "Backend Engineer required.",
++            jobTitle = "Backend Engineer"
++        )
++        val expected = (1.0 + 3.0 / 5.0) / 2.0
++        assertEquals(expected, AxisEvaluators.structuralCompleteness(vp, vj), 1e-9)
++    }
++
++    @Test
++    fun `seniority fit is invariant to conflicting title for identical required years`() {
++        val vp = validatedProfile()
++        val junior = adapt(jobDescription = "Requires 10 years experience.", jobTitle = "Junior Engineer")
++        val senior = adapt(jobDescription = "Requires 10 years experience.", jobTitle = "Senior Engineer")
++        assertEquals("senior", junior.seniorityLevel)
++        assertEquals("senior", senior.seniorityLevel)
++        assertEquals(
++            AxisEvaluators.seniorityFit(vp, junior),
++            AxisEvaluators.seniorityFit(vp, senior),
++            0.0
++        )
++    }
++
++    @Test
++    fun `total score aggregation is deterministic and follows weights`() {
++        val vp = validatedProfile()
++        val vj = adapt(
++            jobDescription = "Backend Engineer required. 5 years experience.",
++            jobTitle = "Backend Engineer"
++        )
++        val engine = W5ScoreEngine(assets())
++        val r1 = engine.evaluate(vp, vj, W5TraceContext("a1-test", "hash", 0L))
++        val r2 = engine.evaluate(vp, vj, W5TraceContext("a1-test", "hash", 0L))
++        assertEquals(r1.totalScore, r2.totalScore, 0.0)
++        val weighted = r1.axisScores.sumOf { it.score * AxisWeights.get(it.axisName) }
++        assertEquals(weighted, r1.totalScore, 1e-12)
++        assertTrue(r1.totalScore > 0.0)
++    }
++
++    @Test
++    fun `production engine forwards job title so role relevance raises the score`() = runBlocking {
++        val engine = DeterministicCompatibilityEngine(
++            w5ScoreEngine = W5ScoreEngine(assets()),
++            compatibilityRecordMapper = CompatibilityRecordMapper(),
++            skillTaxonomy = taxonomy,
++            stopWords = stopWords
++        )
++
++        val withTitle = engine.analyze(
++            profile = userProfile(),
++            normalizedProfile = normalizedProfile(),
++            jobTitle = "Backend Engineer",
++            company = "Acme",
++            jobDescription = "Backend Engineer required.",
++            correlationId = "a1-with-title"
++        )
++        val withoutTitle = engine.analyze(
++            profile = userProfile(),
++            normalizedProfile = normalizedProfile(),
++            jobTitle = "",
++            company = "Acme",
++            jobDescription = "Backend Engineer required.",
++            correlationId = "a1-without-title"
++        )
++
++        assertTrue(
++            "Supplying the vacancy title must raise the score via RoleRelevance",
++            withTitle.record.score > withoutTitle.record.score
++        )
++    }
++}
+diff --git a/app/src/test/java/com/vantedge/app/w5/scoring/ProvisionalScoreTest.kt b/app/src/test/java/com/vantedge/app/w5/scoring/ProvisionalScoreTest.kt
+new file mode 100644
+index 0000000..f357010
+--- /dev/null
++++ b/app/src/test/java/com/vantedge/app/w5/scoring/ProvisionalScoreTest.kt
+@@ -0,0 +1,123 @@
++package com.vantedge.app.w5.scoring
++
++import org.junit.Assert.assertEquals
++import org.junit.Assert.assertFalse
++import org.junit.Assert.assertNotEquals
++import org.junit.Assert.assertNull
++import org.junit.Assert.assertTrue
++import org.junit.Test
++
++class ProvisionalScoreTest {
++
++    private val assets = ValidationAssets(stopWords = emptySet(), keywordDictionary = emptyMap())
++    private val engine = W5ScoreEngine(assets)
++
++    private fun profile(skills: List<String> = listOf("Kotlin")) = ValidatedProfile(
++        correlationId = "provisional",
++        skills = skills,
++        qualifications = emptyList(),
++        roles = listOf("Developer"),
++        currentTitle = "Developer",
++        experienceYears = 5,
++        seniorityLevel = "senior",
++        completedFields = setOf("skills", "roles", "currentTitle", "experienceYears", "seniorityLevel"),
++        isAccepted = true,
++        isDegraded = false
++    )
++
++    private fun job(
++        requiredSkills: List<String> = listOf("Kotlin"),
++        title: String = "",
++        keywords: List<String> = emptyList(),
++        requiredYears: Int? = null,
++        seniorityLevel: String? = null,
++        completedFields: Set<String> = setOf("requiredSkills")
++    ) = ValidatedJob(
++        correlationId = "provisional",
++        requiredSkills = requiredSkills,
++        title = title,
++        keywords = keywords,
++        requiredYears = requiredYears,
++        seniorityLevel = seniorityLevel,
++        completedFields = completedFields,
++        isAccepted = true,
++        isDegraded = false
++    )
++
++    private fun evaluate(profile: ValidatedProfile, job: ValidatedJob) =
++        engine.evaluate(profile, job, W5TraceContext("provisional", "", 0L))
++
++    @Test
++    fun `provisional score normalizes over measured weights only`() {
++        val result = evaluate(profile(), job())
++
++        assertFalse(result.isComplete)
++        val measured = result.axisScores.filter { it.isMeasured }
++        assertTrue(measured.isNotEmpty())
++        val expectedWeight = measured.sumOf { AxisWeights.get(it.axisName) }
++        val expected = measured.sumOf { it.score * AxisWeights.get(it.axisName) } / expectedWeight
++
++        assertEquals(expected, result.provisionalTotalScore!!, 1e-12)
++        assertNotEquals(result.totalScore, result.provisionalTotalScore!!, 1e-12)
++    }
++
++    @Test
++    fun `legacy total score keeps unmeasured axes as zero`() {
++        val result = evaluate(profile(), job())
++
++        val legacy = result.axisScores.sumOf { it.score * AxisWeights.get(it.axisName) }
++        assertEquals(legacy, result.totalScore, 1e-12)
++        result.axisScores.filterNot { it.isMeasured }.forEach {
++            assertEquals(0.0, it.score, 0.0)
++        }
++    }
++
++    @Test
++    fun `fully measured input keeps provisional equal to legacy score`() {
++        val result = evaluate(
++            profile(),
++            job(
++                title = "Developer",
++                keywords = listOf("Kotlin"),
++                requiredYears = 5,
++                seniorityLevel = "senior",
++                completedFields = setOf(
++                    "requiredSkills", "title", "keywords", "requiredYears", "seniorityLevel"
++                )
++            )
++        )
++
++        assertTrue(result.isComplete)
++        assertEquals(result.totalScore, result.provisionalTotalScore!!, 1e-12)
++    }
++
++    @Test
++    fun `no measured evidence axis yields a null provisional score`() {
++        val result = evaluate(
++            profile(skills = emptyList()),
++            job(requiredSkills = emptyList())
++        )
++
++        assertNull(result.provisionalTotalScore)
++        assertFalse(result.isComplete)
++    }
++
++    @Test
++    fun `provisional score stays within the unit interval`() {
++        val result = evaluate(
++            profile(),
++            job(
++                title = "Developer",
++                keywords = listOf("Kotlin"),
++                requiredYears = 5,
++                seniorityLevel = "senior",
++                completedFields = setOf(
++                    "requiredSkills", "title", "keywords", "requiredYears", "seniorityLevel"
++                )
++            )
++        )
++
++        val provisional = result.provisionalTotalScore!!
++        assertTrue(provisional in 0.0..1.0)
++    }
++}
+diff --git a/app/src/test/java/com/vantedge/app/w5/scoring/RequirementCoverageTest.kt b/app/src/test/java/com/vantedge/app/w5/scoring/RequirementCoverageTest.kt
+new file mode 100644
+index 0000000..e9e95cf
+--- /dev/null
++++ b/app/src/test/java/com/vantedge/app/w5/scoring/RequirementCoverageTest.kt
+@@ -0,0 +1,243 @@
++package com.vantedge.app.w5.scoring
++
++import com.vantedge.app.data.domain.CompatibilityRecordMapper
++import com.vantedge.app.data.model.RequirementAssessmentState
++import com.vantedge.app.data.model.UserProfile
++import org.junit.Assert.assertEquals
++import org.junit.Assert.assertFalse
++import org.junit.Assert.assertNotNull
++import org.junit.Assert.assertNull
++import org.junit.Assert.assertTrue
++import org.junit.Test
++
++class RequirementCoverageTest {
++
++    private val assets = ValidationAssets(stopWords = emptySet(), keywordDictionary = emptyMap())
++
++    private fun profile(
++        skills: List<String> = listOf("Kotlin"),
++        qualifications: List<RequirementEvidence> = emptyList()
++    ) = ValidatedProfile(
++        correlationId = "coverage",
++        skills = skills,
++        qualifications = qualifications,
++        roles = listOf("Developer"),
++        currentTitle = "Developer",
++        experienceYears = 5,
++        seniorityLevel = "senior",
++        completedFields = setOf("skills", "roles", "currentTitle", "experienceYears", "seniorityLevel"),
++        isAccepted = true,
++        isDegraded = false
++    )
++
++    private fun job(
++        requiredSkills: List<String> = listOf("Kotlin"),
++        qualifications: List<RequirementEvidence> = emptyList(),
++        requiredYears: Int? = 5
++    ) = ValidatedJob(
++        correlationId = "coverage",
++        requiredSkills = requiredSkills,
++        requiredQualifications = qualifications,
++        title = "Developer",
++        keywords = listOf("Kotlin"),
++        requiredYears = requiredYears,
++        seniorityLevel = "senior",
++        completedFields = setOf("requiredSkills", "title", "keywords", "requiredYears", "seniorityLevel"),
++        isAccepted = true,
++        isDegraded = false
++    )
++
++    private fun skill(text: String, canonical: String? = text, status: ClassificationStatus = ClassificationStatus.NORMALIZED) =
++        RequirementEvidence(
++            originalText = text,
++            category = RequirementCategory.SKILL,
++            classificationStatus = status,
++            matchedTaxonomySkill = canonical,
++            importance = "MANDATORY"
++        )
++
++    private fun degree(text: String) = RequirementEvidence(
++        originalText = text,
++        category = RequirementCategory.DEGREE,
++        classificationStatus = ClassificationStatus.NORMALIZED,
++        importance = "MANDATORY"
++    )
++
++    private fun map(
++        validatedProfile: ValidatedProfile,
++        validatedJob: ValidatedJob,
++        inventory: List<RequirementEvidence>
++    ) = CompatibilityRecordMapper().map(
++        scoreResult = W5ScoreEngine(assets).evaluate(
++            validatedProfile,
++            validatedJob,
++            W5TraceContext("coverage", "", 0L)
++        ),
++        profile = UserProfile(),
++        normalizedProfile = NormalizedProfile(
++            skills = validatedProfile.skills,
++            certifications = emptyList(),
++            workHistory = emptyList(),
++            education = emptyList(),
++            languages = emptyList(),
++            summary = "",
++            audit = SanitizationAudit(emptyList())
++        ),
++        validatedProfile = validatedProfile,
++        jobTitle = validatedJob.title,
++        company = "Acme",
++        jobDescription = "Developer with Kotlin",
++        roleSummary = "",
++        eligibilitySummary = "",
++        currentYear = 2026,
++        validatedJob = validatedJob,
++        diagnostics = RequirementDiagnostics(
++            diagnostics = emptyList(),
++            summary = DiagnosticsSummary(0, 0, 0),
++            inventory = inventory
++        )
++    )
++
++    @Test
++    fun `unmapped requirement is unassessed and is not a confirmed gap`() {
++        val mapped = map(
++            profile(),
++            job(),
++            listOf(skill("Kotlin"), skill("Data Protection", canonical = null, status = ClassificationStatus.UNMAPPED))
++        )
++
++        val assessments = mapped.record.requirementAssessments!!
++        assertEquals(2, assessments.size)
++        assertEquals(RequirementAssessmentState.MATCHED, assessments.first { it.text == "Kotlin" }.state)
++
++        val unmapped = assessments.first { it.text == "Data Protection" }
++        assertEquals(RequirementAssessmentState.UNASSESSED, unmapped.state)
++        assertEquals("TAXONOMY_MISS", unmapped.reason)
++
++        assertTrue(mapped.record.gaps.isEmpty())
++        assertFalse(mapped.record.evaluationComplete!!)
++    }
++
++    @Test
++    fun `empty skill evidence keeps every requirement unassessed and inventory intact`() {
++        val mapped = map(
++            profile(skills = emptyList()),
++            job(),
++            listOf(skill("Kotlin"), skill("Data Protection", canonical = null, status = ClassificationStatus.UNMAPPED))
++        )
++
++        val assessments = mapped.record.requirementAssessments!!
++        assertEquals(2, assessments.size)
++        assertTrue(assessments.all { it.state == RequirementAssessmentState.UNASSESSED })
++        assertEquals(
++            "PROFILE_SKILL_EVIDENCE_ABSENT",
++            assessments.first { it.text == "Kotlin" }.reason
++        )
++        assertTrue(mapped.record.gaps.isEmpty())
++        assertFalse(mapped.record.evaluationComplete!!)
++    }
++
++    @Test
++    fun `confirmed gaps and unassessed requirements remain distinct`() {
++        val mapped = map(
++            profile(),
++            job(requiredSkills = listOf("Kotlin", "Kubernetes")),
++            listOf(
++                skill("Kotlin"),
++                skill("Kubernetes"),
++                skill("Data Protection", canonical = null, status = ClassificationStatus.UNMAPPED)
++            )
++        )
++
++        val assessments = mapped.record.requirementAssessments!!
++        assertEquals(RequirementAssessmentState.MATCHED, assessments.first { it.text == "Kotlin" }.state)
++        assertEquals(RequirementAssessmentState.CONFIRMED_GAP, assessments.first { it.text == "Kubernetes" }.state)
++        assertEquals(RequirementAssessmentState.UNASSESSED, assessments.first { it.text == "Data Protection" }.state)
++        assertEquals(1, mapped.record.gaps.size)
++        assertFalse(mapped.record.evaluationComplete!!)
++    }
++
++    @Test
++    fun `qualifications are assessed independently of skill evidence`() {
++        val mapped = map(
++            profile(skills = emptyList(), qualifications = listOf(degree("Bachelor of Science"))),
++            job(requiredSkills = listOf("Kotlin"), qualifications = listOf(degree("Bachelor of Science"))),
++            listOf(skill("Kotlin"), degree("Bachelor of Science"))
++        )
++
++        val assessments = mapped.record.requirementAssessments!!
++        assertEquals(
++            RequirementAssessmentState.MATCHED,
++            assessments.first { it.text == "Bachelor of Science" }.state
++        )
++        assertEquals(
++            RequirementAssessmentState.UNASSESSED,
++            assessments.first { it.text == "Kotlin" }.state
++        )
++        assertFalse(mapped.record.evaluationComplete!!)
++    }
++
++    @Test
++    fun `new records always persist a coverage inventory`() {
++        val mapped = map(profile(), job(requiredSkills = emptyList()), emptyList())
++
++        assertNotNull(mapped.record.requirementAssessments)
++        assertTrue(mapped.record.requirementAssessments!!.isEmpty())
++    }
++
++    @Test
++    fun `partial measurement persists a provisional score without changing legacy score`() {
++        val partialJob = job(requiredSkills = listOf("Kotlin"), requiredYears = null).copy(
++            title = "",
++            keywords = emptyList(),
++            seniorityLevel = null,
++            completedFields = setOf("requiredSkills")
++        )
++        val mapped = map(profile(), partialJob, listOf(skill("Kotlin")))
++
++        val scoreResult = W5ScoreEngine(assets).evaluate(
++            profile(),
++            partialJob,
++            W5TraceContext("coverage", "", 0L)
++        )
++        val legacyScore = (scoreResult.totalScore.coerceIn(0.0, 1.0) * 100).toInt()
++        assertEquals(legacyScore, mapped.record.score)
++        assertEquals(
++            (scoreResult.provisionalTotalScore!! * 100).toInt(),
++            mapped.record.provisionalScore
++        )
++
++        val skillMatch = scoreResult.axisScores.first { it.axisName == "SkillMatch" }.score
++        val constraint = scoreResult.axisScores.first { it.axisName == "ConstraintCompliance" }.score
++        val expectedVacancy = (((skillMatch * 0.5) + (constraint * 0.2)) / 0.7 * 100).toInt()
++        assertEquals(expectedVacancy, mapped.record.provisionalVacancyScore)
++    }
++
++    @Test
++    fun `fully measured record keeps provisional equal to legacy values`() {
++        val mapped = map(profile(), job(), listOf(skill("Kotlin")))
++
++        assertEquals(mapped.record.score, mapped.record.provisionalScore)
++        assertEquals(mapped.record.vacancyScore, mapped.record.provisionalVacancyScore)
++    }
++
++    @Test
++    fun `legacy records keep unknown coverage null`() {
++        val legacy = com.vantedge.app.data.model.CompatibilityRecord(
++            jobTitle = "Developer",
++            company = "Acme",
++            jobDescription = "Developer",
++            score = 80,
++            roleSummary = "",
++            eligibilitySummary = "",
++            profileStats = com.vantedge.app.data.model.ProfileStats(0, 0, 0, 0, 0, ""),
++            relevancyItems = emptyList(),
++            gaps = emptyList(),
++            criticalGapCount = 0
++        )
++
++        assertNull(legacy.requirementAssessments)
++        assertNull(legacy.provisionalScore)
++        assertNull(legacy.provisionalVacancyScore)
++    }
++}
+diff --git a/app/src/test/java/com/vantedge/app/w5/scoring/W5ScoreEngineTest.kt b/app/src/test/java/com/vantedge/app/w5/scoring/W5ScoreEngineTest.kt
+index df08deb..c66da91 100644
+--- a/app/src/test/java/com/vantedge/app/w5/scoring/W5ScoreEngineTest.kt
++++ b/app/src/test/java/com/vantedge/app/w5/scoring/W5ScoreEngineTest.kt
+@@ -164,7 +164,10 @@ class W5ScoreEngineTest {
+ 
+         val trace = W5TraceContext("dz-001", "", 1000L)
+         val result = engine.evaluate(profile, job, trace)
+-        assertEquals(0.0, result.axisScores.find { it.axisName == "ExperienceAlignment" }!!.score, 0.0)
++        val axis = result.axisScores.find { it.axisName == "ExperienceAlignment" }!!
++        assertFalse(axis.isMeasured)
++        assertTrue(result.unknownAxes.contains("ExperienceAlignment"))
++        assertFalse(result.isComplete)
+     }
+ 
+     @Test
+@@ -195,7 +198,10 @@ class W5ScoreEngineTest {
+ 
+         val trace = W5TraceContext("dz-002", "", 1000L)
+         val result = engine.evaluate(profile, job, trace)
+-        assertEquals(1.0, result.axisScores.find { it.axisName == "KeywordCoverage" }!!.score, 0.0)
++        val axis = result.axisScores.find { it.axisName == "KeywordCoverage" }!!
++        assertFalse(axis.isMeasured)
++        assertTrue(result.unknownAxes.contains("KeywordCoverage"))
++        assertFalse(result.isComplete)
+     }
+ 
+     @Test
+@@ -348,9 +354,9 @@ class W5ScoreEngineTest {
+             completedFields = setOf("requiredSkills", "requiredYears"), isAccepted = true, isDegraded = false
+         )
+ 
+-        assertEquals(0.4, AxisEvaluators.experienceAlignment(underqualified, job), 0.001)
+-        assertEquals(1.0, AxisEvaluators.experienceAlignment(qualified, job), 0.001)
+-        assertEquals(1.0, AxisEvaluators.experienceAlignment(overqualified, job), 0.001)
++        assertEquals(0.4, AxisEvaluators.experienceAlignment(underqualified, job)!!, 0.001)
++        assertEquals(1.0, AxisEvaluators.experienceAlignment(qualified, job)!!, 0.001)
++        assertEquals(1.0, AxisEvaluators.experienceAlignment(overqualified, job)!!, 0.001)
+     }
+ 
+     @Test
+@@ -387,7 +393,7 @@ class W5ScoreEngineTest {
+             completedFields = setOf("keywords"), isAccepted = true, isDegraded = false
+         )
+ 
+-        val score = AxisEvaluators.keywordCoverage(profile, job, assets)
++        val score = AxisEvaluators.keywordCoverage(profile, job, assets)!!
+         assertEquals(2.0 / 3.0, score, 0.001)
+     }
+ 
+@@ -866,4 +872,121 @@ class W5ScoreEngineTest {
+             )
+         )
+     }
++
++    @Test
++    fun `unknown required axes are flagged and not treated as measured zero`() {
++        val profile = ValidatedProfile(
++            correlationId = "unknown-001",
++            skills = listOf("Kotlin"),
++            roles = listOf("Developer"),
++            currentTitle = "Developer",
++            experienceYears = 5,
++            seniorityLevel = null,
++            completedFields = setOf("skills", "roles", "currentTitle", "experienceYears"),
++            isAccepted = true,
++            isDegraded = false
++        )
++
++        val job = ValidatedJob(
++            correlationId = "unknown-001",
++            requiredSkills = listOf("Kotlin"),
++            title = "Developer",
++            keywords = emptyList(),
++            requiredYears = null,
++            seniorityLevel = null,
++            completedFields = setOf("requiredSkills", "title"),
++            isAccepted = true,
++            isDegraded = false
++        )
++
++        val result = engine.evaluate(profile, job, W5TraceContext("unknown-001", "", 0L))
++
++        assertFalse(result.isComplete)
++        assertEquals(
++            setOf("ExperienceAlignment", "KeywordCoverage", "SeniorityFit"),
++            result.unknownAxes.toSet()
++        )
++        assertEquals(7, result.axisScores.size)
++        result.axisScores.filterNot { it.isMeasured }.forEach { assertEquals(0.0, it.score, 0.0) }
++
++        val knownWeighted = result.axisScores
++            .filter { it.isMeasured }
++            .sumOf { it.score * AxisWeights.get(it.axisName) }
++        assertEquals(knownWeighted, result.totalScore, 1e-12)
++    }
++
++    @Test
++    fun `fully measured input yields a complete evaluation`() {
++        val profile = ValidatedProfile(
++            correlationId = "complete-001",
++            skills = listOf("Kotlin", "Java"),
++            roles = listOf("Backend Engineer"),
++            currentTitle = "Backend Engineer",
++            experienceYears = 6,
++            seniorityLevel = "senior",
++            completedFields = setOf("skills", "roles", "currentTitle", "experienceYears", "seniorityLevel"),
++            isAccepted = true,
++            isDegraded = false
++        )
++
++        val job = ValidatedJob(
++            correlationId = "complete-001",
++            requiredSkills = listOf("Kotlin"),
++            title = "Backend Engineer",
++            keywords = listOf("Kotlin", "Java"),
++            requiredYears = 5,
++            seniorityLevel = "senior",
++            completedFields = setOf("requiredSkills", "title", "keywords", "requiredYears", "seniorityLevel"),
++            isAccepted = true,
++            isDegraded = false
++        )
++
++        val result = engine.evaluate(profile, job, W5TraceContext("complete-001", "", 0L))
++
++        assertTrue(result.isComplete)
++        assertTrue(result.unknownAxes.isEmpty())
++        assertTrue(result.axisScores.all { it.isMeasured })
++    }
++    @Test
++    fun `provisional score excludes unmeasured axes and matches legacy when complete`() {
++        val completeProfile = ValidatedProfile(
++            correlationId = "provisional-001",
++            skills = listOf("Kotlin"),
++            roles = listOf("Developer"),
++            currentTitle = "Developer",
++            experienceYears = 5,
++            seniorityLevel = "senior",
++            completedFields = setOf("skills", "roles", "currentTitle", "experienceYears", "seniorityLevel"),
++            isAccepted = true,
++            isDegraded = false
++        )
++        val completeJob = ValidatedJob(
++            correlationId = "provisional-001",
++            requiredSkills = listOf("Kotlin"),
++            title = "Developer",
++            keywords = listOf("Kotlin"),
++            requiredYears = 5,
++            seniorityLevel = "senior",
++            completedFields = setOf("requiredSkills", "title", "keywords", "requiredYears", "seniorityLevel"),
++            isAccepted = true,
++            isDegraded = false
++        )
++
++        val complete = engine.evaluate(completeProfile, completeJob, W5TraceContext("provisional-001", "", 0L))
++        assertTrue(complete.isComplete)
++        assertEquals(complete.totalScore, complete.provisionalTotalScore!!, 1e-12)
++
++        val partial = engine.evaluate(
++            completeProfile,
++            completeJob.copy(title = "", keywords = emptyList(), requiredYears = null, seniorityLevel = null),
++            W5TraceContext("provisional-001", "", 0L)
++        )
++        assertFalse(partial.isComplete)
++        val measured = partial.axisScores.filter { it.isMeasured }
++        val expected = measured.sumOf { it.score * AxisWeights.get(it.axisName) } /
++            measured.sumOf { AxisWeights.get(it.axisName) }
++        assertEquals(expected, partial.provisionalTotalScore!!, 1e-12)
++        assertNotEquals(partial.totalScore, partial.provisionalTotalScore!!, 1e-12)
++    }
++
+ }
+diff --git a/app/src/test/java/com/vantedge/app/w6/improvement/W6UnknownAxisTest.kt b/app/src/test/java/com/vantedge/app/w6/improvement/W6UnknownAxisTest.kt
+new file mode 100644
+index 0000000..1cd56b9
+--- /dev/null
++++ b/app/src/test/java/com/vantedge/app/w6/improvement/W6UnknownAxisTest.kt
+@@ -0,0 +1,112 @@
++package com.vantedge.app.w6.improvement
++
++import com.vantedge.app.w5.scoring.AxisScore
++import com.vantedge.app.w5.scoring.GapAnalysis
++import com.vantedge.app.w5.scoring.RecommendationHints
++import com.vantedge.app.w5.scoring.ScoreBreakdown
++import com.vantedge.app.w5.scoring.ScoreResult
++import com.vantedge.app.w5.scoring.ValidatedJob
++import com.vantedge.app.w5.scoring.ValidatedProfile
++import com.vantedge.app.w5.scoring.W5TraceContext
++import org.junit.Assert.assertTrue
++import org.junit.Test
++
++class W6UnknownAxisTest {
++
++    private fun profile() = ValidatedProfile(
++        correlationId = "w6",
++        skills = listOf("Kotlin"),
++        roles = listOf("Developer"),
++        currentTitle = "Developer",
++        experienceYears = 5,
++        seniorityLevel = "senior",
++        completedFields = setOf("skills", "roles", "currentTitle", "experienceYears", "seniorityLevel"),
++        isAccepted = true,
++        isDegraded = false
++    )
++
++    private fun job() = ValidatedJob(
++        correlationId = "w6",
++        requiredSkills = listOf("Kotlin"),
++        title = "Developer",
++        keywords = listOf("Kotlin"),
++        requiredYears = 5,
++        seniorityLevel = "senior",
++        completedFields = setOf("requiredSkills", "title", "keywords", "requiredYears", "seniorityLevel"),
++        isAccepted = true,
++        isDegraded = false
++    )
++
++    private fun score(axisScores: List<AxisScore>, gaps: GapAnalysis) = ScoreResult(
++        correlationId = "w6",
++        totalScore = 0.5,
++        confidence = 0.9,
++        axisScores = axisScores,
++        breakdown = ScoreBreakdown(emptyList()),
++        gapAnalysis = gaps,
++        hints = RecommendationHints(emptyList()),
++        trace = W5TraceContext("w6", "", 0L),
++        unknownAxes = axisScores.filterNot { it.isMeasured }.map { it.axisName }
++    )
++
++    private fun evaluate(score: ScoreResult, gaps: GapAnalysis) = W6Engine.evaluate(
++        W6Input(
++            profile = profile(),
++            job = job(),
++            score = score,
++            gaps = gaps,
++            hints = RecommendationHints(emptyList()),
++            correlationId = "w6"
++        )
++    )
++
++    @Test
++    fun `unmeasured axes do not produce weakness recommendations`() {
++        val gaps = GapAnalysis(missing = listOf("Kotlin"), weak = emptyList(), matched = emptyList())
++        val result = evaluate(
++            score(
++                listOf(
++                    AxisScore("SkillMatch", 0.0, false),
++                    AxisScore("ExperienceAlignment", 0.0, false),
++                    AxisScore("RoleRelevance", 0.0, false),
++                    AxisScore("KeywordCoverage", 0.0, false),
++                    AxisScore("SeniorityFit", 0.0, false),
++                    AxisScore("StructuralCompleteness", 1.0, true),
++                    AxisScore("ConstraintCompliance", 1.0, true)
++                ),
++                gaps
++            ),
++            gaps
++        )
++
++        assertTrue(result.gapClosurePlan.isEmpty())
++        assertTrue(result.profileImprovements.isEmpty())
++        assertTrue(result.jobImprovements.isEmpty())
++        assertTrue(result.impactProjections.isEmpty())
++    }
++
++    @Test
++    fun `measured weaknesses still produce recommendations`() {
++        val gaps = GapAnalysis(missing = listOf("Kotlin"), weak = emptyList(), matched = emptyList())
++        val result = evaluate(
++            score(
++                listOf(
++                    AxisScore("SkillMatch", 0.3, true),
++                    AxisScore("ExperienceAlignment", 0.5, true),
++                    AxisScore("RoleRelevance", 0.4, true),
++                    AxisScore("KeywordCoverage", 0.6, true),
++                    AxisScore("SeniorityFit", 0.5, true),
++                    AxisScore("StructuralCompleteness", 0.8, true),
++                    AxisScore("ConstraintCompliance", 1.0, true)
++                ),
++                gaps
++            ),
++            gaps
++        )
++
++        assertTrue(result.gapClosurePlan.isNotEmpty())
++        assertTrue(result.profileImprovements.isNotEmpty())
++        assertTrue(result.jobImprovements.isNotEmpty())
++        assertTrue(result.impactProjections.isNotEmpty())
++    }
++}

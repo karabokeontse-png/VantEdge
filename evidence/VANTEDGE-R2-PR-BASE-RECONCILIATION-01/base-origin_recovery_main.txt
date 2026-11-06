@@ -1,0 +1,1067 @@
+ref=origin/recovery/main
+ref_sha=c67d003853e6a1f457896e9fd1cf0189e546293d
+merge_base=c67d003853e6a1f457896e9fd1cf0189e546293d
+commits_mergebase_to_head=79
+commits_head_to_ref=0
+relation=
+  base_is_ancestor_of_head
+commits_entering_pr:
+  06bb4ac fix(r2): preserve unknown requirement evidence
+  3f23859 R2: unknown-state integrity implementation (milestone)
+  ed83a02 fix(AC10): gate eligibility claims on confirmed gaps
+  5609322 fix(P0-A): forward structured requirements to every analysis branch
+  b3c9d06 feat(P0-D): remove AI veto over deterministic W5; add analysis provenance
+  96513ba feat(P0-B): deterministic W5 chain becomes sole analytical authority
+  809c026 fix(P0-B): forward extracted structured requirements into compatibility analysis
+  16cf067 fix(ced-1): handle nullable raw content length
+  77be059 fix(ced-1): disable reasoning on extraction requests; reasoning models burned the entire max_tokens budget on reasoning and returned content:null (finish_reason=length). Sends reasoning{enabled:false,max_tokens:0,exclude:true} and tags HTTP_REQUEST_BEGIN with reasoningDisabled=true for retest observability. Local-only; push HOLD.
+  29bd88a fix(ced-1): job_extraction token budget 4096->8192 so reasoning+JSON fit in one pass; free reasoning models (nemotron/north-mini) exhausted 4096 on reasoning and returned content:null. Local-only; push HOLD.
+  70ef4ee fix(gemini): guard MODEL_EMPTY_CONTENT — reasoning-only responses (content:null) were coerced by getString into the literal string "null" (rawLength=4), failing all extraction then quarantining with ambient correlation. Now detected pre-extraction, emitted as distinct EMPTY_CONTENT failure with requestId/correlationId + onModelResult timing fix. Local-only; push HOLD.
+  c84e6a7 reconcile: sync container workspace onto VantEdge history (drop pre-cogo/aapt2 junk, restore gradlew mode, dedupe aapt2 override); include P0 pipeline fix (AiGateway+GeminiService), A1 coverLetterHtml Option C, and extraction observability P0s (quarantine correlation + attemptCount). Local-only; push HOLD per master brief.
+  c3f08cc feat: TD-EXTRACT-COT-001 prompt boundary additions + TD-RELIABILITY-002/observability disclosures. Note: job_extraction fallback CoT exhaustion remains empirically unverified; CED-1 HOLD remains.
+  e62ae10 fix(TD-RELIABILITY-003): restore success path propagation and update model config
+  5f214d2 fix(ui): TD-RELIABILITY-002 Part 3b — wire extracted skills into JIS runAnalysis call
+  23a8278 fix(ui): TD-RELIABILITY-002 Part 1 — add try/catch to CompatibilityViewModel.analyze() to prevent silent loading hang
+  1bb470d chore(extraction): TD-EXTRACT-QUALITY-001 fast-follows — tests, docs, warning cleanup
+  fd9119b fix(extraction): TD-EXTRACT-QUALITY-001 — enforce decision propagation and eliminate synthetic telemetry
+  f8d7fea fix(validation): TD-VALIDATOR-SEVERITY-001 — split email/description checkField into structural BLOCKER and quality WARNING paths
+  b529f8f fix(domain): complete TD-003-PHASE-1 interface sync — add structured requirements params with defaults to CompatibilityOrchestrator
+  58b1c3f feat(ui): add HITL unparseable date warning to profile screens (TD-PROFILE-002b)
+  1542bf7 feat: expand comparisonSurface with education/preferred skills and wire structured requirements (TD-003-PHASE-1)
+  54a7ba0 feat: implement deterministic substring overlap for gap validation (TD-003 Stage 1)
+  44288cd fix: deterministic aggregate reconciliation, experienceGap-aware gap validation, explicit maxTokens pin (TD-COMPATIBILITY-002)
+  f4d685b Merge PR #4: TD-COMPATIBILITY-001 deterministic relevancy filtering to eliminate specific E3 HALT path on hallucinated relevancy item names. Does not guarantee non-halting for other E3/E4 classifications.
+  965c884 fix: apply narrowed deterministic relevancy filtering with verified count overrides (TD-COMPATIBILITY-001)
+  6cfb4b0 fix: apply deterministic override for profile counts and unmask evidence integrity errors (TD-COMPATIBILITY-001)
+  cb286d2 chore: remove hardcoded AAPT2 override to fix GitHub CI test jobs
+  fed7b86 Merge PR #3: TD-TELEMETRY-001 unify extraction provenance
+  b56e6c7 fix: unify extraction provenance to single source of truth, resolving TD-TELEMETRY-001 mode mismatch
+  3e800b3 fix: resolve CV upload AI timeout by relaxing OkHttp and body-read timeouts, reducing extraction maxTokens (CED-14)
+  26cabc0 feat: integrate ExtractionValidator into ProfileSanitizer, resolving R5 regression, fixing Android dict loading, and preserving technical identifiers (CED-13b)
+  379a7c9 feat: implement ExtractionValidator core pipeline and ExtractionAssessment contract (CED-13a)
+  2773f1e chore: add W5 observability tracing and OCR sanitization hardening
+  af6d218 feat: implement QualificationEvaluator contract and unit tests for CED-11
+  d0308bb fix: add aapt2 gradle.properties cleanup to w5-tests.yml workflow
+  9412bbc test: add deterministic W5ScoreBaselineTest for 50-fixture qualification scoring evidence
+  61b0a07 fix: correct JUnit4 assertTrue argument order in CED-12 regression test
+  a4a8e17 CED-12: Add phrase length guard with unmapped routing, update regex for / and newlines
+  74dafa2 CED-10 CI BLOCKER: Rename stale ConfidenceEngineCorruptedOcrTest to .bak
+  a530c44 CED-10 PREREQUISITE: Fix GapAnalyzer type mismatch - MatchEvidence
+  d0af3d2 CED-10: Add qualification extraction to description fallback, fix degradation detection, add emergency extractor skill fallback, and add regression test
+  e1b0c69 H-3: Add ConfidenceEngine OCR corruption CI test + fix pre-existing test compilation errors
+  e620278 backup: pre-refactor snapshot
+  3169269 fix: update OptimizationOrchestrator
+  d7b750f P0: Add R5-skill OCR hardening to isOcrArtifact()
+  0b6083d fix: P2 orchestrator mutability elimination — immutable cvJson derivation
+  83e26b7 feat: W6 Improvement Engine — deterministic recommendation layer
+  24bf62c feat: W6 Improvement Engine — 5 files created per CED v1.0
+  c15d630 Update W5ScoreEngineTest expectations for ratified scoring fixes
+  070ee50 Add W5 CI verification workflow
+  def4e2c feat: W5 corrective implementation per CED — 5 files updated
+  f177b62 feat: W5 Adapter v1.4.2 — adapted signature, interval merge, zero parsing dependency
+  d8db1bd fix: correct test expectations for gap analysis and jaccard
+  ec0b1ba fix: remove duplicate reason parameter in W5ScoreEngineTest
+  49f8116 fix: resolve merge conflict in W5ScoreEngineTest
+  eb6dc9f fix: resolve merge conflict keeping Gate0JobReason.ACCEPTED
+  e5bb64d fix: nullable and casting errors in W5ScoreEngineTest
+  569260f fix: nullable/casting errors in W5ScoreEngineTest
+  e056db9 fix: add safe call operators for nullable ExtractedField in W5Adapter
+  85a931c fix: restore complete gradle.properties after cleanup damage
+  50d5674 fix: restore android.useAndroidX=true after sed cleanup
+  3599e12 fix: add CI fix step to full-ci.yml and clean gradle.properties
+  80908d2 fix: add CI fix step to full-ci.yml and clean gradle.properties
+  b85fd93 fix: remove hardcoded java home and aapt2 path for CI compatibility
+  cbc07a5 fix: remove hardcoded java home and aapt2 path for CI compatibility
+  8d2fa48 merge: recovery/reconstructed into main with W5 scoring system
+  71d130d feat: implement W5 deterministic scoring system with CI tests
+  9dbcee5 Merge branch 'main' of https://github.com/karabokeontse-png/VantEdge into recovery/reconstructed
+  5f4e640 Recovery Baseline: add P2 governed validation assets
+  1ece6bc Freeze Recovery Baseline (P2 Locked State)
+  43dc661 Merge recovery/reconstructed into main
+  03bcf39 feat: finalize recovery - engine refactor, AI layer overhaul, cleanup
+  a132646 feat: complete build recovery with EngineResult refactor and AiGateway integration
+  eae768c feat: establish BUILD_BASELINE.md as canonical build toolchain reference
+  e078d9d feat: recover ContentState, CycleUiState, ResultViewState
+  d702ec6 feat: recover viewmodel state/event sealed classes (11 files)
+  29ff743 feat: complete recovery - engines, models, storage, observability, AI layer + cleanup
+  55698de feat: reconstruct engine, model, network, storage, and viewmodel layers from decompiled stubs
+paths_changed_mergebase_to_head:
+  A	.github/workflows/ci.yml
+  A	.github/workflows/full-ci.yml
+  A	.github/workflows/h3-corrupted-ocr-test.yml
+  A	.github/workflows/w5-tests.yml
+  M	.gitignore
+  A	ARCHITECTURAL_GOVERNANCE.md
+  A	BUILD_BASELINE.md
+  A	INTEGRATION_ARCHITECTURE_REPORT.md
+  A	P2_ARCHITECTURE_DIAGRAM.md
+  A	P2_AUDIT_EVIDENCE_REPORT_v1.0.md
+  A	P2_BASELINE_COMPLETENESS_AUDIT.md
+  A	P2_CLOSURE_COMPLETION.md
+  A	P2_CLOSURE_REPORT.md
+  A	P2_CORRELATION_OWNERSHIP_AUDIT.md
+  A	P2_DEPENDENCY_VERIFICATION_AUDIT.md
+  A	P2_GOVERNANCE_ARTIFACTS.md
+  A	P2_PROTECTED_COMPONENT_REGISTER.md
+  A	P2_RECOVERY_BASELINE.md
+  A	P2_REVALIDATION_MATRIX.md
+  A	P2_TRACE_ROOT_CAUSE.md
+  A	RECOVERY_MATRIX.md
+  A	VantEdge_Master_Brief_2026-06-24.md
+  A	W3-D_PREFLIGHT_CONTRACT_SCAN.md
+  A	W3_TIMEOUT_GOVERNANCE_ARCHITECTURAL_DISCOVERY.md
+  A	W4_v2.0_AUDIT_REPORT.md
+  A	W4_v2.1_STRUCTURAL_STATE_REPORT.md
+  A	W5_PLANNING_PACKAGE.md
+  M	app/build.gradle
+  M	app/src/main/AndroidManifest.xml
+  A	app/src/main/assets/validation/certification_taxonomy.json
+  A	app/src/main/assets/validation/hallucination_markers.txt
+  A	app/src/main/assets/validation/invalid_headers.txt
+  A	app/src/main/assets/validation/provider_whitelist.json
+  A	app/src/main/assets/validation/skill_taxonomy.json
+  A	app/src/main/assets/validation/validation_rules.json
+  A	app/src/main/assets/w5/keyword_dictionary.json
+  A	app/src/main/assets/w5/stop_words.json
+  D	app/src/main/java/com/vantedge/app/BuildConfig.kt
+  M	app/src/main/java/com/vantedge/app/MainActivity.kt
+  D	app/src/main/java/com/vantedge/app/R.kt
+  A	app/src/main/java/com/vantedge/app/VantEdgeApplication.kt
+  A	app/src/main/java/com/vantedge/app/data/domain/CompatibilityOrchestrator.kt
+  A	app/src/main/java/com/vantedge/app/data/domain/CompatibilityRecordMapper.kt
+  M	app/src/main/java/com/vantedge/app/data/domain/DocumentExportUseCase.kt
+  M	app/src/main/java/com/vantedge/app/data/domain/ExportReceipt.kt
+  M	app/src/main/java/com/vantedge/app/data/domain/OnboardingCommitService.kt
+  M	app/src/main/java/com/vantedge/app/data/domain/OptimizationOrchestrator.kt
+  M	app/src/main/java/com/vantedge/app/data/domain/PipelineStep.kt
+  A	app/src/main/java/com/vantedge/app/data/domain/ScoreCompleteness.kt
+  D	app/src/main/java/com/vantedge/app/data/engine/ATSEngine.kt
+  D	app/src/main/java/com/vantedge/app/data/engine/ATSResults.kt
+  D	app/src/main/java/com/vantedge/app/data/engine/AtsResult.kt
+  M	app/src/main/java/com/vantedge/app/data/engine/CVTemplate.kt
+  M	app/src/main/java/com/vantedge/app/data/engine/CareerEngine.kt
+  D	app/src/main/java/com/vantedge/app/data/engine/CompatibilityEngine$analyze$1.kt
+  D	app/src/main/java/com/vantedge/app/data/engine/CompatibilityEngine$extractJobFieldsLegacy$1.kt
+  M	app/src/main/java/com/vantedge/app/data/engine/CompatibilityEngine.kt
+  M	app/src/main/java/com/vantedge/app/data/engine/DocxBuilder.kt
+  M	app/src/main/java/com/vantedge/app/data/engine/ExtractionMode.kt
+  A	app/src/main/java/com/vantedge/app/data/engine/ExtractionValidator.kt
+  M	app/src/main/java/com/vantedge/app/data/engine/GapAnalysisEngine.kt
+  M	app/src/main/java/com/vantedge/app/data/engine/Gate0Reason.kt
+  M	app/src/main/java/com/vantedge/app/data/engine/Gate0Result.kt
+  D	app/src/main/java/com/vantedge/app/data/engine/GeneratorEngine$generateCoverLetter$1.kt
+  D	app/src/main/java/com/vantedge/app/data/engine/GeneratorEngine$generateCv$1.kt
+  M	app/src/main/java/com/vantedge/app/data/engine/GeneratorEngine.kt
+  M	app/src/main/java/com/vantedge/app/data/engine/JobExtractionEngine.kt
+  A	app/src/main/java/com/vantedge/app/data/engine/JsonRepairUtil.kt
+  D	app/src/main/java/com/vantedge/app/data/engine/ProfileExtractionEngine$callAi$1.kt
+  D	app/src/main/java/com/vantedge/app/data/engine/ProfileExtractionEngine$extractRawText$1.kt
+  D	app/src/main/java/com/vantedge/app/data/engine/ProfileExtractionEngine$extractRawText$2.kt
+  D	app/src/main/java/com/vantedge/app/data/engine/ProfileExtractionEngine$structureProfile$1.kt
+  M	app/src/main/java/com/vantedge/app/data/engine/ProfileExtractionEngine.kt
+  M	app/src/main/java/com/vantedge/app/data/engine/ScoreEngine.kt
+  D	app/src/main/java/com/vantedge/app/data/engine/VantEdgeScoreResult.kt
+  A	app/src/main/java/com/vantedge/app/data/engine/extraction/ConfidenceEngine.kt
+  A	app/src/main/java/com/vantedge/app/data/engine/extraction/DocumentPreprocessor.kt
+  A	app/src/main/java/com/vantedge/app/data/engine/extraction/DocumentStructureAnalyzer.kt
+  A	app/src/main/java/com/vantedge/app/data/engine/extraction/JsonExtractionEngine.kt
+  A	app/src/main/java/com/vantedge/app/data/engine/extraction/LlmJobExtractor.kt
+  A	app/src/main/java/com/vantedge/app/data/engine/extraction/RuleBasedEmergencyExtractor.kt
+  A	app/src/main/java/com/vantedge/app/data/engine/extraction/SchemaValidator.kt
+  A	app/src/main/java/com/vantedge/app/data/engine/extraction/SemanticValidator.kt
+  M	app/src/main/java/com/vantedge/app/data/infrastructure/MediaStoreExporter.kt
+  M	app/src/main/java/com/vantedge/app/data/model/AcquisitionMode.kt
+  A	app/src/main/java/com/vantedge/app/data/model/AiRawResponseArtifact.kt
+  M	app/src/main/java/com/vantedge/app/data/model/ApplicationStatus.kt
+  M	app/src/main/java/com/vantedge/app/data/model/AtsResult.kt
+  M	app/src/main/java/com/vantedge/app/data/model/Certification.kt
+  M	app/src/main/java/com/vantedge/app/data/model/CompatibilityRecord.kt
+  M	app/src/main/java/com/vantedge/app/data/model/CompatibilityResult.kt
+  M	app/src/main/java/com/vantedge/app/data/model/ConfidenceBreakdown.kt
+  M	app/src/main/java/com/vantedge/app/data/model/CourseRecommendation.kt
+  D	app/src/main/java/com/vantedge/app/data/model/CycleState.kt
+  M	app/src/main/java/com/vantedge/app/data/model/DesignConfig.kt
+  M	app/src/main/java/com/vantedge/app/data/model/DocumentFormat.kt
+  M	app/src/main/java/com/vantedge/app/data/model/DocumentType.kt
+  M	app/src/main/java/com/vantedge/app/data/model/Experience.kt
+  M	app/src/main/java/com/vantedge/app/data/model/ExtractedCertification.kt
+  M	app/src/main/java/com/vantedge/app/data/model/ExtractedEducation.kt
+  M	app/src/main/java/com/vantedge/app/data/model/ExtractedExperience.kt
+  M	app/src/main/java/com/vantedge/app/data/model/ExtractedField.kt
+  M	app/src/main/java/com/vantedge/app/data/model/ExtractedPersonalInfo.kt
+  M	app/src/main/java/com/vantedge/app/data/model/ExtractionMetadata.kt
+  M	app/src/main/java/com/vantedge/app/data/model/ExtractionSourceType.kt
+  M	app/src/main/java/com/vantedge/app/data/model/GapAnalysisResult.kt
+  M	app/src/main/java/com/vantedge/app/data/model/GapItem.kt
+  M	app/src/main/java/com/vantedge/app/data/model/GapSeverity.kt
+  M	app/src/main/java/com/vantedge/app/data/model/Gate0JobReason.kt
+  M	app/src/main/java/com/vantedge/app/data/model/Gate0JobResult.kt
+  M	app/src/main/java/com/vantedge/app/data/model/GeneratedDocument.kt
+  M	app/src/main/java/com/vantedge/app/data/model/GenerationCycle.kt
+  M	app/src/main/java/com/vantedge/app/data/model/GenerationMode.kt
+  M	app/src/main/java/com/vantedge/app/data/model/JobData.kt
+  M	app/src/main/java/com/vantedge/app/data/model/JobExtractionFailureReason.kt
+  M	app/src/main/java/com/vantedge/app/data/model/JobExtractionMetrics.kt
+  M	app/src/main/java/com/vantedge/app/data/model/JobExtractionResult.kt
+  M	app/src/main/java/com/vantedge/app/data/model/JobSourceType.kt
+  M	app/src/main/java/com/vantedge/app/data/model/LearningRecommendation.kt
+  M	app/src/main/java/com/vantedge/app/data/model/OnboardingDraft.kt
+  M	app/src/main/java/com/vantedge/app/data/model/OnboardingStage.kt
+  M	app/src/main/java/com/vantedge/app/data/model/ProfileStats.kt
+  M	app/src/main/java/com/vantedge/app/data/model/QualificationRatio.kt
+  M	app/src/main/java/com/vantedge/app/data/model/RelevancyItem.kt
+  A	app/src/main/java/com/vantedge/app/data/model/RequirementAssessment.kt
+  M	app/src/main/java/com/vantedge/app/data/model/ScoreInterpretation.kt
+  M	app/src/main/java/com/vantedge/app/data/model/SkillGap.kt
+  M	app/src/main/java/com/vantedge/app/data/model/StructuredProfileExtraction.kt
+  M	app/src/main/java/com/vantedge/app/data/model/TelemetryRecord.kt
+  M	app/src/main/java/com/vantedge/app/data/model/UserDecisionEvent.kt
+  M	app/src/main/java/com/vantedge/app/data/model/UserProfile.kt
+  A	app/src/main/java/com/vantedge/app/data/model/ValidatedExtraction.kt
+  M	app/src/main/java/com/vantedge/app/data/model/VantageScoreResults.kt
+  M	app/src/main/java/com/vantedge/app/data/model/WorkEntry.kt
+  M	app/src/main/java/com/vantedge/app/data/model/WorkExperience.kt
+  A	app/src/main/java/com/vantedge/app/data/model/extraction/BlockMetadata.kt
+  A	app/src/main/java/com/vantedge/app/data/model/extraction/BlockType.kt
+  A	app/src/main/java/com/vantedge/app/data/model/extraction/DocumentBlock.kt
+  A	app/src/main/java/com/vantedge/app/data/model/extraction/ExtractionMethod.kt
+  A	app/src/main/java/com/vantedge/app/data/model/extraction/FieldConfidence.kt
+  A	app/src/main/java/com/vantedge/app/data/model/extraction/Page.kt
+  A	app/src/main/java/com/vantedge/app/data/model/extraction/StructuredDocument.kt
+  A	app/src/main/java/com/vantedge/app/data/network/AiBudgetPolicy.kt
+  D	app/src/main/java/com/vantedge/app/data/network/AiGateway$generate$1.kt
+  M	app/src/main/java/com/vantedge/app/data/network/AiGateway.kt
+  A	app/src/main/java/com/vantedge/app/data/network/AiRequest.kt
+  A	app/src/main/java/com/vantedge/app/data/network/AiResult.kt
+  D	app/src/main/java/com/vantedge/app/data/network/AiSystemInstructions_P1Kt.kt
+  D	app/src/main/java/com/vantedge/app/data/network/GeminiService$generate$1.kt
+  D	app/src/main/java/com/vantedge/app/data/network/GeminiService$tryChain$1.kt
+  D	app/src/main/java/com/vantedge/app/data/network/GeminiService$tryModelOnce$1.kt
+  D	app/src/main/java/com/vantedge/app/data/network/GeminiService$tryModelOnce$2.kt
+  D	app/src/main/java/com/vantedge/app/data/network/GeminiService$tryModelWithRetry$1.kt
+  M	app/src/main/java/com/vantedge/app/data/network/GeminiService.kt
+  A	app/src/main/java/com/vantedge/app/data/network/ModelAttemptResult.kt
+  D	app/src/main/java/com/vantedge/app/data/network/RequestThrottleManager$throttle$1.kt
+  M	app/src/main/java/com/vantedge/app/data/network/RequestThrottleManager.kt
+  A	app/src/main/java/com/vantedge/app/data/storage/AiRawResponseArtifactDao.kt
+  D	app/src/main/java/com/vantedge/app/data/storage/CycleDao$setActiveCycle$1.kt
+  M	app/src/main/java/com/vantedge/app/data/storage/CycleDao.kt
+  D	app/src/main/java/com/vantedge/app/data/storage/CycleDao_Impl.kt
+  M	app/src/main/java/com/vantedge/app/data/storage/CycleEntity.kt
+  D	app/src/main/java/com/vantedge/app/data/storage/CycleStateDeserializer.kt
+  D	app/src/main/java/com/vantedge/app/data/storage/CycleStateSerializer.kt
+  D	app/src/main/java/com/vantedge/app/data/storage/CycleStateSerializerKt.kt
+  D	app/src/main/java/com/vantedge/app/data/storage/HistoryStore$deleteCycle$1.kt
+  D	app/src/main/java/com/vantedge/app/data/storage/HistoryStore$getActiveCycle$1.kt
+  D	app/src/main/java/com/vantedge/app/data/storage/HistoryStore$getCycleByIdSuspend$1.kt
+  D	app/src/main/java/com/vantedge/app/data/storage/HistoryStore$saveCycle$1.kt
+  M	app/src/main/java/com/vantedge/app/data/storage/HistoryStore.kt
+  M	app/src/main/java/com/vantedge/app/data/storage/OnboardingDraftDao.kt
+  D	app/src/main/java/com/vantedge/app/data/storage/OnboardingDraftDao_Impl.kt
+  M	app/src/main/java/com/vantedge/app/data/storage/OnboardingDraftEntity.kt
+  D	app/src/main/java/com/vantedge/app/data/storage/OnboardingDraftStore$clearDraft$1.kt
+  D	app/src/main/java/com/vantedge/app/data/storage/OnboardingDraftStore$loadDraft$1.kt
+  D	app/src/main/java/com/vantedge/app/data/storage/OnboardingDraftStore$resetAndSave$1.kt
+  D	app/src/main/java/com/vantedge/app/data/storage/OnboardingDraftStore$saveDraft$1.kt
+  M	app/src/main/java/com/vantedge/app/data/storage/OnboardingDraftStore.kt
+  D	app/src/main/java/com/vantedge/app/data/storage/TelemetryStorage$getExportRecords$2.kt
+  D	app/src/main/java/com/vantedge/app/data/storage/TelemetryStorage$getRecentRecords$2.kt
+  M	app/src/main/java/com/vantedge/app/data/storage/TelemetryStorage.kt
+  D	app/src/main/java/com/vantedge/app/data/storage/UserPreferences$saveProfile$2.kt
+  M	app/src/main/java/com/vantedge/app/data/storage/UserPreferences.kt
+  D	app/src/main/java/com/vantedge/app/data/storage/UserPreferencesKt.kt
+  M	app/src/main/java/com/vantedge/app/data/storage/VantEdgeDatabase.kt
+  D	app/src/main/java/com/vantedge/app/data/storage/VantEdgeDatabase_Impl.kt
+  M	app/src/main/java/com/vantedge/app/data/viewmodel/ActionType.kt
+  M	app/src/main/java/com/vantedge/app/data/viewmodel/CompatibilityViewModel.kt
+  M	app/src/main/java/com/vantedge/app/data/viewmodel/ContentState.kt
+  M	app/src/main/java/com/vantedge/app/data/viewmodel/CycleNavEvent.kt
+  A	app/src/main/java/com/vantedge/app/data/viewmodel/CycleScoreAggregation.kt
+  M	app/src/main/java/com/vantedge/app/data/viewmodel/CycleStage.kt
+  M	app/src/main/java/com/vantedge/app/data/viewmodel/CycleUiState.kt
+  D	app/src/main/java/com/vantedge/app/data/viewmodel/CycleViewModel$applyDesign$1$fullCycle$1.kt
+  D	app/src/main/java/com/vantedge/app/data/viewmodel/CycleViewModel$applyDesign$1.kt
+  D	app/src/main/java/com/vantedge/app/data/viewmodel/CycleViewModel$cancelPipeline$1.kt
+  D	app/src/main/java/com/vantedge/app/data/viewmodel/CycleViewModel$clearActiveCycle$1.kt
+  D	app/src/main/java/com/vantedge/app/data/viewmodel/CycleViewModel$commitCurrentCycle$1.kt
+  D	app/src/main/java/com/vantedge/app/data/viewmodel/CycleViewModel$commitCurrentCycleAndWait$1.kt
+  D	app/src/main/java/com/vantedge/app/data/viewmodel/CycleViewModel$continueToGeneration$1$readyCycle$1.kt
+  D	app/src/main/java/com/vantedge/app/data/viewmodel/CycleViewModel$continueToGeneration$1.kt
+  D	app/src/main/java/com/vantedge/app/data/viewmodel/CycleViewModel$deleteCycle$1.kt
+  D	app/src/main/java/com/vantedge/app/data/viewmodel/CycleViewModel$dismissCurrentCycle$1.kt
+  D	app/src/main/java/com/vantedge/app/data/viewmodel/CycleViewModel$exportCurrentCycle$1.kt
+  D	app/src/main/java/com/vantedge/app/data/viewmodel/CycleViewModel$extractJobFields$1$result$1.kt
+  D	app/src/main/java/com/vantedge/app/data/viewmodel/CycleViewModel$extractJobFields$1.kt
+  D	app/src/main/java/com/vantedge/app/data/viewmodel/CycleViewModel$openCycle$1.kt
+  D	app/src/main/java/com/vantedge/app/data/viewmodel/CycleViewModel$restoreCycle$1.kt
+  D	app/src/main/java/com/vantedge/app/data/viewmodel/CycleViewModel$resultViewState$1.kt
+  D	app/src/main/java/com/vantedge/app/data/viewmodel/CycleViewModel$retryPipeline$1.kt
+  D	app/src/main/java/com/vantedge/app/data/viewmodel/CycleViewModel$runPipeline$1.kt
+  D	app/src/main/java/com/vantedge/app/data/viewmodel/CycleViewModel$runPipeline$2$cycle$1.kt
+  D	app/src/main/java/com/vantedge/app/data/viewmodel/CycleViewModel$runPipeline$2$readyCycle$1.kt
+  D	app/src/main/java/com/vantedge/app/data/viewmodel/CycleViewModel$runPipeline$2.kt
+  D	app/src/main/java/com/vantedge/app/data/viewmodel/CycleViewModel$startImproveFromCycle$1.kt
+  M	app/src/main/java/com/vantedge/app/data/viewmodel/CycleViewModel.kt
+  D	app/src/main/java/com/vantedge/app/data/viewmodel/DebugViewModel$exportTelemetry$1.kt
+  D	app/src/main/java/com/vantedge/app/data/viewmodel/DebugViewModel$refreshRecords$1.kt
+  M	app/src/main/java/com/vantedge/app/data/viewmodel/DebugViewModel.kt
+  M	app/src/main/java/com/vantedge/app/data/viewmodel/ExportEvent.kt
+  M	app/src/main/java/com/vantedge/app/data/viewmodel/ExportState.kt
+  M	app/src/main/java/com/vantedge/app/data/viewmodel/GeneratorViewModel.kt
+  M	app/src/main/java/com/vantedge/app/data/viewmodel/JobExtractionState.kt
+  M	app/src/main/java/com/vantedge/app/data/viewmodel/OnboardingExtractionState.kt
+  D	app/src/main/java/com/vantedge/app/data/viewmodel/OnboardingViewModel$addSkill$1.kt
+  D	app/src/main/java/com/vantedge/app/data/viewmodel/OnboardingViewModel$advanceToChoosePath$1.kt
+  D	app/src/main/java/com/vantedge/app/data/viewmodel/OnboardingViewModel$advanceToFinalReview$1.kt
+  D	app/src/main/java/com/vantedge/app/data/viewmodel/OnboardingViewModel$commitProfile$1.kt
+  D	app/src/main/java/com/vantedge/app/data/viewmodel/OnboardingViewModel$handleSuccess$1.kt
+  D	app/src/main/java/com/vantedge/app/data/viewmodel/OnboardingViewModel$loadDraftIfExists$1.kt
+  D	app/src/main/java/com/vantedge/app/data/viewmodel/OnboardingViewModel$removeSkill$1.kt
+  D	app/src/main/java/com/vantedge/app/data/viewmodel/OnboardingViewModel$resetToChoosePath$1.kt
+  D	app/src/main/java/com/vantedge/app/data/viewmodel/OnboardingViewModel$runStructuredExtraction$1.kt
+  D	app/src/main/java/com/vantedge/app/data/viewmodel/OnboardingViewModel$selectAcquisitionMode$1.kt
+  D	app/src/main/java/com/vantedge/app/data/viewmodel/OnboardingViewModel$startExtraction$1.kt
+  D	app/src/main/java/com/vantedge/app/data/viewmodel/OnboardingViewModel$updateDraft$1.kt
+  D	app/src/main/java/com/vantedge/app/data/viewmodel/OnboardingViewModel$updateEditedProfile$1.kt
+  M	app/src/main/java/com/vantedge/app/data/viewmodel/OnboardingViewModel.kt
+  M	app/src/main/java/com/vantedge/app/data/viewmodel/OnboardingViewModelFactory.kt
+  M	app/src/main/java/com/vantedge/app/data/viewmodel/RestorationState.kt
+  M	app/src/main/java/com/vantedge/app/data/viewmodel/ResultError.kt
+  M	app/src/main/java/com/vantedge/app/data/viewmodel/ResultViewState.kt
+  M	app/src/main/java/com/vantedge/app/data/viewmodel/WorkflowState.kt
+  D	app/src/main/java/com/vantedge/app/domain/OnboardingCommitService$commit$1.kt
+  D	app/src/main/java/com/vantedge/app/domain/OnboardingCommitService.kt
+  D	app/src/main/java/com/vantedge/app/domain/OptimizationOrchestrator$applyDesign$1.kt
+  D	app/src/main/java/com/vantedge/app/domain/OptimizationOrchestrator$runAnalysisFresh$1.kt
+  D	app/src/main/java/com/vantedge/app/domain/OptimizationOrchestrator$runAnalysisOnly$1.kt
+  D	app/src/main/java/com/vantedge/app/domain/OptimizationOrchestrator$runFullPipeline$1.kt
+  D	app/src/main/java/com/vantedge/app/domain/OptimizationOrchestrator$runGenerationFromCycle$1.kt
+  D	app/src/main/java/com/vantedge/app/domain/OptimizationOrchestrator.kt
+  A	app/src/main/java/com/vantedge/app/domain/PipelineEvents.kt
+  D	app/src/main/java/com/vantedge/app/domain/PipelineStep.kt
+  M	app/src/main/java/com/vantedge/app/domain/PipelineTrace.kt
+  A	app/src/main/java/com/vantedge/app/domain/extraction/ExtractionDecision.kt
+  A	app/src/main/java/com/vantedge/app/domain/extraction/ExtractionDecisionCoordinator.kt
+  A	app/src/main/java/com/vantedge/app/domain/extraction/ExtractionOutcome.kt
+  A	app/src/main/java/com/vantedge/app/domain/extraction/JobExtractionOrchestrator.kt
+  A	app/src/main/java/com/vantedge/app/domain/policy/ThresholdPolicy.kt
+  A	app/src/main/java/com/vantedge/app/extraction/confidence/ConfidenceDimensions.kt
+  A	app/src/main/java/com/vantedge/app/narrative/NarrativeEvidenceContext.kt
+  A	app/src/main/java/com/vantedge/app/narrative/NarrativeEvidenceMapper.kt
+  A	app/src/main/java/com/vantedge/app/narrative/W5Evidence.kt
+  M	app/src/main/java/com/vantedge/app/navigation/Navigation.kt
+  D	app/src/main/java/com/vantedge/app/navigation/NavigationKt$AppNavigation$2.kt
+  D	app/src/main/java/com/vantedge/app/navigation/NavigationKt$AppNavigation$3.kt
+  D	app/src/main/java/com/vantedge/app/navigation/NavigationKt$AppNavigation$4.kt
+  D	app/src/main/java/com/vantedge/app/navigation/NavigationKt$AppNavigation$5.kt
+  D	app/src/main/java/com/vantedge/app/navigation/NavigationKt.kt
+  D	app/src/main/java/com/vantedge/app/notifications /DeadlineNotificationSchedular.kt
+  M	app/src/main/java/com/vantedge/app/notifications/DeadlineNotificationScheduler.kt
+  M	app/src/main/java/com/vantedge/app/notifications/DeadlineNotificationWorker.kt
+  A	app/src/main/java/com/vantedge/app/ui/components/WarningsBanner.kt
+  M	app/src/main/java/com/vantedge/app/ui/screens/AdvancedAnalysisScreen.kt
+  D	app/src/main/java/com/vantedge/app/ui/screens/AdvancedAnalysisScreenKt$GapAnalysisContent$1$invoke$$inlined$items$default$10.kt
+  D	app/src/main/java/com/vantedge/app/ui/screens/AdvancedAnalysisScreenKt$GapAnalysisContent$1$invoke$$inlined$items$default$2.kt
+  D	app/src/main/java/com/vantedge/app/ui/screens/AdvancedAnalysisScreenKt$GapAnalysisContent$1$invoke$$inlined$items$default$6.kt
+  D	app/src/main/java/com/vantedge/app/ui/screens/AdvancedAnalysisScreenKt$SkillsMatchContent$1$invoke$$inlined$items$default$10.kt
+  D	app/src/main/java/com/vantedge/app/ui/screens/AdvancedAnalysisScreenKt$SkillsMatchContent$1$invoke$$inlined$items$default$2.kt
+  D	app/src/main/java/com/vantedge/app/ui/screens/AdvancedAnalysisScreenKt$SkillsMatchContent$1$invoke$$inlined$items$default$6.kt
+  D	app/src/main/java/com/vantedge/app/ui/screens/AdvancedAnalysisScreenKt.kt
+  M	app/src/main/java/com/vantedge/app/ui/screens/AnalysisResultScreen.kt
+  D	app/src/main/java/com/vantedge/app/ui/screens/AnalysisResultScreenKt$AnalysisResultScreen$3$2$invoke$$inlined$items$default$2.kt
+  D	app/src/main/java/com/vantedge/app/ui/screens/AnalysisResultScreenKt$AnalysisResultScreen$3$2$invoke$$inlined$items$default$6.kt
+  D	app/src/main/java/com/vantedge/app/ui/screens/AnalysisResultScreenKt.kt
+  D	app/src/main/java/com/vantedge/app/ui/screens/AnalysisScreenMode.kt
+  D	app/src/main/java/com/vantedge/app/ui/screens/AppColorsKt.kt
+  D	app/src/main/java/com/vantedge/app/ui/screens/CVDesign.kt
+  D	app/src/main/java/com/vantedge/app/ui/screens/CVDesignScreenKt.kt
+  M	app/src/main/java/com/vantedge/app/ui/screens/CVGeneratorScreen.kt
+  D	app/src/main/java/com/vantedge/app/ui/screens/ChoosePathScreenKt$ChoosePathScreen$1$1.kt
+  D	app/src/main/java/com/vantedge/app/ui/screens/ChoosePathScreenKt.kt
+  D	app/src/main/java/com/vantedge/app/ui/screens/ColorScheme.kt
+  D	app/src/main/java/com/vantedge/app/ui/screens/ColorSchemeScreenKt.kt
+  M	app/src/main/java/com/vantedge/app/ui/screens/CompatibilityInputScreen.kt
+  M	app/src/main/java/com/vantedge/app/ui/screens/CompatibilityResultScreen.kt
+  D	app/src/main/java/com/vantedge/app/ui/screens/ComposableSingletons$AdvancedAnalysisScreenKt.kt
+  D	app/src/main/java/com/vantedge/app/ui/screens/ComposableSingletons$AnalysisResultScreenKt.kt
+  D	app/src/main/java/com/vantedge/app/ui/screens/ComposableSingletons$CVDesignScreenKt.kt
+  D	app/src/main/java/com/vantedge/app/ui/screens/ComposableSingletons$ChoosePathScreenKt.kt
+  D	app/src/main/java/com/vantedge/app/ui/screens/ComposableSingletons$ColorSchemeScreenKt.kt
+  D	app/src/main/java/com/vantedge/app/ui/screens/ComposableSingletons$CoverLetterScreenKt.kt
+  D	app/src/main/java/com/vantedge/app/ui/screens/ComposableSingletons$CycleHistoryScreenKt.kt
+  D	app/src/main/java/com/vantedge/app/ui/screens/ComposableSingletons$DashboardScreenKt.kt
+  D	app/src/main/java/com/vantedge/app/ui/screens/ComposableSingletons$DebugCalibrationScreenKt.kt
+  D	app/src/main/java/com/vantedge/app/ui/screens/ComposableSingletons$EditProfileScreenKt.kt
+  D	app/src/main/java/com/vantedge/app/ui/screens/ComposableSingletons$EligibilityCheckerScreenKt.kt
+  D	app/src/main/java/com/vantedge/app/ui/screens/ComposableSingletons$ErrorScreenKt.kt
+  D	app/src/main/java/com/vantedge/app/ui/screens/ComposableSingletons$ExtractingScreenKt.kt
+  D	app/src/main/java/com/vantedge/app/ui/screens/ComposableSingletons$FinalReviewScreenKt.kt
+  D	app/src/main/java/com/vantedge/app/ui/screens/ComposableSingletons$JobInputScreenKt.kt
+  D	app/src/main/java/com/vantedge/app/ui/screens/ComposableSingletons$PlaceHolderScreenKt.kt
+  D	app/src/main/java/com/vantedge/app/ui/screens/ComposableSingletons$PostDownloadScreenKt.kt
+  D	app/src/main/java/com/vantedge/app/ui/screens/ComposableSingletons$ResultScreenKt.kt
+  D	app/src/main/java/com/vantedge/app/ui/screens/ComposableSingletons$ReviewExtractionScreenKt.kt
+  D	app/src/main/java/com/vantedge/app/ui/screens/ComposableSingletons$WelcomeScreenKt.kt
+  D	app/src/main/java/com/vantedge/app/ui/screens/CoverLetterScreenKt.kt
+  M	app/src/main/java/com/vantedge/app/ui/screens/CycleHistoryScreen.kt
+  D	app/src/main/java/com/vantedge/app/ui/screens/CycleHistoryScreenKt.kt
+  M	app/src/main/java/com/vantedge/app/ui/screens/DashboardScreen.kt
+  D	app/src/main/java/com/vantedge/app/ui/screens/DashboardScreenKt.kt
+  D	app/src/main/java/com/vantedge/app/ui/screens/DebugCalibrationScreenKt$DebugCalibrationScreen$3$2$invoke$$inlined$items$default$2.kt
+  D	app/src/main/java/com/vantedge/app/ui/screens/DebugCalibrationScreenKt.kt
+  M	app/src/main/java/com/vantedge/app/ui/screens/EditProfileScreen.kt
+  D	app/src/main/java/com/vantedge/app/ui/screens/EditProfileScreenKt$EditProfileScreen$1$1.kt
+  D	app/src/main/java/com/vantedge/app/ui/screens/EditProfileScreenKt.kt
+  D	app/src/main/java/com/vantedge/app/ui/screens/EligibilityCheckerScreenKt.kt
+  D	app/src/main/java/com/vantedge/app/ui/screens/ErrorScreenKt.kt
+  D	app/src/main/java/com/vantedge/app/ui/screens/ExtractingScreenKt.kt
+  M	app/src/main/java/com/vantedge/app/ui/screens/FinalReviewScreen.kt
+  D	app/src/main/java/com/vantedge/app/ui/screens/FinalReviewScreenKt$FinalReviewScreen$2$1.kt
+  D	app/src/main/java/com/vantedge/app/ui/screens/FinalReviewScreenKt$FinalReviewScreen$3$1.kt
+  D	app/src/main/java/com/vantedge/app/ui/screens/FinalReviewScreenKt.kt
+  A	app/src/main/java/com/vantedge/app/ui/screens/ForensicDebugScreen.kt
+  M	app/src/main/java/com/vantedge/app/ui/screens/JobInputScreen.kt
+  D	app/src/main/java/com/vantedge/app/ui/screens/JobInputScreenKt$JobInputScreen$1.kt
+  D	app/src/main/java/com/vantedge/app/ui/screens/JobInputScreenKt$JobInputScreen$2.kt
+  D	app/src/main/java/com/vantedge/app/ui/screens/JobInputScreenKt$JobInputScreen$3.kt
+  D	app/src/main/java/com/vantedge/app/ui/screens/JobInputScreenKt$JobInputScreen$4.kt
+  D	app/src/main/java/com/vantedge/app/ui/screens/JobInputScreenKt$JobInputScreen$fetchUrl$1$result$1.kt
+  D	app/src/main/java/com/vantedge/app/ui/screens/JobInputScreenKt$JobInputScreen$fetchUrl$1.kt
+  D	app/src/main/java/com/vantedge/app/ui/screens/JobInputScreenKt$JobInputScreen$fileLauncher$1$1$2$1.kt
+  D	app/src/main/java/com/vantedge/app/ui/screens/JobInputScreenKt$JobInputScreen$fileLauncher$1$1$extracted$1.kt
+  D	app/src/main/java/com/vantedge/app/ui/screens/JobInputScreenKt.kt
+  D	app/src/main/java/com/vantedge/app/ui/screens/JobInputStage.kt
+  D	app/src/main/java/com/vantedge/app/ui/screens/LoadingMode.kt
+  D	app/src/main/java/com/vantedge/app/ui/screens/LoadingScreenKt.kt
+  M	app/src/main/java/com/vantedge/app/ui/screens/PipelineLoadingScreen.kt
+  D	app/src/main/java/com/vantedge/app/ui/screens/PipelineLoadingScreenKt$FullPipelineLoadingScreen$1$1.kt
+  D	app/src/main/java/com/vantedge/app/ui/screens/PipelineLoadingScreenKt$FullPipelineLoadingScreen$2.kt
+  D	app/src/main/java/com/vantedge/app/ui/screens/PipelineLoadingScreenKt$ImproveLoadingScreen$1.kt
+  D	app/src/main/java/com/vantedge/app/ui/screens/PipelineLoadingScreenKt.kt
+  D	app/src/main/java/com/vantedge/app/ui/screens/PlaceHolderScreenKt.kt
+  D	app/src/main/java/com/vantedge/app/ui/screens/PostDownloadScreenKt.kt
+  M	app/src/main/java/com/vantedge/app/ui/screens/ResultScreen.kt
+  D	app/src/main/java/com/vantedge/app/ui/screens/ResultScreenKt$AnalysisTab$1$invoke$$inlined$items$default$2.kt
+  D	app/src/main/java/com/vantedge/app/ui/screens/ResultScreenKt$AnalysisTab$1$invoke$$inlined$items$default$6.kt
+  D	app/src/main/java/com/vantedge/app/ui/screens/ResultScreenKt$ResultScreen$1.kt
+  D	app/src/main/java/com/vantedge/app/ui/screens/ResultScreenKt$ResultScreen$2.kt
+  D	app/src/main/java/com/vantedge/app/ui/screens/ResultScreenKt$ResultScreen$5.kt
+  D	app/src/main/java/com/vantedge/app/ui/screens/ResultScreenKt$ResultScreen$savePdf$1.kt
+  D	app/src/main/java/com/vantedge/app/ui/screens/ResultScreenKt$ResultScreen$savePdf$webView$1$1.kt
+  D	app/src/main/java/com/vantedge/app/ui/screens/ResultScreenKt.kt
+  D	app/src/main/java/com/vantedge/app/ui/screens/ResultScreenMode.kt
+  M	app/src/main/java/com/vantedge/app/ui/screens/ReviewExtractionScreen.kt
+  D	app/src/main/java/com/vantedge/app/ui/screens/ReviewExtractionScreenKt$ReviewExtractionScreen$1$1.kt
+  D	app/src/main/java/com/vantedge/app/ui/screens/ReviewExtractionScreenKt.kt
+  A	app/src/main/java/com/vantedge/app/ui/screens/ScorePresentation.kt
+  D	app/src/main/java/com/vantedge/app/ui/screens/TabInfo.kt
+  D	app/src/main/java/com/vantedge/app/ui/screens/WelcomeScreenKt$WelcomeScreen$1$1.kt
+  D	app/src/main/java/com/vantedge/app/ui/screens/WelcomeScreenKt.kt
+  M	app/src/main/java/com/vantedge/app/ui/theme/AppColors.kt
+  D	app/src/main/java/com/vantedge/app/ui/theme/ColorKt.kt
+  D	app/src/main/java/com/vantedge/app/ui/theme/ThemeKt.kt
+  D	app/src/main/java/com/vantedge/app/ui/theme/TypographyKt.kt
+  M	app/src/main/java/com/vantedge/app/util/AppLogger.kt
+  M	app/src/main/java/com/vantedge/app/util/FailureLogBundle.kt
+  M	app/src/main/java/com/vantedge/app/util/FileUtil.kt
+  M	app/src/main/java/com/vantedge/app/util/HashUtils.kt
+  M	app/src/main/java/com/vantedge/app/util/LogDumper.kt
+  A	app/src/main/java/com/vantedge/app/util/LogFileProvider.kt
+  A	app/src/main/java/com/vantedge/app/util/LogSink.kt
+  D	app/src/main/java/com/vantedge/app/util/Telemetry collector.kt
+  D	app/src/main/java/com/vantedge/app/util/TelemetryCollector$record$1.kt
+  D	app/src/main/java/com/vantedge/app/util/TelemetryCollector$recordDecision$1.kt
+  M	app/src/main/java/com/vantedge/app/util/TelemetryCollector.kt
+  D	app/src/main/java/com/vantedge/app/util/TelemetryExportService$createExportFile$2.kt
+  M	app/src/main/java/com/vantedge/app/util/TelemetryExportService.kt
+  A	app/src/main/java/com/vantedge/app/util/TelemetryPathProvider.kt
+  A	app/src/main/java/com/vantedge/app/w5/scoring/AxisEvaluators.kt
+  A	app/src/main/java/com/vantedge/app/w5/scoring/DeterministicCompatibilityEngine.kt
+  A	app/src/main/java/com/vantedge/app/w5/scoring/DirectW5InputAdapter.kt
+  A	app/src/main/java/com/vantedge/app/w5/scoring/ExtractionAssessment.kt
+  A	app/src/main/java/com/vantedge/app/w5/scoring/ExtractionValidator.kt
+  A	app/src/main/java/com/vantedge/app/w5/scoring/FabricationDetector.kt
+  A	app/src/main/java/com/vantedge/app/w5/scoring/GapAnalyzer.kt
+  A	app/src/main/java/com/vantedge/app/w5/scoring/HintBuilder.kt
+  A	app/src/main/java/com/vantedge/app/w5/scoring/JobRequirementAdapter.kt
+  A	app/src/main/java/com/vantedge/app/w5/scoring/NormalizedProfile.kt
+  A	app/src/main/java/com/vantedge/app/w5/scoring/ProfileSanitizer.kt
+  A	app/src/main/java/com/vantedge/app/w5/scoring/QualificationEvaluator.kt
+  A	app/src/main/java/com/vantedge/app/w5/scoring/RequirementEvidence.kt
+  A	app/src/main/java/com/vantedge/app/w5/scoring/SanitizationAudit.kt
+  A	app/src/main/java/com/vantedge/app/w5/scoring/SkillTaxonomyProvider.kt
+  A	app/src/main/java/com/vantedge/app/w5/scoring/W5Adapter.kt
+  A	app/src/main/java/com/vantedge/app/w5/scoring/W5AssetLoader.kt
+  A	app/src/main/java/com/vantedge/app/w5/scoring/W5Constants.kt
+  A	app/src/main/java/com/vantedge/app/w5/scoring/W5ScoreEngine.kt
+  A	app/src/main/java/com/vantedge/app/w5/scoring/W5Types.kt
+  A	app/src/main/java/com/vantedge/app/w5/scoring/W5Utils.kt
+  A	app/src/main/java/com/vantedge/app/w6/improvement/W6Constants.kt
+  A	app/src/main/java/com/vantedge/app/w6/improvement/W6Engine.kt
+  A	app/src/main/java/com/vantedge/app/w6/improvement/W6Rules.kt
+  A	app/src/main/java/com/vantedge/app/w6/improvement/W6Types.kt
+  A	app/src/main/java/com/vantedge/observability/p2/adapter/P2TraceAdapter.kt
+  A	app/src/main/java/com/vantedge/observability/p2/diff/TraceDiffEngine.kt
+  A	app/src/main/java/com/vantedge/observability/p2/hash/TraceHashCalculator.kt
+  A	app/src/main/java/com/vantedge/observability/p2/model/ObservabilityTraceModel.kt
+  A	app/src/main/java/com/vantedge/observability/p2/replay/ReplayEngine.kt
+  A	app/src/main/java/com/vantedge/pipeline/contract/ContractFailureReason.kt
+  A	app/src/main/java/com/vantedge/pipeline/contract/ContractValidationResult.kt
+  A	app/src/main/java/com/vantedge/pipeline/contract/ContractValidator.kt
+  A	app/src/main/java/com/vantedge/pipeline/contract/ExtractedAiPayload.kt
+  A	app/src/main/java/com/vantedge/pipeline/contract/ExtractionMetadata.kt
+  A	app/src/main/java/com/vantedge/pipeline/contract/JobType.kt
+  A	app/src/main/java/com/vantedge/pipeline/contract/ValidatedAiPayload.kt
+  A	app/src/main/java/com/vantedge/pipeline/evidence/EvidenceCategory.kt
+  A	app/src/main/java/com/vantedge/pipeline/evidence/EvidenceIntegrityDetector.kt
+  A	app/src/main/java/com/vantedge/pipeline/evidence/EvidenceIntegrityModels.kt
+  A	app/src/main/java/com/vantedge/pipeline/evidence/EvidenceIntegrityTypes.kt
+  A	app/src/main/java/com/vantedge/pipeline/evidence/EvidencePolicyEnforcer.kt
+  A	app/src/main/java/com/vantedge/pipeline/evidence/EvidenceRegistry.kt
+  A	app/src/main/java/com/vantedge/pipeline/evidence/EvidenceResult.kt
+  A	app/src/main/java/com/vantedge/pipeline/validation/P2ValidationEngine.kt
+  A	app/src/main/java/com/vantedge/pipeline/validation/ValidatedDomainObject.kt
+  A	app/src/main/java/com/vantedge/pipeline/validation/ValidationDecision.kt
+  A	app/src/main/java/com/vantedge/pipeline/validation/ValidationTrace.kt
+  M	app/src/main/res/drawable-v24/ic_launcher_foreground.xml
+  M	app/src/main/res/drawable/ic_launcher_background.xml
+  M	app/src/main/res/layout/activity_main.xml
+  M	app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml
+  M	app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml
+  M	app/src/main/res/mipmap-hdpi/ic_launcher.png
+  M	app/src/main/res/mipmap-hdpi/ic_launcher_round.png
+  M	app/src/main/res/mipmap-mdpi/ic_launcher.png
+  M	app/src/main/res/mipmap-mdpi/ic_launcher_round.png
+  M	app/src/main/res/mipmap-xhdpi/ic_launcher.png
+  M	app/src/main/res/mipmap-xhdpi/ic_launcher_round.png
+  M	app/src/main/res/mipmap-xxhdpi/ic_launcher.png
+  M	app/src/main/res/mipmap-xxhdpi/ic_launcher_round.png
+  M	app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
+  M	app/src/main/res/mipmap-xxxhdpi/ic_launcher_round.png
+  A	app/src/main/res/raw/extraction_dictionary.txt
+  M	app/src/main/res/values/colors.xml
+  M	app/src/main/res/values/strings.xml
+  A	app/src/test/java/com/vantedge/app/data/engine/DateRecoveryPostProcessingTest.kt
+  A	app/src/test/java/com/vantedge/app/data/engine/ExtractionValidatorTest.kt
+  A	app/src/test/java/com/vantedge/app/data/engine/JsonRepairUtilTest.kt
+  A	app/src/test/java/com/vantedge/app/data/engine/extraction/ConfidenceEngineCorruptedOcrTest.kt.bak
+  A	app/src/test/java/com/vantedge/app/data/engine/extraction/ConfidenceEngineUnknownTest.kt
+  A	app/src/test/java/com/vantedge/app/data/storage/CompatibilityRecordLegacyJsonTest.kt
+  A	app/src/test/java/com/vantedge/app/data/viewmodel/CycleScoreAggregationTest.kt
+  A	app/src/test/java/com/vantedge/app/data/viewmodel/ExtractionOutcomeMapperTest.kt
+  A	app/src/test/java/com/vantedge/app/domain/extraction/ExtractionDecisionCoordinatorUnknownTest.kt
+  A	app/src/test/java/com/vantedge/app/ui/screens/ScorePresentationTest.kt
+  A	app/src/test/java/com/vantedge/app/ui/screens/UnassessedPresentationTest.kt
+  A	app/src/test/java/com/vantedge/app/w5/scoring/CorrectiveUnknownStateTest.kt
+  A	app/src/test/java/com/vantedge/app/w5/scoring/ExtractionValidatorTest.kt
+  A	app/src/test/java/com/vantedge/app/w5/scoring/HintBuilderMeasurednessTest.kt
+  A	app/src/test/java/com/vantedge/app/w5/scoring/JobRequirementAdapterTest.kt
+  A	app/src/test/java/com/vantedge/app/w5/scoring/JobTitleRoleRelevanceProductionTest.kt
+  A	app/src/test/java/com/vantedge/app/w5/scoring/ProfileSanitizerTest.kt
+  A	app/src/test/java/com/vantedge/app/w5/scoring/ProvisionalScoreTest.kt
+  A	app/src/test/java/com/vantedge/app/w5/scoring/QualificationEvaluatorTest.kt
+  A	app/src/test/java/com/vantedge/app/w5/scoring/RequirementCoverageTest.kt
+  A	app/src/test/java/com/vantedge/app/w5/scoring/W5ScoreBaselineTest.kt
+  A	app/src/test/java/com/vantedge/app/w5/scoring/W5ScoreEngineTest.kt
+  A	app/src/test/java/com/vantedge/app/w6/improvement/W6EngineTest.kt
+  A	app/src/test/java/com/vantedge/app/w6/improvement/W6UnknownAxisTest.kt
+  A	app/src/test/java/com/vantedge/pipeline/evidence/PhaseDAuthorityTest.kt
+  A	app/src/test/java/com/vantedge/pipeline/validation/P2VerificationHarnessTest.kt
+  A	app/src/test/resources/extraction_dictionary.txt
+  A	app/src/test/resources/validation/skill_taxonomy.json
+  M	build.gradle
+  M	gradle.properties
+  M	gradle/wrapper/gradle-wrapper.properties
+  M	settings.gradle
+  A	test/fixtures/corrupted_job_posting.txt
+diffstat_mergebase_to_head:
+   .github/workflows/ci.yml                           |   34 +
+   .github/workflows/full-ci.yml                      |   54 +
+   .github/workflows/h3-corrupted-ocr-test.yml        |   40 +
+   .github/workflows/w5-tests.yml                     |   89 +
+   .gitignore                                         |   25 +-
+   ARCHITECTURAL_GOVERNANCE.md                        |   55 +
+   BUILD_BASELINE.md                                  |   66 +
+   INTEGRATION_ARCHITECTURE_REPORT.md                 |  515 ++++++
+   P2_ARCHITECTURE_DIAGRAM.md                         |  134 ++
+   P2_AUDIT_EVIDENCE_REPORT_v1.0.md                   |  434 +++++
+   P2_BASELINE_COMPLETENESS_AUDIT.md                  |  325 ++++
+   P2_CLOSURE_COMPLETION.md                           |   60 +
+   P2_CLOSURE_REPORT.md                               |  103 ++
+   P2_CORRELATION_OWNERSHIP_AUDIT.md                  |  374 ++++
+   P2_DEPENDENCY_VERIFICATION_AUDIT.md                |  290 ++++
+   P2_GOVERNANCE_ARTIFACTS.md                         |  488 ++++++
+   P2_PROTECTED_COMPONENT_REGISTER.md                 |  110 ++
+   P2_RECOVERY_BASELINE.md                            |   63 +
+   P2_REVALIDATION_MATRIX.md                          |   59 +
+   P2_TRACE_ROOT_CAUSE.md                             |   58 +
+   RECOVERY_MATRIX.md                                 |  202 +++
+   VantEdge_Master_Brief_2026-06-24.md                |  110 ++
+   W3-D_PREFLIGHT_CONTRACT_SCAN.md                    |  402 +++++
+   W3_TIMEOUT_GOVERNANCE_ARCHITECTURAL_DISCOVERY.md   |  568 +++++++
+   W4_v2.0_AUDIT_REPORT.md                            |  476 ++++++
+   W4_v2.1_STRUCTURAL_STATE_REPORT.md                 |  522 ++++++
+   W5_PLANNING_PACKAGE.md                             |  128 ++
+   app/build.gradle                                   |   45 +-
+   app/src/main/AndroidManifest.xml                   |    1 +
+   .../assets/validation/certification_taxonomy.json  |   47 +
+   .../assets/validation/hallucination_markers.txt    |   19 +
+   app/src/main/assets/validation/invalid_headers.txt |   22 +
+   .../main/assets/validation/provider_whitelist.json |   28 +
+   app/src/main/assets/validation/skill_taxonomy.json |   36 +
+   .../main/assets/validation/validation_rules.json   |   85 +
+   app/src/main/assets/w5/keyword_dictionary.json     |    1 +
+   app/src/main/assets/w5/stop_words.json             |    1 +
+   app/src/main/java/com/vantedge/app/BuildConfig.kt  |   11 -
+   app/src/main/java/com/vantedge/app/MainActivity.kt |   96 +-
+   app/src/main/java/com/vantedge/app/R.kt            | 1300 --------------
+   .../java/com/vantedge/app/VantEdgeApplication.kt   |   30 +
+   .../app/data/domain/CompatibilityOrchestrator.kt   |   16 +
+   .../app/data/domain/CompatibilityRecordMapper.kt   |  442 +++++
+   .../app/data/domain/DocumentExportUseCase.kt       |   73 +-
+   .../com/vantedge/app/data/domain/ExportReceipt.kt  |   94 +-
+   .../app/data/domain/OnboardingCommitService.kt     |    2 +-
+   .../app/data/domain/OptimizationOrchestrator.kt    |  597 +++++--
+   .../com/vantedge/app/data/domain/PipelineStep.kt   |    2 +-
+   .../vantedge/app/data/domain/ScoreCompleteness.kt  |    8 +
+   .../java/com/vantedge/app/data/engine/ATSEngine.kt |   39 -
+   .../com/vantedge/app/data/engine/ATSResults.kt     |    0
+   .../java/com/vantedge/app/data/engine/AtsResult.kt |   87 -
+   .../com/vantedge/app/data/engine/CVTemplate.kt     |  769 ++++-----
+   .../com/vantedge/app/data/engine/CareerEngine.kt   |  164 +-
+   .../data/engine/CompatibilityEngine$analyze$1.kt   |   34 -
+   ...CompatibilityEngine$extractJobFieldsLegacy$1.kt |   31 -
+   .../app/data/engine/CompatibilityEngine.kt         |  215 ++-
+   .../com/vantedge/app/data/engine/DocxBuilder.kt    |  194 +--
+   .../com/vantedge/app/data/engine/ExtractionMode.kt |   25 +-
+   .../app/data/engine/ExtractionValidator.kt         |  326 ++++
+   .../vantedge/app/data/engine/GapAnalysisEngine.kt  |   48 +-
+   .../com/vantedge/app/data/engine/Gate0Reason.kt    |   19 +-
+   .../com/vantedge/app/data/engine/Gate0Result.kt    |  127 +-
+   .../GeneratorEngine$generateCoverLetter$1.kt       |   30 -
+   .../data/engine/GeneratorEngine$generateCv$1.kt    |   30 -
+   .../vantedge/app/data/engine/GeneratorEngine.kt    |  338 +++-
+   .../app/data/engine/JobExtractionEngine.kt         |  745 +++-----
+   .../com/vantedge/app/data/engine/JsonRepairUtil.kt |  117 ++
+   .../engine/ProfileExtractionEngine$callAi$1.kt     |   32 -
+   .../ProfileExtractionEngine$extractRawText$1.kt    |   32 -
+   .../ProfileExtractionEngine$extractRawText$2.kt    |   58 -
+   .../ProfileExtractionEngine$structureProfile$1.kt  |   33 -
+   .../app/data/engine/ProfileExtractionEngine.kt     | 1637 +++++++++---------
+   .../com/vantedge/app/data/engine/ScoreEngine.kt    |   74 +-
+   .../app/data/engine/VantEdgeScoreResult.kt         |   71 -
+   .../app/data/engine/extraction/ConfidenceEngine.kt |   81 +
+   .../data/engine/extraction/DocumentPreprocessor.kt |  149 ++
+   .../engine/extraction/DocumentStructureAnalyzer.kt |  197 +++
+   .../data/engine/extraction/JsonExtractionEngine.kt |  224 +++
+   .../app/data/engine/extraction/LlmJobExtractor.kt  |  312 ++++
+   .../extraction/RuleBasedEmergencyExtractor.kt      |  229 +++
+   .../app/data/engine/extraction/SchemaValidator.kt  |   77 +
+   .../data/engine/extraction/SemanticValidator.kt    |  115 ++
+   .../app/data/infrastructure/MediaStoreExporter.kt  |   96 +-
+   .../com/vantedge/app/data/model/AcquisitionMode.kt |   21 +-
+   .../app/data/model/AiRawResponseArtifact.kt        |   28 +
+   .../vantedge/app/data/model/ApplicationStatus.kt   |   21 +-
+   .../java/com/vantedge/app/data/model/AtsResult.kt  |    2 +-
+   .../com/vantedge/app/data/model/Certification.kt   |  158 +-
+   .../vantedge/app/data/model/CompatibilityRecord.kt |  287 +---
+   .../vantedge/app/data/model/CompatibilityResult.kt |  145 +-
+   .../vantedge/app/data/model/ConfidenceBreakdown.kt |  141 +-
+   .../app/data/model/CourseRecommendation.kt         |  190 +--
+   .../java/com/vantedge/app/data/model/CycleState.kt |  258 ---
+   .../com/vantedge/app/data/model/DesignConfig.kt    |   77 +-
+   .../com/vantedge/app/data/model/DocumentFormat.kt  |   20 +-
+   .../com/vantedge/app/data/model/DocumentType.kt    |    2 +-
+   .../java/com/vantedge/app/data/model/Experience.kt |  122 +-
+   .../app/data/model/ExtractedCertification.kt       |   90 +-
+   .../vantedge/app/data/model/ExtractedEducation.kt  |  127 +-
+   .../vantedge/app/data/model/ExtractedExperience.kt |  143 +-
+   .../com/vantedge/app/data/model/ExtractedField.kt  |   92 +-
+   .../app/data/model/ExtractedPersonalInfo.kt        |  140 +-
+   .../vantedge/app/data/model/ExtractionMetadata.kt  |   56 +-
+   .../app/data/model/ExtractionSourceType.kt         |   21 +-
+   .../vantedge/app/data/model/GapAnalysisResult.kt   |  145 +-
+   .../java/com/vantedge/app/data/model/GapItem.kt    |  181 +-
+   .../com/vantedge/app/data/model/GapSeverity.kt     |   21 +-
+   .../com/vantedge/app/data/model/Gate0JobReason.kt  |   20 +-
+   .../com/vantedge/app/data/model/Gate0JobResult.kt  |  143 +-
+   .../vantedge/app/data/model/GeneratedDocument.kt   |  175 +-
+   .../com/vantedge/app/data/model/GenerationCycle.kt |  285 +---
+   .../com/vantedge/app/data/model/GenerationMode.kt  |   19 +-
+   .../java/com/vantedge/app/data/model/JobData.kt    |  100 +-
+   .../app/data/model/JobExtractionFailureReason.kt   |   19 +-
+   .../app/data/model/JobExtractionMetrics.kt         |  163 +-
+   .../vantedge/app/data/model/JobExtractionResult.kt |  163 +-
+   .../com/vantedge/app/data/model/JobSourceType.kt   |   24 +-
+   .../app/data/model/LearningRecommendation.kt       |   94 +-
+   .../com/vantedge/app/data/model/OnboardingDraft.kt |  154 +-
+   .../com/vantedge/app/data/model/OnboardingStage.kt |  118 +-
+   .../com/vantedge/app/data/model/ProfileStats.kt    |  141 +-
+   .../vantedge/app/data/model/QualificationRatio.kt  |   87 +-
+   .../com/vantedge/app/data/model/RelevancyItem.kt   |  131 +-
+   .../app/data/model/RequirementAssessment.kt        |   16 +
+   .../vantedge/app/data/model/ScoreInterpretation.kt |    2 +-
+   .../java/com/vantedge/app/data/model/SkillGap.kt   |   94 +-
+   .../app/data/model/StructuredProfileExtraction.kt  |  177 +-
+   .../com/vantedge/app/data/model/TelemetryRecord.kt |  160 +-
+   .../vantedge/app/data/model/UserDecisionEvent.kt   |  151 +-
+   .../com/vantedge/app/data/model/UserProfile.kt     |  199 +--
+   .../vantedge/app/data/model/ValidatedExtraction.kt |   16 +
+   .../vantedge/app/data/model/VantageScoreResults.kt |    2 +-
+   .../java/com/vantedge/app/data/model/WorkEntry.kt  |  142 +-
+   .../com/vantedge/app/data/model/WorkExperience.kt  |  133 +-
+   .../app/data/model/extraction/BlockMetadata.kt     |   12 +
+   .../app/data/model/extraction/BlockType.kt         |    5 +
+   .../app/data/model/extraction/DocumentBlock.kt     |   10 +
+   .../app/data/model/extraction/ExtractionMethod.kt  |    6 +
+   .../app/data/model/extraction/FieldConfidence.kt   |   11 +
+   .../com/vantedge/app/data/model/extraction/Page.kt |    6 +
+   .../data/model/extraction/StructuredDocument.kt    |    9 +
+   .../vantedge/app/data/network/AiBudgetPolicy.kt    |   13 +
+   .../app/data/network/AiGateway$generate$1.kt       |   31 -
+   .../com/vantedge/app/data/network/AiGateway.kt     |  291 ++--
+   .../com/vantedge/app/data/network/AiRequest.kt     |    8 +
+   .../java/com/vantedge/app/data/network/AiResult.kt |   21 +
+   .../app/data/network/AiSystemInstructions_P1Kt.kt  |   39 -
+   .../app/data/network/GeminiService$generate$1.kt   |   29 -
+   .../app/data/network/GeminiService$tryChain$1.kt   |   41 -
+   .../data/network/GeminiService$tryModelOnce$1.kt   |   31 -
+   .../data/network/GeminiService$tryModelOnce$2.kt   |  199 ---
+   .../network/GeminiService$tryModelWithRetry$1.kt   |   35 -
+   .../com/vantedge/app/data/network/GeminiService.kt | 1410 +++++++++++----
+   .../app/data/network/ModelAttemptResult.kt         |   15 +
+   .../network/RequestThrottleManager$throttle$1.kt   |   31 -
+   .../app/data/network/RequestThrottleManager.kt     |   64 +-
+   .../app/data/storage/AiRawResponseArtifactDao.kt   |   34 +
+   .../app/data/storage/CycleDao$setActiveCycle$1.kt  |   29 -
+   .../java/com/vantedge/app/data/storage/CycleDao.kt |  126 +-
+   .../com/vantedge/app/data/storage/CycleDao_Impl.kt |  508 ------
+   .../com/vantedge/app/data/storage/CycleEntity.kt   |  191 +--
+   .../app/data/storage/CycleStateDeserializer.kt     |  104 --
+   .../app/data/storage/CycleStateSerializer.kt       |   51 -
+   .../app/data/storage/CycleStateSerializerKt.kt     |   18 -
+   .../app/data/storage/HistoryStore$deleteCycle$1.kt |  163 --
+   .../data/storage/HistoryStore$getActiveCycle$1.kt  |   30 -
+   .../storage/HistoryStore$getCycleByIdSuspend$1.kt  |   31 -
+   .../app/data/storage/HistoryStore$saveCycle$1.kt   |   32 -
+   .../com/vantedge/app/data/storage/HistoryStore.kt  |  536 ++----
+   .../app/data/storage/OnboardingDraftDao.kt         |   31 +-
+   .../app/data/storage/OnboardingDraftDao_Impl.kt    |  176 --
+   .../app/data/storage/OnboardingDraftEntity.kt      |   84 +-
+   .../storage/OnboardingDraftStore$clearDraft$1.kt   |   29 -
+   .../storage/OnboardingDraftStore$loadDraft$1.kt    |   30 -
+   .../storage/OnboardingDraftStore$resetAndSave$1.kt |   32 -
+   .../storage/OnboardingDraftStore$saveDraft$1.kt    |   31 -
+   .../app/data/storage/OnboardingDraftStore.kt       |  418 +----
+   .../storage/TelemetryStorage$getExportRecords$2.kt |   57 -
+   .../storage/TelemetryStorage$getRecentRecords$2.kt |   59 -
+   .../vantedge/app/data/storage/TelemetryStorage.kt  |  139 +-
+   .../data/storage/UserPreferences$saveProfile$2.kt  |   76 -
+   .../vantedge/app/data/storage/UserPreferences.kt   |  552 ++----
+   .../vantedge/app/data/storage/UserPreferencesKt.kt |   24 -
+   .../vantedge/app/data/storage/VantEdgeDatabase.kt  |   98 +-
+   .../app/data/storage/VantEdgeDatabase_Impl.kt      |  191 ---
+   .../com/vantedge/app/data/viewmodel/ActionType.kt  |   19 +-
+   .../app/data/viewmodel/CompatibilityViewModel.kt   |  146 +-
+   .../vantedge/app/data/viewmodel/ContentState.kt    |  158 +-
+   .../vantedge/app/data/viewmodel/CycleNavEvent.kt   |  130 +-
+   .../app/data/viewmodel/CycleScoreAggregation.kt    |   55 +
+   .../com/vantedge/app/data/viewmodel/CycleStage.kt  |   19 +-
+   .../vantedge/app/data/viewmodel/CycleUiState.kt    |  303 +---
+   .../CycleViewModel$applyDesign$1$fullCycle$1.kt    |   62 -
+   .../data/viewmodel/CycleViewModel$applyDesign$1.kt |   67 -
+   .../viewmodel/CycleViewModel$cancelPipeline$1.kt   |   57 -
+   .../viewmodel/CycleViewModel$clearActiveCycle$1.kt |   32 -
+   .../CycleViewModel$commitCurrentCycle$1.kt         |  119 --
+   .../CycleViewModel$commitCurrentCycleAndWait$1.kt  |   30 -
+   ...iewModel$continueToGeneration$1$readyCycle$1.kt |   61 -
+   .../CycleViewModel$continueToGeneration$1.kt       |   66 -
+   .../data/viewmodel/CycleViewModel$deleteCycle$1.kt |   74 -
+   .../CycleViewModel$dismissCurrentCycle$1.kt        |  119 --
+   .../CycleViewModel$exportCurrentCycle$1.kt         |  100 --
+   .../CycleViewModel$extractJobFields$1$result$1.kt  |  116 --
+   .../viewmodel/CycleViewModel$extractJobFields$1.kt |  189 ---
+   .../data/viewmodel/CycleViewModel$openCycle$1.kt   |   60 -
+   .../viewmodel/CycleViewModel$restoreCycle$1.kt     |   66 -
+   .../viewmodel/CycleViewModel$resultViewState$1.kt  |   58 -
+   .../viewmodel/CycleViewModel$retryPipeline$1.kt    |   57 -
+   .../data/viewmodel/CycleViewModel$runPipeline$1.kt |   57 -
+   .../CycleViewModel$runPipeline$2$cycle$1.kt        |  101 --
+   .../CycleViewModel$runPipeline$2$readyCycle$1.kt   |   61 -
+   .../data/viewmodel/CycleViewModel$runPipeline$2.kt |  120 --
+   .../CycleViewModel$startImproveFromCycle$1.kt      |  106 --
+   .../vantedge/app/data/viewmodel/CycleViewModel.kt  | 1337 ++++-----------
+   .../viewmodel/DebugViewModel$exportTelemetry$1.kt  |   59 -
+   .../viewmodel/DebugViewModel$refreshRecords$1.kt   |   69 -
+   .../vantedge/app/data/viewmodel/DebugViewModel.kt  |  231 +--
+   .../com/vantedge/app/data/viewmodel/ExportEvent.kt |   94 +-
+   .../com/vantedge/app/data/viewmodel/ExportState.kt |   54 +-
+   .../app/data/viewmodel/GeneratorViewModel.kt       |   99 +-
+   .../app/data/viewmodel/JobExtractionState.kt       |  186 +-
+   .../data/viewmodel/OnboardingExtractionState.kt    |  198 +--
+   .../viewmodel/OnboardingViewModel$addSkill$1.kt    |   90 -
+   .../OnboardingViewModel$advanceToChoosePath$1.kt   |   69 -
+   .../OnboardingViewModel$advanceToFinalReview$1.kt  |   69 -
+   .../OnboardingViewModel$commitProfile$1.kt         |   61 -
+   .../OnboardingViewModel$handleSuccess$1.kt         |   33 -
+   .../OnboardingViewModel$loadDraftIfExists$1.kt     |   53 -
+   .../viewmodel/OnboardingViewModel$removeSkill$1.kt |   97 --
+   .../OnboardingViewModel$resetToChoosePath$1.kt     |   69 -
+   ...nboardingViewModel$runStructuredExtraction$1.kt |   36 -
+   .../OnboardingViewModel$selectAcquisitionMode$1.kt |  110 --
+   .../OnboardingViewModel$startExtraction$1.kt       |   85 -
+   .../viewmodel/OnboardingViewModel$updateDraft$1.kt |   34 -
+   .../OnboardingViewModel$updateEditedProfile$1.kt   |   77 -
+   .../app/data/viewmodel/OnboardingViewModel.kt      |  698 ++++----
+   .../data/viewmodel/OnboardingViewModelFactory.kt   |   62 +-
+   .../app/data/viewmodel/RestorationState.kt         |   94 +-
+   .../com/vantedge/app/data/viewmodel/ResultError.kt |   54 +-
+   .../vantedge/app/data/viewmodel/ResultViewState.kt |  158 +-
+   .../vantedge/app/data/viewmodel/WorkflowState.kt   |   66 +-
+   .../app/domain/OnboardingCommitService$commit$1.kt |   30 -
+   .../vantedge/app/domain/OnboardingCommitService.kt |  220 ---
+   .../OptimizationOrchestrator$applyDesign$1.kt      |   34 -
+   .../OptimizationOrchestrator$runAnalysisFresh$1.kt |   33 -
+   .../OptimizationOrchestrator$runAnalysisOnly$1.kt  |   36 -
+   .../OptimizationOrchestrator$runFullPipeline$1.kt  |   40 -
+   ...izationOrchestrator$runGenerationFromCycle$1.kt |   36 -
+   .../app/domain/OptimizationOrchestrator.kt         |  299 ----
+   .../java/com/vantedge/app/domain/PipelineEvents.kt |   22 +
+   .../java/com/vantedge/app/domain/PipelineStep.kt   |   31 -
+   .../java/com/vantedge/app/domain/PipelineTrace.kt  |  189 +--
+   .../app/domain/extraction/ExtractionDecision.kt    |   29 +
+   .../extraction/ExtractionDecisionCoordinator.kt    |  130 ++
+   .../app/domain/extraction/ExtractionOutcome.kt     |   11 +
+   .../domain/extraction/JobExtractionOrchestrator.kt |  279 +++
+   .../vantedge/app/domain/policy/ThresholdPolicy.kt  |   10 +
+   .../extraction/confidence/ConfidenceDimensions.kt  |   22 +
+   .../app/narrative/NarrativeEvidenceContext.kt      |   23 +
+   .../app/narrative/NarrativeEvidenceMapper.kt       |   39 +
+   .../java/com/vantedge/app/narrative/W5Evidence.kt  |    8 +
+   .../java/com/vantedge/app/navigation/Navigation.kt |   84 +-
+   .../app/navigation/NavigationKt$AppNavigation$2.kt |   94 -
+   .../app/navigation/NavigationKt$AppNavigation$3.kt |  143 --
+   .../app/navigation/NavigationKt$AppNavigation$4.kt |  142 --
+   .../app/navigation/NavigationKt$AppNavigation$5.kt |  105 --
+   .../com/vantedge/app/navigation/NavigationKt.kt    | 1791 --------------------
+   .../DeadlineNotificationSchedular.kt               |  119 --
+   .../notifications/DeadlineNotificationScheduler.kt |  112 +-
+   .../notifications/DeadlineNotificationWorker.kt    |   98 +-
+   .../vantedge/app/ui/components/WarningsBanner.kt   |   40 +
+   .../app/ui/screens/AdvancedAnalysisScreen.kt       |   30 +-
+   ...isContent$1$invoke$$inlined$items$default$10.kt |   30 -
+   ...sisContent$1$invoke$$inlined$items$default$2.kt |   30 -
+   ...sisContent$1$invoke$$inlined$items$default$6.kt |   30 -
+   ...chContent$1$invoke$$inlined$items$default$10.kt |   30 -
+   ...tchContent$1$invoke$$inlined$items$default$2.kt |   30 -
+   ...tchContent$1$invoke$$inlined$items$default$6.kt |   30 -
+   .../app/ui/screens/AdvancedAnalysisScreenKt.kt     | 1370 ---------------
+   .../app/ui/screens/AnalysisResultScreen.kt         |   50 +-
+   ...ltScreen$3$2$invoke$$inlined$items$default$2.kt |   30 -
+   ...ltScreen$3$2$invoke$$inlined$items$default$6.kt |   30 -
+   .../app/ui/screens/AnalysisResultScreenKt.kt       |  705 --------
+   .../vantedge/app/ui/screens/AnalysisScreenMode.kt  |   20 -
+   .../com/vantedge/app/ui/screens/AppColorsKt.kt     |   31 -
+   .../java/com/vantedge/app/ui/screens/CVDesign.kt   |  124 --
+   .../vantedge/app/ui/screens/CVDesignScreenKt.kt    |  317 ----
+   .../vantedge/app/ui/screens/CVGeneratorScreen.kt   |   69 +-
+   .../ChoosePathScreenKt$ChoosePathScreen$1$1.kt     |  101 --
+   .../vantedge/app/ui/screens/ChoosePathScreenKt.kt  |  236 ---
+   .../com/vantedge/app/ui/screens/ColorScheme.kt     |  120 --
+   .../vantedge/app/ui/screens/ColorSchemeScreenKt.kt |  296 ----
+   .../app/ui/screens/CompatibilityInputScreen.kt     |   82 +-
+   .../app/ui/screens/CompatibilityResultScreen.kt    |   16 +-
+   ...omposableSingletons$AdvancedAnalysisScreenKt.kt |  307 ----
+   .../ComposableSingletons$AnalysisResultScreenKt.kt |  150 --
+   .../ComposableSingletons$CVDesignScreenKt.kt       |  121 --
+   .../ComposableSingletons$ChoosePathScreenKt.kt     |  126 --
+   .../ComposableSingletons$ColorSchemeScreenKt.kt    |  121 --
+   .../ComposableSingletons$CoverLetterScreenKt.kt    |  178 --
+   .../ComposableSingletons$CycleHistoryScreenKt.kt   |  189 ---
+   .../ComposableSingletons$DashboardScreenKt.kt      |  149 --
+   ...omposableSingletons$DebugCalibrationScreenKt.kt |  183 --
+   .../ComposableSingletons$EditProfileScreenKt.kt    |  186 --
+   ...posableSingletons$EligibilityCheckerScreenKt.kt |  148 --
+   .../screens/ComposableSingletons$ErrorScreenKt.kt  |   57 -
+   .../ComposableSingletons$ExtractingScreenKt.kt     |   88 -
+   .../ComposableSingletons$FinalReviewScreenKt.kt    |  165 --
+   .../ComposableSingletons$JobInputScreenKt.kt       |  179 --
+   .../ComposableSingletons$PlaceHolderScreenKt.kt    |   57 -
+   .../ComposableSingletons$PostDownloadScreenKt.kt   |  117 --
+   .../screens/ComposableSingletons$ResultScreenKt.kt |  509 ------
+   ...omposableSingletons$ReviewExtractionScreenKt.kt |  184 --
+   .../ComposableSingletons$WelcomeScreenKt.kt        |  116 --
+   .../vantedge/app/ui/screens/CoverLetterScreenKt.kt |  198 ---
+   .../vantedge/app/ui/screens/CycleHistoryScreen.kt  |   20 +-
+   .../app/ui/screens/CycleHistoryScreenKt.kt         |  480 ------
+   .../com/vantedge/app/ui/screens/DashboardScreen.kt |   56 +-
+   .../vantedge/app/ui/screens/DashboardScreenKt.kt   |  205 ---
+   ...onScreen$3$2$invoke$$inlined$items$default$2.kt |   30 -
+   .../app/ui/screens/DebugCalibrationScreenKt.kt     |  440 -----
+   .../vantedge/app/ui/screens/EditProfileScreen.kt   |   31 +-
+   .../EditProfileScreenKt$EditProfileScreen$1$1.kt   |   50 -
+   .../vantedge/app/ui/screens/EditProfileScreenKt.kt |  997 -----------
+   .../app/ui/screens/EligibilityCheckerScreenKt.kt   |  194 ---
+   .../com/vantedge/app/ui/screens/ErrorScreenKt.kt   |   21 -
+   .../vantedge/app/ui/screens/ExtractingScreenKt.kt  |  369 ----
+   .../vantedge/app/ui/screens/FinalReviewScreen.kt   |   21 +
+   .../FinalReviewScreenKt$FinalReviewScreen$2$1.kt   |   50 -
+   .../FinalReviewScreenKt$FinalReviewScreen$3$1.kt   |   77 -
+   .../vantedge/app/ui/screens/FinalReviewScreenKt.kt |  482 ------
+   .../vantedge/app/ui/screens/ForensicDebugScreen.kt |  124 ++
+   .../com/vantedge/app/ui/screens/JobInputScreen.kt  |  104 +-
+   .../screens/JobInputScreenKt$JobInputScreen$1.kt   |   62 -
+   .../screens/JobInputScreenKt$JobInputScreen$2.kt   |   62 -
+   .../screens/JobInputScreenKt$JobInputScreen$3.kt   |   62 -
+   .../screens/JobInputScreenKt$JobInputScreen$4.kt   |  125 --
+   ...tScreenKt$JobInputScreen$fetchUrl$1$result$1.kt |   66 -
+   .../JobInputScreenKt$JobInputScreen$fetchUrl$1.kt  |  173 --
+   ...ScreenKt$JobInputScreen$fileLauncher$1$1$2$1.kt |   68 -
+   ...$JobInputScreen$fileLauncher$1$1$extracted$1.kt |   90 -
+   .../vantedge/app/ui/screens/JobInputScreenKt.kt    |  755 ---------
+   .../com/vantedge/app/ui/screens/JobInputStage.kt   |   20 -
+   .../com/vantedge/app/ui/screens/LoadingMode.kt     |   19 -
+   .../com/vantedge/app/ui/screens/LoadingScreenKt.kt |   26 -
+   .../app/ui/screens/PipelineLoadingScreen.kt        |    2 +-
+   ...oadingScreenKt$FullPipelineLoadingScreen$1$1.kt |   99 --
+   ...eLoadingScreenKt$FullPipelineLoadingScreen$2.kt |  139 --
+   ...pelineLoadingScreenKt$ImproveLoadingScreen$1.kt |  119 --
+   .../app/ui/screens/PipelineLoadingScreenKt.kt      |  214 ---
+   .../vantedge/app/ui/screens/PlaceHolderScreenKt.kt |  160 --
+   .../app/ui/screens/PostDownloadScreenKt.kt         |   21 -
+   .../com/vantedge/app/ui/screens/ResultScreen.kt    |  152 +-
+   ...nalysisTab$1$invoke$$inlined$items$default$2.kt |   30 -
+   ...nalysisTab$1$invoke$$inlined$items$default$6.kt |   30 -
+   .../ui/screens/ResultScreenKt$ResultScreen$1.kt    |   58 -
+   .../ui/screens/ResultScreenKt$ResultScreen$2.kt    |   85 -
+   .../ui/screens/ResultScreenKt$ResultScreen$5.kt    |  115 --
+   .../ResultScreenKt$ResultScreen$savePdf$1.kt       |   62 -
+   ...ultScreenKt$ResultScreen$savePdf$webView$1$1.kt |   58 -
+   .../com/vantedge/app/ui/screens/ResultScreenKt.kt  | 1587 -----------------
+   .../vantedge/app/ui/screens/ResultScreenMode.kt    |   81 -
+   .../app/ui/screens/ReviewExtractionScreen.kt       |   19 +-
+   ...xtractionScreenKt$ReviewExtractionScreen$1$1.kt |   50 -
+   .../app/ui/screens/ReviewExtractionScreenKt.kt     |  955 -----------
+   .../vantedge/app/ui/screens/ScorePresentation.kt   |   82 +
+   .../java/com/vantedge/app/ui/screens/TabInfo.kt    |   70 -
+   .../screens/WelcomeScreenKt$WelcomeScreen$1$1.kt   |  120 --
+   .../com/vantedge/app/ui/screens/WelcomeScreenKt.kt |   80 -
+   .../java/com/vantedge/app/ui/theme/AppColors.kt    |   87 +-
+   .../main/java/com/vantedge/app/ui/theme/ColorKt.kt |   91 -
+   .../main/java/com/vantedge/app/ui/theme/ThemeKt.kt |  149 --
+   .../java/com/vantedge/app/ui/theme/TypographyKt.kt |   58 -
+   .../main/java/com/vantedge/app/util/AppLogger.kt   |  103 +-
+   .../java/com/vantedge/app/util/FailureLogBundle.kt |   77 +-
+   .../main/java/com/vantedge/app/util/FileUtil.kt    |   24 -
+   .../main/java/com/vantedge/app/util/HashUtils.kt   |   44 +-
+   .../main/java/com/vantedge/app/util/LogDumper.kt   |  252 ++-
+   .../java/com/vantedge/app/util/LogFileProvider.kt  |   15 +
+   app/src/main/java/com/vantedge/app/util/LogSink.kt |  150 ++
+   .../com/vantedge/app/util/Telemetry collector.kt   |  203 ---
+   .../app/util/TelemetryCollector$record$1.kt        |  105 --
+   .../util/TelemetryCollector$recordDecision$1.kt    |   75 -
+   .../com/vantedge/app/util/TelemetryCollector.kt    |  190 ++-
+   .../TelemetryExportService$createExportFile$2.kt   |   55 -
+   .../vantedge/app/util/TelemetryExportService.kt    |  122 +-
+   .../com/vantedge/app/util/TelemetryPathProvider.kt |   15 +
+   .../com/vantedge/app/w5/scoring/AxisEvaluators.kt  |   68 +
+   .../w5/scoring/DeterministicCompatibilityEngine.kt |  123 ++
+   .../app/w5/scoring/DirectW5InputAdapter.kt         |   57 +
+   .../app/w5/scoring/ExtractionAssessment.kt         |   22 +
+   .../vantedge/app/w5/scoring/ExtractionValidator.kt |  198 +++
+   .../vantedge/app/w5/scoring/FabricationDetector.kt |   59 +
+   .../com/vantedge/app/w5/scoring/GapAnalyzer.kt     |   40 +
+   .../com/vantedge/app/w5/scoring/HintBuilder.kt     |   27 +
+   .../app/w5/scoring/JobRequirementAdapter.kt        |  535 ++++++
+   .../vantedge/app/w5/scoring/NormalizedProfile.kt   |   29 +
+   .../vantedge/app/w5/scoring/ProfileSanitizer.kt    |  245 +++
+   .../app/w5/scoring/QualificationEvaluator.kt       |   47 +
+   .../vantedge/app/w5/scoring/RequirementEvidence.kt |   35 +
+   .../vantedge/app/w5/scoring/SanitizationAudit.kt   |   13 +
+   .../app/w5/scoring/SkillTaxonomyProvider.kt        |   40 +
+   .../java/com/vantedge/app/w5/scoring/W5Adapter.kt  |  168 ++
+   .../com/vantedge/app/w5/scoring/W5AssetLoader.kt   |   51 +
+   .../com/vantedge/app/w5/scoring/W5Constants.kt     |   35 +
+   .../com/vantedge/app/w5/scoring/W5ScoreEngine.kt   |  142 ++
+   .../java/com/vantedge/app/w5/scoring/W5Types.kt    |  123 ++
+   .../java/com/vantedge/app/w5/scoring/W5Utils.kt    |  137 ++
+   .../com/vantedge/app/w6/improvement/W6Constants.kt |   52 +
+   .../com/vantedge/app/w6/improvement/W6Engine.kt    |   18 +
+   .../com/vantedge/app/w6/improvement/W6Rules.kt     |  188 ++
+   .../com/vantedge/app/w6/improvement/W6Types.kt     |   72 +
+   .../observability/p2/adapter/P2TraceAdapter.kt     |   74 +
+   .../observability/p2/diff/TraceDiffEngine.kt       |   55 +
+   .../observability/p2/hash/TraceHashCalculator.kt   |   24 +
+   .../p2/model/ObservabilityTraceModel.kt            |   24 +
+   .../observability/p2/replay/ReplayEngine.kt        |  168 ++
+   .../pipeline/contract/ContractFailureReason.kt     |   53 +
+   .../pipeline/contract/ContractValidationResult.kt  |   23 +
+   .../pipeline/contract/ContractValidator.kt         |  268 +++
+   .../pipeline/contract/ExtractedAiPayload.kt        |   13 +
+   .../pipeline/contract/ExtractionMetadata.kt        |   13 +
+   .../java/com/vantedge/pipeline/contract/JobType.kt |   11 +
+   .../pipeline/contract/ValidatedAiPayload.kt        |   22 +
+   .../vantedge/pipeline/evidence/EvidenceCategory.kt |    8 +
+   .../pipeline/evidence/EvidenceIntegrityDetector.kt |  313 ++++
+   .../pipeline/evidence/EvidenceIntegrityModels.kt   |   27 +
+   .../pipeline/evidence/EvidenceIntegrityTypes.kt    |   17 +
+   .../pipeline/evidence/EvidencePolicyEnforcer.kt    |  125 ++
+   .../vantedge/pipeline/evidence/EvidenceRegistry.kt |  160 ++
+   .../vantedge/pipeline/evidence/EvidenceResult.kt   |    7 +
+   .../pipeline/validation/P2ValidationEngine.kt      |  415 +++++
+   .../pipeline/validation/ValidatedDomainObject.kt   |    6 +
+   .../pipeline/validation/ValidationDecision.kt      |   13 +
+   .../pipeline/validation/ValidationTrace.kt         |   20 +
+   .../res/drawable-v24/ic_launcher_foreground.xml    |    0
+   .../main/res/drawable/ic_launcher_background.xml   |    0
+   app/src/main/res/layout/activity_main.xml          |    0
+   app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml |    0
+   .../res/mipmap-anydpi-v26/ic_launcher_round.xml    |    0
+   app/src/main/res/mipmap-hdpi/ic_launcher.png       |  Bin
+   app/src/main/res/mipmap-hdpi/ic_launcher_round.png |  Bin
+   app/src/main/res/mipmap-mdpi/ic_launcher.png       |  Bin
+   app/src/main/res/mipmap-mdpi/ic_launcher_round.png |  Bin
+   app/src/main/res/mipmap-xhdpi/ic_launcher.png      |  Bin
+   .../main/res/mipmap-xhdpi/ic_launcher_round.png    |  Bin
+   app/src/main/res/mipmap-xxhdpi/ic_launcher.png     |  Bin
+   .../main/res/mipmap-xxhdpi/ic_launcher_round.png   |  Bin
+   app/src/main/res/mipmap-xxxhdpi/ic_launcher.png    |  Bin
+   .../main/res/mipmap-xxxhdpi/ic_launcher_round.png  |  Bin
+   app/src/main/res/raw/extraction_dictionary.txt     |   12 +
+   app/src/main/res/values/colors.xml                 |    0
+   app/src/main/res/values/strings.xml                |    0
+   .../data/engine/DateRecoveryPostProcessingTest.kt  |  132 ++
+   .../app/data/engine/ExtractionValidatorTest.kt     |  331 ++++
+   .../vantedge/app/data/engine/JsonRepairUtilTest.kt |  149 ++
+   .../ConfidenceEngineCorruptedOcrTest.kt.bak        |  136 ++
+   .../extraction/ConfidenceEngineUnknownTest.kt      |   51 +
+   .../storage/CompatibilityRecordLegacyJsonTest.kt   |  176 ++
+   .../data/viewmodel/CycleScoreAggregationTest.kt    |  199 +++
+   .../data/viewmodel/ExtractionOutcomeMapperTest.kt  |   99 ++
+   .../ExtractionDecisionCoordinatorUnknownTest.kt    |   81 +
+   .../app/ui/screens/ScorePresentationTest.kt        |  200 +++
+   .../app/ui/screens/UnassessedPresentationTest.kt   |  112 ++
+   .../app/w5/scoring/CorrectiveUnknownStateTest.kt   |  190 +++
+   .../app/w5/scoring/ExtractionValidatorTest.kt      |   75 +
+   .../app/w5/scoring/HintBuilderMeasurednessTest.kt  |   74 +
+   .../app/w5/scoring/JobRequirementAdapterTest.kt    |   63 +
+   .../scoring/JobTitleRoleRelevanceProductionTest.kt |  182 ++
+   .../app/w5/scoring/ProfileSanitizerTest.kt         |  148 ++
+   .../app/w5/scoring/ProvisionalScoreTest.kt         |  123 ++
+   .../app/w5/scoring/QualificationEvaluatorTest.kt   |  211 +++
+   .../app/w5/scoring/RequirementCoverageTest.kt      |  243 +++
+   .../vantedge/app/w5/scoring/W5ScoreBaselineTest.kt |  123 ++
+   .../vantedge/app/w5/scoring/W5ScoreEngineTest.kt   |  992 +++++++++++
+   .../vantedge/app/w6/improvement/W6EngineTest.kt    |  420 +++++
+   .../app/w6/improvement/W6UnknownAxisTest.kt        |  112 ++
+   .../pipeline/evidence/PhaseDAuthorityTest.kt       |  188 ++
+   .../validation/P2VerificationHarnessTest.kt        |  739 ++++++++
+   app/src/test/resources/extraction_dictionary.txt   |   12 +
+   .../test/resources/validation/skill_taxonomy.json  |   40 +
+   build.gradle                                       |   18 +-
+   gradle.properties                                  |   14 +-
+   gradle/wrapper/gradle-wrapper.properties           |    2 +-
+   settings.gradle                                    |   16 +
+   test/fixtures/corrupted_job_posting.txt            |    9 +
+   488 files changed, 26578 insertions(+), 40601 deletions(-)
+diffstat_mergebase_to_ref:

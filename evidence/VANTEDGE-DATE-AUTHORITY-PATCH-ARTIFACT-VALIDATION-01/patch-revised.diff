@@ -1,0 +1,145 @@
+diff --git a/app/src/main/java/com/vantedge/app/data/engine/ProfileExtractionEngine.kt b/app/src/main/java/com/vantedge/app/data/engine/ProfileExtractionEngine.kt
+index 95f2e08..cdd7738 100644
+--- a/app/src/main/java/com/vantedge/app/data/engine/ProfileExtractionEngine.kt
++++ b/app/src/main/java/com/vantedge/app/data/engine/ProfileExtractionEngine.kt
+@@ -598,7 +598,7 @@
+     // NORMALIZATION LAYER
+     // ==========================================
+ 
+-    private fun normalizeRootKeys(json: JSONObject): JSONObject {
++    internal fun normalizeRootKeys(json: JSONObject): JSONObject {
+         val n = JSONObject()
+ 
+         n.put("name", json.optString("name", json.optString("fullName", "")))
+@@ -621,14 +621,8 @@
+             nw.put("jobTitle", w.optString("jobTitle", w.optString("position", w.optString("role", ""))))
+             nw.put("company", w.optString("company", w.optString("employer", w.optString("organization", ""))))
+ 
+-            val dates = w.optString("dates", w.optString("period", ""))
+-            if (dates.isNotBlank() && w.optString("startDate").isBlank()) {
+-                nw.put("startDate", dates)
+-                nw.put("endDate", "")
+-            } else {
+-                nw.put("startDate", w.optString("startDate", ""))
+-                nw.put("endDate", w.optString("endDate", ""))
+-            }
++            nw.put("startDate", w.optString("startDate", ""))
++            nw.put("endDate", w.optString("endDate", ""))
+ 
+             nw.put("description", w.optString("description",
+                 w.optString("responsibilities", w.optString("duties", ""))))
+         normalizedWork.put(nw)
+
+diff --git a/app/src/test/java/com/vantedge/app/data/engine/DateRecoveryPostProcessingTest.kt b/app/src/test/java/com/vantedge/app/data/engine/DateRecoveryPostProcessingTest.kt
+index 9d4c45f..704e223 100644
+--- a/app/src/test/java/com/vantedge/app/data/engine/DateRecoveryPostProcessingTest.kt
++++ b/app/src/test/java/com/vantedge/app/data/engine/DateRecoveryPostProcessingTest.kt
+@@ -1,132 +1,156 @@
+ package com.vantedge.app.data.engine
+ 
+-import org.junit.Assert.*
++import android.content.ContextWrapper
++import com.vantedge.app.data.model.AiRawResponseArtifact
++import com.vantedge.app.data.model.WorkExperience
++import com.vantedge.app.data.network.AiGateway
++import com.vantedge.app.data.network.GeminiService
++import com.vantedge.app.data.storage.AiRawResponseArtifactDao
++import com.vantedge.app.util.TelemetryCollector
++import com.vantedge.app.w5.scoring.computeYearsExperience
++import java.io.File
++import kotlinx.coroutines.CoroutineScope
++import kotlinx.coroutines.Dispatchers
++import org.json.JSONArray
++import org.json.JSONObject
++import org.junit.Assert.assertEquals
++import org.junit.Assert.assertFalse
++import org.junit.Test
+ 
+ /**
+- * TD-PROFILE-002a: Deterministic date recovery test.
+- * Verifies the post-processing fallback logic for startDate recovery
+- * from structured dates/period fields, and confirms description mining is NOT performed.
++ * Production-path date-authority tests.
++ *
++ * These tests call the real ProfileExtractionEngine.normalizeRootKeys() used by
++ * production ingestion. They intentionally do not simulate or duplicate the
++ * production normalization logic.
+  */
+ class DateRecoveryPostProcessingTest {
+ 
+-    private val yearRegex = Regex("""\b(19|20)\d{2}\b""")
+-
+-    /**
+-     * Simulates the enhanced post-processing logic from ProfileExtractionEngine.kt:
+-     * 1. Primary fallback: use combined dates field if startDate is blank
+-     * 2. Secondary fallback: if startDate still lacks a 4-digit year, recover from dates field
+-     */
+-    private fun simulatePostProcessing(
+-        startDate: String,
+-        endDate: String,
+-        dates: String
+-    ): Pair<String, String> {
+-        var resultStart = startDate
+-        var resultEnd = endDate
+-
+-        if (dates.isNotBlank() && resultStart.isBlank()) {
+-            resultStart = dates
+-            resultEnd = ""
++    private val engine: ProfileExtractionEngine by lazy {
++        val context = object : ContextWrapper(null) {
++            override fun getCacheDir(): File = File(System.getProperty("java.io.tmpdir") ?: "/tmp")
+         }
+-
+-        if (yearRegex.find(resultStart) == null && dates.isNotBlank()) {
+-            yearRegex.find(dates)?.value?.let { year ->
+-                resultStart = year
+-            }
++        val dao = object : AiRawResponseArtifactDao {
++            override suspend fun insert(artifact: AiRawResponseArtifact): Long = 0L
++            override suspend fun deleteOldestBeyondLimit(limit: Int) {}
++            override suspend fun getAll(): List<AiRawResponseArtifact> = emptyList()
+         }
++        val geminiService = GeminiService(dao, CoroutineScope(Dispatchers.Unconfined))
++        ProfileExtractionEngine(context, AiGateway(geminiService), TelemetryCollector(context))
++    }
+ 
+-        return resultStart to resultEnd
++    private fun normalizeWork(entry: JSONObject): JSONObject {
++        val root = JSONObject().apply { put("workHistory", JSONArray().apply { put(entry) }) }
++        return engine.normalizeRootKeys(root).getJSONArray("workHistory").getJSONObject(0)
+     }
+ 
+-    // --- Positive Tests: dates fallback ---
++    private fun work(
++        startDate: String? = null,
++        endDate: String? = null,
++        dates: String? = null,
++        period: String? = null,
++        description: String? = null
++    ): JSONObject = JSONObject().apply {
++        put("jobTitle", "Engineer")
++        put("company", "Acme")
++        startDate?.let { put("startDate", it) }
++        endDate?.let { put("endDate", it) }
++        dates?.let { put("dates", it) }
++        period?.let { put("period", it) }
++        description?.let { put("description", it) }
++    }
+ 
+     @Test
+-    fun `dates fallback recovers year when startDate is blank`() {
+-        val (start, end) = simulatePostProcessing(
+-            startDate = "",
+-            endDate = "",
+-            dates = "2020-2024"
+-        )
+-        assertEquals("2020", start)
+-        assertEquals("", end)
++    fun `blank canonical dates remain blank when only dates is supplied`() {
++        val out = normalizeWork(work(startDate = "", endDate = "", dates = "2020-2024"))
++
++        assertEquals("", out.optString("startDate"))
++        assertEquals("", out.optString("endDate"))
++        assertFalse(out.has("dates"))
++        assertFalse(out.has("period"))
+     }

@@ -10,6 +10,7 @@ import com.vantedge.app.domain.extraction.ExtractionOutcome
 import com.vantedge.pipeline.validation.ValidationDecision
 import com.vantedge.pipeline.validation.ValidationTrace
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -78,6 +79,9 @@ class ExtractionOutcomeMapperTest {
         val sw = state as JobExtractionState.SuccessWithWarning
         assertSame(extraction, sw.result)
         assertEquals(warnings, sw.warnings)
+        assertTrue(sw.requiresAcknowledgment)
+        assertFalse(sw.isUnvalidatedFallback)
+        assertEquals(extraction.confidenceScore, sw.confidenceScore, 0f)
     }
 
     @Test
@@ -88,6 +92,9 @@ class ExtractionOutcomeMapperTest {
         val sw = state as JobExtractionState.SuccessWithWarning
         assertSame(extraction, sw.result)
         assertEquals(listOf("Emergency extraction — validation not performed"), sw.warnings)
+        assertTrue(sw.requiresAcknowledgment)
+        assertTrue(sw.isUnvalidatedFallback)
+        assertEquals("corr-42", sw.traceId)
     }
 
     @Test

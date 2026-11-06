@@ -1,0 +1,9 @@
+TEST-com.vantedge.app.data.storage.CompatibilityRecordLegacyJsonTest.xml	tests=11	failures=0	errors=0	skipped=0	timestamp=2026-11-04T00:45:02.798Z	time=0.907
+TEST-com.vantedge.app.data.viewmodel.CycleScoreAggregationTest.xml	tests=15	failures=0	errors=0	skipped=0	timestamp=2026-11-04T00:45:03.761Z	time=0.087
+TEST-com.vantedge.app.ui.screens.ScorePresentationTest.xml	tests=13	failures=0	errors=0	skipped=0	timestamp=2026-11-04T00:45:03.872Z	time=0.044
+TEST-com.vantedge.app.ui.screens.UnassessedPresentationTest.xml	tests=5	failures=0	errors=0	skipped=0	timestamp=2026-11-04T00:45:03.929Z	time=0.013
+TEST-com.vantedge.app.w5.scoring.CorrectiveUnknownStateTest.xml	tests=10	failures=0	errors=0	skipped=0	timestamp=2026-11-04T00:45:03.992Z	time=0.4
+TEST-com.vantedge.app.w5.scoring.ProvisionalScoreTest.xml	tests=11	failures=0	errors=0	skipped=0	timestamp=2026-11-04T00:45:04.414Z	time=0.076
+TEST-com.vantedge.app.w5.scoring.RequirementCoverageTest.xml	tests=19	failures=0	errors=0	skipped=0	timestamp=2026-11-04T00:45:04.513Z	time=0.159
+TEST-com.vantedge.app.w5.scoring.W5ScoreEngineTest.xml	tests=34	failures=0	errors=0	skipped=0	timestamp=2026-11-04T00:45:04.713Z	time=0.773
+TEST-com.vantedge.pipeline.validation.P2VerificationHarnessTest.xml	tests=24	failures=0	errors=0	skipped=0	timestamp=2026-11-04T00:45:05.613Z	time=1.779

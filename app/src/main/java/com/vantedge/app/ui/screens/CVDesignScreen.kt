@@ -71,7 +71,9 @@ val cvDesigns = listOf(
 @Composable
 fun CVDesignScreen(
     onDesignSelected: (String) -> Unit,
-    onNavigateBack: () -> Unit
+    onNavigateBack: () -> Unit,
+    title: String = "Choose Your CV Style",
+    onOpenCoverLetterDesign: (() -> Unit)? = null
 ) {
     Scaffold(
         containerColor = DarkBg,
@@ -79,7 +81,7 @@ fun CVDesignScreen(
             TopAppBar(
                 title = {
                     Text(
-                        "Choose Your CV Style",
+                        title,
                         color = Color.White,
                         fontWeight = FontWeight.Bold
                     )
@@ -146,6 +148,20 @@ fun CVDesignScreen(
             }
 
             Spacer(modifier = Modifier.height(8.dp))
+
+            if (onOpenCoverLetterDesign != null) {
+                Button(
+                    onClick = onOpenCoverLetterDesign,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Teal,
+                        contentColor = Color.Black
+                    )
+                ) {
+                    Text("Cover letter style \u2192", fontWeight = FontWeight.Bold)
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+            }
 
             Button(
                 onClick = onNavigateBack,

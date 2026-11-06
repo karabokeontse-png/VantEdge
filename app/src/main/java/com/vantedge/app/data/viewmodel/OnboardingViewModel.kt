@@ -9,6 +9,7 @@ import com.vantedge.app.data.engine.ProfileExtractionEngine
 import com.vantedge.app.data.model.*
 import com.vantedge.app.data.storage.OnboardingDraftStore
 import com.vantedge.app.data.domain.OnboardingCommitService
+import com.vantedge.app.data.domain.ProfileEligibility
 import com.vantedge.app.util.HashUtils
 import com.vantedge.app.util.TelemetryCollector
 import kotlinx.coroutines.Job
@@ -273,10 +274,13 @@ class OnboardingViewModel(
     fun commitProfile() {
         val profile = _draft.value.editedProfile
 
-        if (
-            profile == null || profile.name.isBlank() || profile.email.isBlank() || profile.skills.isEmpty()
-        ) {
-            _error.value = "Complete required fields before continuing"
+        val rejection = ProfileEligibility.rejectionReason(profile)
+        if (rejection != null) {
+            _error.value = when (rejection) {
+                ProfileEligibility.Rejection.ABSENT_PROFILE -> "Complete required fields before continuing"
+                ProfileEligibility.Rejection.BLANK_NAME -> "Enter your name before continuing"
+                ProfileEligibility.Rejection.BLANK_EMAIL -> "Enter your email before continuing"
+            }
             return
         }
 

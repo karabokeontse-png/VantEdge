@@ -1,0 +1,30 @@
+=== pre-audit identity ===
+2026-11-04T08:24:30Z
+branch=verification/ced-p0-authority
+head=06bb4ac287973dd3ca6bdab1eeb85714b4cb97c2
+head_tree=b6aa1d9cafb13154344274da187303076f338901
+head_parent=3f23859c9d38828b1da673429c11d885b0b0219c
+staged_count=0
+porcelain_counts:
+      1  D
+     40  M
+     34 ??
+porcelain_sha256=71570223b0346af77388bb5c71120be98845f737f06513441b541e8344211830
+=== relevant source hashes ===
+bf34c26a16dcad1281553a20966171bc46a1f11f58491dbfa2cf6d9ab4b240c2  app/src/main/java/com/vantedge/app/data/domain/CompatibilityRecordMapper.kt
+19d880dbb7bb64bb7d741e2ae214e12ed5cd38922a2b02edcfe616e6721f6964  app/src/main/java/com/vantedge/app/w5/scoring/W5Types.kt
+0503ef3206f1200d5bac5e8523ef7efc81d1426632ef2fd7f1596827f4e9baaa  app/src/main/java/com/vantedge/app/w5/scoring/JobRequirementAdapter.kt
+ee18608a8aeb6d7599dfcbd8163bae1191446bc13e10e27570534e61a983e6c9  app/src/main/java/com/vantedge/app/w5/scoring/QualificationEvaluator.kt
+ec28579a217d552222619940fbe5cd164b429edb90374efec61dfb7e17d25825  app/src/main/java/com/vantedge/app/w5/scoring/W5ScoreEngine.kt
+9db3e123c05ef5ab3cf9e9f0f57b5c54d5327862c829fbaf52fdfc6237cb4f92  app/src/test/java/com/vantedge/app/w5/scoring/RequirementCoverageTest.kt
+363f088db6ae185fb62eb2c9d65e061f728191dc30403cda89ca3aca18404964  app/src/test/java/com/vantedge/app/w5/scoring/CorrectiveUnknownStateTest.kt
+87dca7ba65d289e2f51cdaa01835ed0e9b5a558feb5d430589aff4e423fa0e64  app/src/test/java/com/vantedge/app/w5/scoring/ProvisionalScoreTest.kt
+=== init script hash ===
+6aa2bd5f4b2c79595b0224226173e9cd91aecef2fcf9e598780e161bdd1cd1ab  /tmp/r2cuei/init.gradle
+=== prior timeout logs ===
+b0d5356064217f851275504ba77a13c8a90fb2e51272612f47aa964dc0a31c6f  /data/user/0/ai.opencode.app/files/projects/Vantedge/evidence/put here!/VANTEDGE-R2-CURRENT-WORKTREE-VERIFICATION-01-artifacts/gradle-run.log
+3d40534b8b9c553ee03575e8d6fa21f1728154624dd208e0564ef9621e6fd4cd  /data/user/0/ai.opencode.app/files/projects/Vantedge/evidence/put here!/VANTEDGE-R2-CURRENT-WORKTREE-VERIFICATION-01-artifacts/gradle-run-2.log
+=== build outputs ===
+17M	app/build
+7.0K	.kotlin
+fresh_test_xml_count=0

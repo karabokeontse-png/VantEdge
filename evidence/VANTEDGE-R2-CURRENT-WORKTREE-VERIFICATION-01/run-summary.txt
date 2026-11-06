@@ -1,0 +1,27 @@
+=== run summary ===
+Attempt 1:
+  log: /data/user/0/ai.opencode.app/files/projects/Vantedge/evidence/put here!/VANTEDGE-R2-CURRENT-WORKTREE-VERIFICATION-01-artifacts/gradle-run.log
+  start: 2026-11-04T07:12:48Z
+  timeout: 900000 ms
+  result: shell tool terminated command; SIGTERM (proot vpid 1 signal 15)
+  last task observed: :app:processDebugResources
+  Gradle exit code: NOT CAPTURED (tool timeout)
+  JUnit XMLs produced: 0
+Attempt 2:
+  log: /data/user/0/ai.opencode.app/files/projects/Vantedge/evidence/put here!/VANTEDGE-R2-CURRENT-WORKTREE-VERIFICATION-01-artifacts/gradle-run-2.log
+  start: 2026-11-04T07:29:03Z
+  timeout: 1800000 ms
+  result: shell tool terminated command; SIGTERM (proot vpid 1 signal 15)
+  last task observed: :app:compileDebugKotlin (started; no completion line)
+  Gradle exit code: NOT CAPTURED (tool timeout)
+  JUnit XMLs produced: 0
+=== log mtimes ===
+/data/user/0/ai.opencode.app/files/projects/Vantedge/evidence/put here!/VANTEDGE-R2-CURRENT-WORKTREE-VERIFICATION-01-artifacts/gradle-run.log 2026-11-04 07:19:05.240000097 +0000 2064
+/data/user/0/ai.opencode.app/files/projects/Vantedge/evidence/put here!/VANTEDGE-R2-CURRENT-WORKTREE-VERIFICATION-01-artifacts/gradle-run-2.log 2026-11-04 07:55:09.848000226 +0000 2322
+=== partial build outputs ===
+17M	app/build
+7.0K	.kotlin
+=== test-results count ===
+0
+=== reports count ===
+0

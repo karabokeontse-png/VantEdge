@@ -1,0 +1,30 @@
+=== eight-path status ===
+ M app/src/main/java/com/vantedge/app/data/domain/CompatibilityRecordMapper.kt
+ M app/src/main/java/com/vantedge/app/w5/scoring/W5Types.kt
+ M app/src/test/java/com/vantedge/app/w5/scoring/RequirementCoverageTest.kt
+ M app/src/test/java/com/vantedge/app/w5/scoring/CorrectiveUnknownStateTest.kt
+ M app/src/test/java/com/vantedge/app/w5/scoring/ProvisionalScoreTest.kt
+ M app/src/test/java/com/vantedge/app/w5/scoring/W5ScoreEngineTest.kt
+ M app/src/test/java/com/vantedge/app/data/storage/CompatibilityRecordLegacyJsonTest.kt
+ M app/src/test/java/com/vantedge/app/data/viewmodel/CycleScoreAggregationTest.kt
+
+=== eight-path diffstat vs HEAD ===
+ .../app/data/domain/CompatibilityRecordMapper.kt   | 110 ++++++++--
+ .../java/com/vantedge/app/w5/scoring/W5Types.kt    |   3 +-
+ .../storage/CompatibilityRecordLegacyJsonTest.kt   |  22 ++
+ .../data/viewmodel/CycleScoreAggregationTest.kt    |  11 +
+ .../app/w5/scoring/CorrectiveUnknownStateTest.kt   |   5 +
+ .../app/w5/scoring/ProvisionalScoreTest.kt         |  84 +++++++-
+ .../app/w5/scoring/RequirementCoverageTest.kt      | 224 +++++++++++++++++++++
+ .../vantedge/app/w5/scoring/W5ScoreEngineTest.kt   |   2 +-
+ 8 files changed, 433 insertions(+), 28 deletions(-)
+
+=== eight-path numstat vs HEAD ===
+89	21	app/src/main/java/com/vantedge/app/data/domain/CompatibilityRecordMapper.kt
+2	1	app/src/main/java/com/vantedge/app/w5/scoring/W5Types.kt
+22	0	app/src/test/java/com/vantedge/app/data/storage/CompatibilityRecordLegacyJsonTest.kt
+11	0	app/src/test/java/com/vantedge/app/data/viewmodel/CycleScoreAggregationTest.kt
+5	0	app/src/test/java/com/vantedge/app/w5/scoring/CorrectiveUnknownStateTest.kt
+79	5	app/src/test/java/com/vantedge/app/w5/scoring/ProvisionalScoreTest.kt
+224	0	app/src/test/java/com/vantedge/app/w5/scoring/RequirementCoverageTest.kt
+1	1	app/src/test/java/com/vantedge/app/w5/scoring/W5ScoreEngineTest.kt

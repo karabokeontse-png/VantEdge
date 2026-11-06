@@ -1,0 +1,9 @@
+ .../app/data/domain/CompatibilityRecordMapper.kt   |   84 +++++++--
+ .../java/com/vantedge/app/w5/scoring/W5Types.kt    |    3 
+ .../storage/CompatibilityRecordLegacyJsonTest.kt   |   22 ++
+ .../data/viewmodel/CycleScoreAggregationTest.kt    |   11 +
+ .../app/w5/scoring/ProvisionalScoreTest.kt         |   84 +++++++++
+ .../app/w5/scoring/RequirementCoverageTest.kt      |  184 ++++++++++++++++++++
+ .../vantedge/app/w5/scoring/W5ScoreEngineTest.kt   |    2 
+ .../validation/P2VerificationHarnessTest.kt        |   46 +++++
+ 8 files changed, 408 insertions(+), 28 deletions(-)

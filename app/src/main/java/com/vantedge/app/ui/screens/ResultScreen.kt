@@ -389,7 +389,11 @@ fun ResultScreen(
                 Surface(color = RCard, tonalElevation = 4.dp) {
                     Button(
                         onClick = {
-                            viewModel.startImproveFromCycle(cycle)
+                            // A fresh handoff per click; the persistent GenerationCycle.id is
+                            // not a handoff identity.
+                            val improveHandoffId = java.util.UUID.randomUUID().toString()
+                            viewModel.registerImproveHandoff(improveHandoffId)
+                            viewModel.startImproveFromCycle(cycle, improveHandoffId)
                             // FIX: was navigate("loading") — "loading" does not exist in NavHost.
                             // "new_application" is the correct destination: startImproveFromCycle
                             // pre-loads the job context into CycleViewModel, then JobInputScreen

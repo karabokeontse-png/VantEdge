@@ -1,0 +1,47 @@
+Detached-process viability probe (not a Gradle/test run)
+
+Available tools:
+setsid: /usr/bin/setsid
+nohup: /usr/bin/nohup
+timeout: /usr/bin/timeout
+flock: /usr/bin/flock
+screen: MISSING
+tmux: MISSING
+
+Probe 1 — setsid
+Start (UTC): 2026-11-04T08:20:06Z
+Command shape:
+  env PROBE=/data/user/0/ai.opencode.app/cache/opencode/r2-detach-probe \
+    setsid bash -c 'sleep 20; rc=$?; echo "$rc" > "$PROBE/exit"; echo DONE > "$PROBE/done"' \
+    > "$PROBE/log" 2>&1 < /dev/null &
+  echo $! > "$PROBE/pid"
+PID: 14139
+Immediate check: ALIVE
+After 25 seconds (separate shell-tool command): DEAD
+done file: MISSING
+exit file: MISSING
+log: 0 bytes
+Conclusion: the detached setsid process did not survive the end of the shell-tool command.
+
+Probe 2 — nohup + disown
+Start (UTC): 2026-11-04T08:20:40Z
+Command shape:
+  env PROBE=/data/user/0/ai.opencode.app/cache/opencode/r2-nohup-probe \
+    nohup bash -c 'sleep 15; rc=$?; echo "$rc" > "$PROBE/exit"; echo DONE > "$PROBE/done"' \
+    > "$PROBE/log" 2>&1 < /dev/null &
+  PID=$!
+  disown "$PID"
+  echo "$PID" > "$PROBE/pid"
+PID: 14443
+Immediate check: ALIVE
+After 20 seconds (separate shell-tool command): DEAD
+done file: MISSING
+exit file: MISSING
+log: 0 bytes
+Conclusion: the detached nohup/disown process did not survive the end of the shell-tool command.
+
+Observed interpretation:
+- Background processes are terminated when the shell-tool command exits, despite setsid, nohup, and disown.
+- No screen/tmux is available to hold a session.
+- A detached/resumable local Gradle run is therefore NOT VIABLE in this sandbox.
+- No Gradle/test run was started for this probe.

@@ -1,0 +1,16 @@
+=== post-audit identity ===
+2026-11-04T08:33:18Z
+branch=verification/ced-p0-authority
+head=06bb4ac287973dd3ca6bdab1eeb85714b4cb97c2
+head_tree=b6aa1d9cafb13154344274da187303076f338901
+staged_count=0
+porcelain_counts:
+      1  D
+     40  M
+     34 ??
+porcelain_sha256=71570223b0346af77388bb5c71120be98845f737f06513441b541e8344211830
+settings_status= M settings.gradle
+gradle_properties_status= M gradle.properties
+kotlin_exists=yes
+app_build_size=17M
+fresh_test_xml_count=0

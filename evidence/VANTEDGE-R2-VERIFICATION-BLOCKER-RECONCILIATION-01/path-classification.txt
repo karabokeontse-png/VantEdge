@@ -1,0 +1,76 @@
+STATUS | PATH | CLASSIFICATION
+--- | --- | ---
+ M | `app/build.gradle` | PREEXISTING_UNRELATED
+ M | `app/src/main/AndroidManifest.xml` | PREEXISTING_UNRELATED
+ M | `app/src/main/java/com/vantedge/app/data/domain/CompatibilityRecordMapper.kt` | PRIOR_CORRECTIVE_DEPENDENCY, CURRENT_MICRO_PATCH_DELTA, REQUIRED_FOR_NARROW_B1_AC6_AC7_AC8_COMPILE
+ M | `app/src/main/java/com/vantedge/app/data/domain/OptimizationOrchestrator.kt` | PREEXISTING_UNRELATED
+ M | `app/src/main/java/com/vantedge/app/data/engine/GeneratorEngine.kt` | PREEXISTING_UNRELATED
+ M | `app/src/main/java/com/vantedge/app/data/engine/ProfileExtractionEngine.kt` | PREEXISTING_UNRELATED
+ M | `app/src/main/java/com/vantedge/app/data/network/AiGateway.kt` | PREEXISTING_UNRELATED
+ D | `app/src/main/java/com/vantedge/app/data/network/AiResult.kt` | PREEXISTING_UNRELATED
+ M | `app/src/main/java/com/vantedge/app/data/network/GeminiService.kt` | PREEXISTING_UNRELATED
+ M | `app/src/main/java/com/vantedge/app/data/storage/VantEdgeDatabase.kt` | PREEXISTING_UNRELATED
+ M | `app/src/main/java/com/vantedge/app/data/viewmodel/CompatibilityViewModel.kt` | PREEXISTING_UNRELATED
+ M | `app/src/main/java/com/vantedge/app/data/viewmodel/CycleNavEvent.kt` | PREEXISTING_UNRELATED
+ M | `app/src/main/java/com/vantedge/app/data/viewmodel/CycleUiState.kt` | PREEXISTING_UNRELATED
+ M | `app/src/main/java/com/vantedge/app/data/viewmodel/CycleViewModel.kt` | PREEXISTING_UNRELATED
+ M | `app/src/main/java/com/vantedge/app/data/viewmodel/GeneratorViewModel.kt` | PREEXISTING_UNRELATED
+ M | `app/src/main/java/com/vantedge/app/data/viewmodel/JobExtractionState.kt` | PREEXISTING_UNRELATED
+ M | `app/src/main/java/com/vantedge/app/data/viewmodel/OnboardingViewModel.kt` | PREEXISTING_UNRELATED
+ M | `app/src/main/java/com/vantedge/app/domain/PipelineTrace.kt` | PREEXISTING_UNRELATED
+ M | `app/src/main/java/com/vantedge/app/domain/extraction/ExtractionOutcome.kt` | PREEXISTING_UNRELATED
+ M | `app/src/main/java/com/vantedge/app/domain/extraction/JobExtractionOrchestrator.kt` | PREEXISTING_UNRELATED
+ M | `app/src/main/java/com/vantedge/app/navigation/Navigation.kt` | PREEXISTING_UNRELATED
+ M | `app/src/main/java/com/vantedge/app/ui/screens/CVDesignScreen.kt` | PREEXISTING_UNRELATED
+ M | `app/src/main/java/com/vantedge/app/ui/screens/CVGeneratorScreen.kt` | PREEXISTING_UNRELATED
+ M | `app/src/main/java/com/vantedge/app/ui/screens/CompatibilityInputScreen.kt` | PREEXISTING_UNRELATED
+ M | `app/src/main/java/com/vantedge/app/ui/screens/EditProfileScreen.kt` | PREEXISTING_UNRELATED
+ M | `app/src/main/java/com/vantedge/app/ui/screens/JobInputScreen.kt` | PREEXISTING_UNRELATED
+ M | `app/src/main/java/com/vantedge/app/ui/screens/ResultScreen.kt` | PREEXISTING_UNRELATED
+ M | `app/src/main/java/com/vantedge/app/util/FailureLogBundle.kt` | PREEXISTING_UNRELATED
+ M | `app/src/main/java/com/vantedge/app/util/LogDumper.kt` | PREEXISTING_UNRELATED
+ M | `app/src/main/java/com/vantedge/app/util/LogSink.kt` | PREEXISTING_UNRELATED
+ M | `app/src/main/java/com/vantedge/app/w5/scoring/W5Types.kt` | PRIOR_CORRECTIVE_DEPENDENCY, REQUIRED_FOR_NARROW_B1_AC6_AC7_AC8_COMPILE
+ M | `app/src/test/java/com/vantedge/app/data/engine/DateRecoveryPostProcessingTest.kt` | PREEXISTING_UNRELATED
+ M | `app/src/test/java/com/vantedge/app/data/storage/CompatibilityRecordLegacyJsonTest.kt` | PRIOR_CORRECTIVE_DEPENDENCY, PRIOR_CORRECTIVE_NOT_REQUIRED_FOR_NARROW_SET
+ M | `app/src/test/java/com/vantedge/app/data/viewmodel/CycleScoreAggregationTest.kt` | PRIOR_CORRECTIVE_DEPENDENCY, PRIOR_CORRECTIVE_NOT_REQUIRED_FOR_NARROW_SET
+ M | `app/src/test/java/com/vantedge/app/data/viewmodel/ExtractionOutcomeMapperTest.kt` | PREEXISTING_UNRELATED
+ M | `app/src/test/java/com/vantedge/app/w5/scoring/ProvisionalScoreTest.kt` | PRIOR_CORRECTIVE_DEPENDENCY, REQUIRED_FOR_NARROW_B1_AC6_AC7_AC8_COMPILE
+ M | `app/src/test/java/com/vantedge/app/w5/scoring/RequirementCoverageTest.kt` | PRIOR_CORRECTIVE_DEPENDENCY, CURRENT_MICRO_PATCH_DELTA, REQUIRED_FOR_NARROW_B1_AC6_AC7_AC8_COMPILE
+ M | `app/src/test/java/com/vantedge/app/w5/scoring/W5ScoreEngineTest.kt` | PRIOR_CORRECTIVE_DEPENDENCY, PRIOR_CORRECTIVE_NOT_REQUIRED_FOR_NARROW_SET
+ M | `app/src/test/java/com/vantedge/pipeline/validation/P2VerificationHarnessTest.kt` | PRIOR_CORRECTIVE_DEPENDENCY, PRIOR_CORRECTIVE_NOT_REQUIRED_FOR_NARROW_SET
+ M | `gradle.properties` | PREEXISTING_UNRELATED_BUILD_SPEED_CONFIG
+ M | `settings.gradle` | GRADLE_DRIFT_RESTORATION_CANDIDATE
+?? | `AUDIT_2026-10-15.md` | PREEXISTING_UNRELATED
+?? | `VANTEDGE_AUDIT_BRIEF.md` | PREEXISTING_UNRELATED
+?? | `VANTEDGE_AUDIT_INDEX.json` | PREEXISTING_UNRELATED
+?? | `VANTEDGE_BUILD_SPEED_CONFIG_CACHE.md` | PREEXISTING_UNRELATED
+?? | `VANTEDGE_CED-PRIV-01_REVISION_E_AUDIT.md` | PREEXISTING_UNRELATED
+?? | `VANTEDGE_DETERMINISTIC_FIRST_PHASE1.md` | PREEXISTING_UNRELATED
+?? | `VANTEDGE_DETERMINISTIC_FIRST_PHASE3.md` | PREEXISTING_UNRELATED
+?? | `VANTEDGE_P0_PROFILE_EXTRACTION_INVESTIGATION.md` | PREEXISTING_UNRELATED
+?? | `VANTEDGE_SIGNING_CONTINUITY_REPORT.md` | PREEXISTING_UNRELATED
+?? | `app/src/androidTest/java/com/vantedge/app/R2AutoVerifyTest.kt` | PREEXISTING_UNRELATED
+?? | `app/src/main/java/com/vantedge/app/data/domain/GenerationOrchestrator.kt` | PREEXISTING_UNRELATED
+?? | `app/src/main/java/com/vantedge/app/data/domain/GenerationOutcome.kt` | PREEXISTING_UNRELATED
+?? | `app/src/main/java/com/vantedge/app/data/domain/ProfileEligibility.kt` | PREEXISTING_UNRELATED
+?? | `app/src/main/java/com/vantedge/app/data/engine/DeterministicProfileExtractor.kt` | PREEXISTING_UNRELATED
+?? | `app/src/main/java/com/vantedge/app/data/model/GenerationRequest.kt` | PREEXISTING_UNRELATED
+?? | `app/src/main/java/com/vantedge/app/data/network/AiTextGateway.kt` | PREEXISTING_UNRELATED
+?? | `app/src/main/java/com/vantedge/app/data/viewmodel/ExtractionReviewController.kt` | PREEXISTING_UNRELATED
+?? | `app/src/main/java/com/vantedge/app/domain/extraction/ExtractionReview.kt` | PREEXISTING_UNRELATED
+?? | `app/src/main/java/com/vantedge/app/ui/components/ExtractionReviewSurface.kt` | PREEXISTING_UNRELATED
+?? | `app/src/main/res/xml/backup_rules.xml` | PREEXISTING_UNRELATED
+?? | `app/src/main/res/xml/data_extraction_rules.xml` | PREEXISTING_UNRELATED
+?? | `app/src/test/java/com/vantedge/app/A13BlankApiKeyTest.kt` | PREEXISTING_UNRELATED
+?? | `app/src/test/java/com/vantedge/app/data/domain/` | PREEXISTING_UNRELATED
+?? | `app/src/test/java/com/vantedge/app/data/engine/DeterministicProfileExtractorTest.kt` | PREEXISTING_UNRELATED
+?? | `app/src/test/java/com/vantedge/app/data/engine/NormalizeRootKeysDateAuthorityTest.kt` | PREEXISTING_UNRELATED
+?? | `app/src/test/java/com/vantedge/app/data/engine/ReviewedJobRequirementsPromptTest.kt` | PREEXISTING_UNRELATED
+?? | `app/src/test/java/com/vantedge/app/data/viewmodel/CycleViewModelHandoffLifecycleTest.kt` | PREEXISTING_UNRELATED
+?? | `app/src/test/java/com/vantedge/app/data/viewmodel/GeneratorViewModelReviewedRequirementsChainTest.kt` | PREEXISTING_UNRELATED
+?? | `app/src/test/java/com/vantedge/app/domain/extraction/ExtractionReviewTest.kt` | PREEXISTING_UNRELATED
+?? | `app/src/test/java/com/vantedge/app/domain/extraction/JobExtractionDecisionEnforcementTest.kt` | PREEXISTING_UNRELATED
+?? | `app/src/test/java/com/vantedge/app/domain/extraction/JobExtractionOrchestratorFieldPreservationTest.kt` | PREEXISTING_UNRELATED
+?? | `app/src/test/java/com/vantedge/app/navigation/` | PREEXISTING_UNRELATED
+?? | `evidence/` | REQUIRED_AUDIT_OUTPUT_LOCATION

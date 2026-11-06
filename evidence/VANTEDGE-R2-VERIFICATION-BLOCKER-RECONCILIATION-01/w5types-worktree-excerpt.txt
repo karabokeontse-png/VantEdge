@@ -1,0 +1,17 @@
+)
+
+enum class UnassessedReason {
+    PROFILE_SKILL_EVIDENCE_ABSENT,
+    PROFILE_QUALIFICATION_EVIDENCE_ABSENT,
+    TAXONOMY_MISS,
+    UNSUPPORTED_CATEGORY,
+    PREFERENCE_NOT_ASSESSED,
+    UNRECONCILED
+}
+
+data class UnassessedRequirement(
+    val text: String,
+    val reason: UnassessedReason
+)
+
+data class RecommendationHints(

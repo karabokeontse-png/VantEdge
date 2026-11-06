@@ -1,0 +1,289 @@
+ref=origin/fix/p0-sanitizer-r5-skill-ocr
+ref_sha=e620278dd75ce5507d3b0bb06fcd3345cbc74e23
+merge_base=e620278dd75ce5507d3b0bb06fcd3345cbc74e23
+ahead_count=43
+behind_count=0
+contains_5609322=no
+contains_ed83a02=no
+contains_3f23859=no
+contains_06bb4ac=no
+paths_count=113
+diffstat_files=113 insertions=6693 deletions=942
+
+=== commits reachable from local HEAD but not candidate (43) ===
+  06bb4ac fix(r2): preserve unknown requirement evidence
+  3f23859 R2: unknown-state integrity implementation (milestone)
+  ed83a02 fix(AC10): gate eligibility claims on confirmed gaps
+  5609322 fix(P0-A): forward structured requirements to every analysis branch
+  b3c9d06 feat(P0-D): remove AI veto over deterministic W5; add analysis provenance
+  96513ba feat(P0-B): deterministic W5 chain becomes sole analytical authority
+  809c026 fix(P0-B): forward extracted structured requirements into compatibility analysis
+  16cf067 fix(ced-1): handle nullable raw content length
+  77be059 fix(ced-1): disable reasoning on extraction requests; reasoning models burned the entire max_tokens budget on reasoning and returned content:null (finish_reason=length). Sends reasoning{enabled:false,max_tokens:0,exclude:true} and tags HTTP_REQUEST_BEGIN with reasoningDisabled=true for retest observability. Local-only; push HOLD.
+  29bd88a fix(ced-1): job_extraction token budget 4096->8192 so reasoning+JSON fit in one pass; free reasoning models (nemotron/north-mini) exhausted 4096 on reasoning and returned content:null. Local-only; push HOLD.
+  70ef4ee fix(gemini): guard MODEL_EMPTY_CONTENT — reasoning-only responses (content:null) were coerced by getString into the literal string "null" (rawLength=4), failing all extraction then quarantining with ambient correlation. Now detected pre-extraction, emitted as distinct EMPTY_CONTENT failure with requestId/correlationId + onModelResult timing fix. Local-only; push HOLD.
+  c84e6a7 reconcile: sync container workspace onto VantEdge history (drop pre-cogo/aapt2 junk, restore gradlew mode, dedupe aapt2 override); include P0 pipeline fix (AiGateway+GeminiService), A1 coverLetterHtml Option C, and extraction observability P0s (quarantine correlation + attemptCount). Local-only; push HOLD per master brief.
+  c3f08cc feat: TD-EXTRACT-COT-001 prompt boundary additions + TD-RELIABILITY-002/observability disclosures. Note: job_extraction fallback CoT exhaustion remains empirically unverified; CED-1 HOLD remains.
+  e62ae10 fix(TD-RELIABILITY-003): restore success path propagation and update model config
+  5f214d2 fix(ui): TD-RELIABILITY-002 Part 3b — wire extracted skills into JIS runAnalysis call
+  23a8278 fix(ui): TD-RELIABILITY-002 Part 1 — add try/catch to CompatibilityViewModel.analyze() to prevent silent loading hang
+  1bb470d chore(extraction): TD-EXTRACT-QUALITY-001 fast-follows — tests, docs, warning cleanup
+  fd9119b fix(extraction): TD-EXTRACT-QUALITY-001 — enforce decision propagation and eliminate synthetic telemetry
+  f8d7fea fix(validation): TD-VALIDATOR-SEVERITY-001 — split email/description checkField into structural BLOCKER and quality WARNING paths
+  b529f8f fix(domain): complete TD-003-PHASE-1 interface sync — add structured requirements params with defaults to CompatibilityOrchestrator
+  58b1c3f feat(ui): add HITL unparseable date warning to profile screens (TD-PROFILE-002b)
+  1542bf7 feat: expand comparisonSurface with education/preferred skills and wire structured requirements (TD-003-PHASE-1)
+  54a7ba0 feat: implement deterministic substring overlap for gap validation (TD-003 Stage 1)
+  44288cd fix: deterministic aggregate reconciliation, experienceGap-aware gap validation, explicit maxTokens pin (TD-COMPATIBILITY-002)
+  f4d685b Merge PR #4: TD-COMPATIBILITY-001 deterministic relevancy filtering to eliminate specific E3 HALT path on hallucinated relevancy item names. Does not guarantee non-halting for other E3/E4 classifications.
+  965c884 fix: apply narrowed deterministic relevancy filtering with verified count overrides (TD-COMPATIBILITY-001)
+  6cfb4b0 fix: apply deterministic override for profile counts and unmask evidence integrity errors (TD-COMPATIBILITY-001)
+  cb286d2 chore: remove hardcoded AAPT2 override to fix GitHub CI test jobs
+  fed7b86 Merge PR #3: TD-TELEMETRY-001 unify extraction provenance
+  b56e6c7 fix: unify extraction provenance to single source of truth, resolving TD-TELEMETRY-001 mode mismatch
+  3e800b3 fix: resolve CV upload AI timeout by relaxing OkHttp and body-read timeouts, reducing extraction maxTokens (CED-14)
+  26cabc0 feat: integrate ExtractionValidator into ProfileSanitizer, resolving R5 regression, fixing Android dict loading, and preserving technical identifiers (CED-13b)
+  379a7c9 feat: implement ExtractionValidator core pipeline and ExtractionAssessment contract (CED-13a)
+  2773f1e chore: add W5 observability tracing and OCR sanitization hardening
+  af6d218 feat: implement QualificationEvaluator contract and unit tests for CED-11
+  d0308bb fix: add aapt2 gradle.properties cleanup to w5-tests.yml workflow
+  9412bbc test: add deterministic W5ScoreBaselineTest for 50-fixture qualification scoring evidence
+  61b0a07 fix: correct JUnit4 assertTrue argument order in CED-12 regression test
+  a4a8e17 CED-12: Add phrase length guard with unmapped routing, update regex for / and newlines
+  74dafa2 CED-10 CI BLOCKER: Rename stale ConfidenceEngineCorruptedOcrTest to .bak
+  a530c44 CED-10 PREREQUISITE: Fix GapAnalyzer type mismatch - MatchEvidence
+  d0af3d2 CED-10: Add qualification extraction to description fallback, fix degradation detection, add emergency extractor skill fallback, and add regression test
+  e1b0c69 H-3: Add ConfidenceEngine OCR corruption CI test + fix pre-existing test compilation errors
+
+=== commits reachable from candidate but not local HEAD (0) ===
+
+=== path-level PR diff (candidate...HEAD) ===
+  A	.github/workflows/h3-corrupted-ocr-test.yml
+  M	.github/workflows/w5-tests.yml
+  M	app/build.gradle
+  M	app/src/main/assets/validation/validation_rules.json
+  A	app/src/main/assets/w5/keyword_dictionary.json
+  A	app/src/main/assets/w5/stop_words.json
+  M	app/src/main/java/com/vantedge/app/VantEdgeApplication.kt
+  M	app/src/main/java/com/vantedge/app/data/domain/CompatibilityOrchestrator.kt
+  A	app/src/main/java/com/vantedge/app/data/domain/CompatibilityRecordMapper.kt
+  M	app/src/main/java/com/vantedge/app/data/domain/OptimizationOrchestrator.kt
+  A	app/src/main/java/com/vantedge/app/data/domain/ScoreCompleteness.kt
+  M	app/src/main/java/com/vantedge/app/data/engine/CVTemplate.kt
+  M	app/src/main/java/com/vantedge/app/data/engine/ExtractionMode.kt
+  M	app/src/main/java/com/vantedge/app/data/engine/ExtractionValidator.kt
+  M	app/src/main/java/com/vantedge/app/data/engine/GeneratorEngine.kt
+  D	app/src/main/java/com/vantedge/app/data/engine/JobExtractionEngine.kt.bak
+  M	app/src/main/java/com/vantedge/app/data/engine/ProfileExtractionEngine.kt
+  M	app/src/main/java/com/vantedge/app/data/engine/extraction/ConfidenceEngine.kt
+  M	app/src/main/java/com/vantedge/app/data/engine/extraction/LlmJobExtractor.kt
+  M	app/src/main/java/com/vantedge/app/data/engine/extraction/RuleBasedEmergencyExtractor.kt
+  M	app/src/main/java/com/vantedge/app/data/model/CompatibilityRecord.kt
+  M	app/src/main/java/com/vantedge/app/data/model/Gate0JobReason.kt
+  M	app/src/main/java/com/vantedge/app/data/model/GenerationCycle.kt
+  M	app/src/main/java/com/vantedge/app/data/model/JobExtractionResult.kt
+  M	app/src/main/java/com/vantedge/app/data/model/OnboardingDraft.kt
+  A	app/src/main/java/com/vantedge/app/data/model/RequirementAssessment.kt
+  M	app/src/main/java/com/vantedge/app/data/model/extraction/FieldConfidence.kt
+  A	app/src/main/java/com/vantedge/app/data/network/AiBudgetPolicy.kt
+  M	app/src/main/java/com/vantedge/app/data/network/AiGateway.kt
+  M	app/src/main/java/com/vantedge/app/data/network/GeminiService.kt
+  M	app/src/main/java/com/vantedge/app/data/viewmodel/CompatibilityViewModel.kt
+  A	app/src/main/java/com/vantedge/app/data/viewmodel/CycleScoreAggregation.kt
+  M	app/src/main/java/com/vantedge/app/data/viewmodel/CycleViewModel.kt
+  M	app/src/main/java/com/vantedge/app/data/viewmodel/JobExtractionState.kt
+  M	app/src/main/java/com/vantedge/app/data/viewmodel/OnboardingViewModel.kt
+  M	app/src/main/java/com/vantedge/app/domain/extraction/ExtractionDecisionCoordinator.kt
+  A	app/src/main/java/com/vantedge/app/domain/extraction/ExtractionOutcome.kt
+  M	app/src/main/java/com/vantedge/app/domain/extraction/JobExtractionOrchestrator.kt
+  A	app/src/main/java/com/vantedge/app/domain/policy/ThresholdPolicy.kt
+  A	app/src/main/java/com/vantedge/app/extraction/confidence/ConfidenceDimensions.kt
+  A	app/src/main/java/com/vantedge/app/narrative/NarrativeEvidenceContext.kt
+  A	app/src/main/java/com/vantedge/app/narrative/NarrativeEvidenceMapper.kt
+  A	app/src/main/java/com/vantedge/app/narrative/W5Evidence.kt
+  A	app/src/main/java/com/vantedge/app/ui/components/WarningsBanner.kt
+  M	app/src/main/java/com/vantedge/app/ui/screens/AdvancedAnalysisScreen.kt
+  M	app/src/main/java/com/vantedge/app/ui/screens/AnalysisResultScreen.kt
+  M	app/src/main/java/com/vantedge/app/ui/screens/CVGeneratorScreen.kt
+  M	app/src/main/java/com/vantedge/app/ui/screens/CompatibilityInputScreen.kt
+  M	app/src/main/java/com/vantedge/app/ui/screens/CompatibilityResultScreen.kt
+  M	app/src/main/java/com/vantedge/app/ui/screens/CycleHistoryScreen.kt
+  M	app/src/main/java/com/vantedge/app/ui/screens/DashboardScreen.kt
+  M	app/src/main/java/com/vantedge/app/ui/screens/EditProfileScreen.kt
+  M	app/src/main/java/com/vantedge/app/ui/screens/FinalReviewScreen.kt
+  M	app/src/main/java/com/vantedge/app/ui/screens/JobInputScreen.kt
+  M	app/src/main/java/com/vantedge/app/ui/screens/ResultScreen.kt
+  M	app/src/main/java/com/vantedge/app/ui/screens/ReviewExtractionScreen.kt
+  A	app/src/main/java/com/vantedge/app/ui/screens/ScorePresentation.kt
+  M	app/src/main/java/com/vantedge/app/util/LogSink.kt
+  A	app/src/main/java/com/vantedge/app/util/TelemetryPathProvider.kt
+  M	app/src/main/java/com/vantedge/app/w5/scoring/AxisEvaluators.kt
+  A	app/src/main/java/com/vantedge/app/w5/scoring/DeterministicCompatibilityEngine.kt
+  A	app/src/main/java/com/vantedge/app/w5/scoring/DirectW5InputAdapter.kt
+  A	app/src/main/java/com/vantedge/app/w5/scoring/ExtractionAssessment.kt
+  A	app/src/main/java/com/vantedge/app/w5/scoring/ExtractionValidator.kt
+  M	app/src/main/java/com/vantedge/app/w5/scoring/GapAnalyzer.kt
+  M	app/src/main/java/com/vantedge/app/w5/scoring/HintBuilder.kt
+  A	app/src/main/java/com/vantedge/app/w5/scoring/JobRequirementAdapter.kt
+  M	app/src/main/java/com/vantedge/app/w5/scoring/ProfileSanitizer.kt
+  A	app/src/main/java/com/vantedge/app/w5/scoring/QualificationEvaluator.kt
+  A	app/src/main/java/com/vantedge/app/w5/scoring/RequirementEvidence.kt
+  A	app/src/main/java/com/vantedge/app/w5/scoring/SkillTaxonomyProvider.kt
+  M	app/src/main/java/com/vantedge/app/w5/scoring/W5Adapter.kt
+  A	app/src/main/java/com/vantedge/app/w5/scoring/W5AssetLoader.kt
+  M	app/src/main/java/com/vantedge/app/w5/scoring/W5ScoreEngine.kt
+  M	app/src/main/java/com/vantedge/app/w5/scoring/W5Types.kt
+  M	app/src/main/java/com/vantedge/app/w5/scoring/W5Utils.kt
+  M	app/src/main/java/com/vantedge/app/w6/improvement/W6Rules.kt
+  M	app/src/main/java/com/vantedge/pipeline/contract/ContractValidator.kt
+  M	app/src/main/java/com/vantedge/pipeline/evidence/EvidenceIntegrityDetector.kt
+  M	app/src/main/java/com/vantedge/pipeline/evidence/EvidenceRegistry.kt
+  M	app/src/main/java/com/vantedge/pipeline/validation/P2ValidationEngine.kt
+  A	app/src/main/res/raw/extraction_dictionary.txt
+  A	app/src/test/java/com/vantedge/app/data/engine/DateRecoveryPostProcessingTest.kt
+  A	app/src/test/java/com/vantedge/app/data/engine/extraction/ConfidenceEngineCorruptedOcrTest.kt.bak
+  A	app/src/test/java/com/vantedge/app/data/engine/extraction/ConfidenceEngineUnknownTest.kt
+  A	app/src/test/java/com/vantedge/app/data/storage/CompatibilityRecordLegacyJsonTest.kt
+  A	app/src/test/java/com/vantedge/app/data/viewmodel/CycleScoreAggregationTest.kt
+  A	app/src/test/java/com/vantedge/app/data/viewmodel/ExtractionOutcomeMapperTest.kt
+  A	app/src/test/java/com/vantedge/app/domain/extraction/ExtractionDecisionCoordinatorUnknownTest.kt
+  A	app/src/test/java/com/vantedge/app/ui/screens/ScorePresentationTest.kt
+  A	app/src/test/java/com/vantedge/app/ui/screens/UnassessedPresentationTest.kt
+  A	app/src/test/java/com/vantedge/app/w5/scoring/CorrectiveUnknownStateTest.kt
+  A	app/src/test/java/com/vantedge/app/w5/scoring/ExtractionValidatorTest.kt
+  A	app/src/test/java/com/vantedge/app/w5/scoring/HintBuilderMeasurednessTest.kt
+  A	app/src/test/java/com/vantedge/app/w5/scoring/JobRequirementAdapterTest.kt
+  A	app/src/test/java/com/vantedge/app/w5/scoring/JobTitleRoleRelevanceProductionTest.kt
+  M	app/src/test/java/com/vantedge/app/w5/scoring/ProfileSanitizerTest.kt
+  A	app/src/test/java/com/vantedge/app/w5/scoring/ProvisionalScoreTest.kt
+  A	app/src/test/java/com/vantedge/app/w5/scoring/QualificationEvaluatorTest.kt
+  A	app/src/test/java/com/vantedge/app/w5/scoring/RequirementCoverageTest.kt
+  A	app/src/test/java/com/vantedge/app/w5/scoring/W5ScoreBaselineTest.kt
+  M	app/src/test/java/com/vantedge/app/w5/scoring/W5ScoreEngineTest.kt
+  M	app/src/test/java/com/vantedge/app/w6/improvement/W6EngineTest.kt
+  A	app/src/test/java/com/vantedge/app/w6/improvement/W6UnknownAxisTest.kt
+  A	app/src/test/java/com/vantedge/pipeline/evidence/PhaseDAuthorityTest.kt
+  A	app/src/test/resources/extraction_dictionary.txt
+  A	app/src/test/resources/validation/skill_taxonomy.json
+  M	build.gradle
+  M	gradle.properties
+  D	gradle.properties.backup
+  M	gradle/wrapper/gradle-wrapper.properties
+  M	settings.gradle
+  A	test/fixtures/corrupted_job_posting.txt
+
+=== diffstat (candidate...HEAD) ===
+   .github/workflows/h3-corrupted-ocr-test.yml        |  40 ++
+   .github/workflows/w5-tests.yml                     |  38 ++
+   app/build.gradle                                   |  28 +-
+   .../main/assets/validation/validation_rules.json   |  34 +-
+   app/src/main/assets/w5/keyword_dictionary.json     |   1 +
+   app/src/main/assets/w5/stop_words.json             |   1 +
+   .../java/com/vantedge/app/VantEdgeApplication.kt   |   8 +
+   .../app/data/domain/CompatibilityOrchestrator.kt   |   5 +-
+   .../app/data/domain/CompatibilityRecordMapper.kt   | 442 +++++++++++++++++
+   .../app/data/domain/OptimizationOrchestrator.kt    | 382 +++++++++------
+   .../vantedge/app/data/domain/ScoreCompleteness.kt  |   8 +
+   .../com/vantedge/app/data/engine/CVTemplate.kt     |  47 +-
+   .../com/vantedge/app/data/engine/ExtractionMode.kt |   8 +-
+   .../app/data/engine/ExtractionValidator.kt         |  18 +-
+   .../vantedge/app/data/engine/GeneratorEngine.kt    |  36 +-
+   .../app/data/engine/JobExtractionEngine.kt.bak     | 346 -------------
+   .../app/data/engine/ProfileExtractionEngine.kt     |  34 +-
+   .../app/data/engine/extraction/ConfidenceEngine.kt |  24 +-
+   .../app/data/engine/extraction/LlmJobExtractor.kt  |  13 +-
+   .../extraction/RuleBasedEmergencyExtractor.kt      |  56 ++-
+   .../vantedge/app/data/model/CompatibilityRecord.kt |  32 +-
+   .../com/vantedge/app/data/model/Gate0JobReason.kt  |   3 +-
+   .../com/vantedge/app/data/model/GenerationCycle.kt |   1 +
+   .../vantedge/app/data/model/JobExtractionResult.kt |   6 +-
+   .../com/vantedge/app/data/model/OnboardingDraft.kt |   3 +
+   .../app/data/model/RequirementAssessment.kt        |  16 +
+   .../app/data/model/extraction/FieldConfidence.kt   |   4 +-
+   .../vantedge/app/data/network/AiBudgetPolicy.kt    |  13 +
+   .../com/vantedge/app/data/network/AiGateway.kt     |   1 +
+   .../com/vantedge/app/data/network/GeminiService.kt | 158 +++++-
+   .../app/data/viewmodel/CompatibilityViewModel.kt   | 143 +++++-
+   .../app/data/viewmodel/CycleScoreAggregation.kt    |  55 +++
+   .../vantedge/app/data/viewmodel/CycleViewModel.kt  |  64 +--
+   .../app/data/viewmodel/JobExtractionState.kt       |   1 +
+   .../app/data/viewmodel/OnboardingViewModel.kt      |  20 +-
+   .../extraction/ExtractionDecisionCoordinator.kt    |  31 +-
+   .../app/domain/extraction/ExtractionOutcome.kt     |  11 +
+   .../domain/extraction/JobExtractionOrchestrator.kt |  62 ++-
+   .../vantedge/app/domain/policy/ThresholdPolicy.kt  |  10 +
+   .../extraction/confidence/ConfidenceDimensions.kt  |  22 +
+   .../app/narrative/NarrativeEvidenceContext.kt      |  23 +
+   .../app/narrative/NarrativeEvidenceMapper.kt       |  39 ++
+   .../java/com/vantedge/app/narrative/W5Evidence.kt  |   8 +
+   .../vantedge/app/ui/components/WarningsBanner.kt   |  40 ++
+   .../app/ui/screens/AdvancedAnalysisScreen.kt       |  23 +-
+   .../app/ui/screens/AnalysisResultScreen.kt         |  43 +-
+   .../vantedge/app/ui/screens/CVGeneratorScreen.kt   |  29 +-
+   .../app/ui/screens/CompatibilityInputScreen.kt     |  54 ++-
+   .../app/ui/screens/CompatibilityResultScreen.kt    |  16 +-
+   .../vantedge/app/ui/screens/CycleHistoryScreen.kt  |  13 +-
+   .../com/vantedge/app/ui/screens/DashboardScreen.kt |  19 +
+   .../vantedge/app/ui/screens/EditProfileScreen.kt   |  31 +-
+   .../vantedge/app/ui/screens/FinalReviewScreen.kt   |  21 +
+   .../com/vantedge/app/ui/screens/JobInputScreen.kt  |  27 +-
+   .../com/vantedge/app/ui/screens/ResultScreen.kt    |  99 +++-
+   .../app/ui/screens/ReviewExtractionScreen.kt       |  19 +-
+   .../vantedge/app/ui/screens/ScorePresentation.kt   |  82 ++++
+   app/src/main/java/com/vantedge/app/util/LogSink.kt |  21 +
+   .../com/vantedge/app/util/TelemetryPathProvider.kt |  15 +
+   .../com/vantedge/app/w5/scoring/AxisEvaluators.kt  |  15 +-
+   .../w5/scoring/DeterministicCompatibilityEngine.kt | 123 +++++
+   .../app/w5/scoring/DirectW5InputAdapter.kt         |  57 +++
+   .../app/w5/scoring/ExtractionAssessment.kt         |  22 +
+   .../vantedge/app/w5/scoring/ExtractionValidator.kt | 198 ++++++++
+   .../com/vantedge/app/w5/scoring/GapAnalyzer.kt     |  28 +-
+   .../com/vantedge/app/w5/scoring/HintBuilder.kt     |   4 +-
+   .../app/w5/scoring/JobRequirementAdapter.kt        | 535 +++++++++++++++++++++
+   .../vantedge/app/w5/scoring/ProfileSanitizer.kt    | 192 +++++---
+   .../app/w5/scoring/QualificationEvaluator.kt       |  47 ++
+   .../vantedge/app/w5/scoring/RequirementEvidence.kt |  35 ++
+   .../app/w5/scoring/SkillTaxonomyProvider.kt        |  40 ++
+   .../java/com/vantedge/app/w5/scoring/W5Adapter.kt  |   2 +
+   .../com/vantedge/app/w5/scoring/W5AssetLoader.kt   |  51 ++
+   .../com/vantedge/app/w5/scoring/W5ScoreEngine.kt   |  83 +++-
+   .../java/com/vantedge/app/w5/scoring/W5Types.kt    |  41 +-
+   .../java/com/vantedge/app/w5/scoring/W5Utils.kt    |  30 ++
+   .../com/vantedge/app/w6/improvement/W6Rules.kt     |  30 +-
+   .../pipeline/contract/ContractValidator.kt         |  50 +-
+   .../pipeline/evidence/EvidenceIntegrityDetector.kt |  54 ++-
+   .../vantedge/pipeline/evidence/EvidenceRegistry.kt |  34 +-
+   .../pipeline/validation/P2ValidationEngine.kt      |   2 +-
+   app/src/main/res/raw/extraction_dictionary.txt     |  12 +
+   .../data/engine/DateRecoveryPostProcessingTest.kt  | 132 +++++
+   .../ConfidenceEngineCorruptedOcrTest.kt.bak        | 136 ++++++
+   .../extraction/ConfidenceEngineUnknownTest.kt      |  51 ++
+   .../storage/CompatibilityRecordLegacyJsonTest.kt   | 176 +++++++
+   .../data/viewmodel/CycleScoreAggregationTest.kt    | 199 ++++++++
+   .../data/viewmodel/ExtractionOutcomeMapperTest.kt  |  99 ++++
+   .../ExtractionDecisionCoordinatorUnknownTest.kt    |  81 ++++
+   .../app/ui/screens/ScorePresentationTest.kt        | 200 ++++++++
+   .../app/ui/screens/UnassessedPresentationTest.kt   | 112 +++++
+   .../app/w5/scoring/CorrectiveUnknownStateTest.kt   | 190 ++++++++
+   .../app/w5/scoring/ExtractionValidatorTest.kt      |  75 +++
+   .../app/w5/scoring/HintBuilderMeasurednessTest.kt  |  74 +++
+   .../app/w5/scoring/JobRequirementAdapterTest.kt    |  63 +++
+   .../scoring/JobTitleRoleRelevanceProductionTest.kt | 182 +++++++
+   .../app/w5/scoring/ProfileSanitizerTest.kt         |  69 +++
+   .../app/w5/scoring/ProvisionalScoreTest.kt         | 123 +++++
+   .../app/w5/scoring/QualificationEvaluatorTest.kt   | 211 ++++++++
+   .../app/w5/scoring/RequirementCoverageTest.kt      | 243 ++++++++++
+   .../vantedge/app/w5/scoring/W5ScoreBaselineTest.kt | 123 +++++
+   .../vantedge/app/w5/scoring/W5ScoreEngineTest.kt   | 139 +++++-
+   .../vantedge/app/w6/improvement/W6EngineTest.kt    |   7 +-
+   .../app/w6/improvement/W6UnknownAxisTest.kt        | 112 +++++
+   .../pipeline/evidence/PhaseDAuthorityTest.kt       | 188 ++++++++
+   app/src/test/resources/extraction_dictionary.txt   |  12 +
+   .../test/resources/validation/skill_taxonomy.json  |  40 ++
+   build.gradle                                       |  18 +-
+   gradle.properties                                  |   6 +-
+   gradle.properties.backup                           |  15 -
+   gradle/wrapper/gradle-wrapper.properties           |   2 +-
+   settings.gradle                                    |  16 +
+   test/fixtures/corrupted_job_posting.txt            |   9 +
+   113 files changed, 6693 insertions(+), 942 deletions(-)

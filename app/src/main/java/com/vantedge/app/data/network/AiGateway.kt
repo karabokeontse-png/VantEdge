@@ -8,12 +8,12 @@ import java.util.concurrent.atomic.AtomicInteger
 
 class AiGateway(
     private val geminiService: GeminiService
-) {
+) : AiTextGateway {
     companion object {
         private val requestCounter = AtomicInteger(0)
     }
 
-    suspend fun generate(
+    override suspend fun generate(
         pipeline: String,
         request: AiRequest,
         budgetMs: Long
@@ -78,8 +78,7 @@ class AiGateway(
 
         val totalElapsed = System.currentTimeMillis() - startTime
 
-        // Build AiResult internally for Phase 3A validation
-        val aiResult = if (result != null) {
+        if (result != null) {
             Log.i("AiGateway", "[$pipeline] [$requestId] EXIT duration=${totalElapsed}ms success=true resultLength=${result.length}")
 
             PipelineTrace.exit(
@@ -96,8 +95,6 @@ class AiGateway(
                     "failedAttempts" to failedAttempts
                 )
             )
-
-            AiResult.Success(result)
         } else {
             Log.i("AiGateway", "[$pipeline] [$requestId] EXIT duration=${totalElapsed}ms success=false")
 
@@ -121,43 +118,9 @@ class AiGateway(
                     "failedAttempts" to failedAttempts
                 )
             )
-
-            val lastFailure = transports.lastOrNull { it.failureType != null }
-            AiResult.Failure(
-                category = classifyFailure(lastFailure?.failureType),
-                transport = lastFailure ?: ModelAttemptResult(
-                    requestId = requestId,
-                    model = "unknown",
-                    attempt = 0,
-                    failureType = "unknown",
-                    httpCode = null,
-                    durationMs = 0L,
-                    latencyMs = null,
-                    bodyPreview = null,
-                    detail = "No transport result captured",
-                    cancelReason = null
-                ),
-                totalElapsedMs = totalElapsed
-            )
         }
-
-        Log.d("AiGateway", "[$pipeline] [$requestId] AiResult=$aiResult")
 
         return result
     }
 
-    // PRIVATE MAPPER
-    private fun classifyFailure(errorType: String?): AiFailureCategory = when (errorType) {
-        "timeout" -> AiFailureCategory.TIMEOUT
-        "cancelled" -> AiFailureCategory.TRANSPORT
-        "network" -> AiFailureCategory.TRANSPORT
-        "empty" -> AiFailureCategory.EMPTY_RESPONSE
-        "invalid_json" -> AiFailureCategory.PARSE_ERROR
-        "provider_error" -> AiFailureCategory.PROVIDER_ERROR
-        "schema_error" -> AiFailureCategory.PARSE_ERROR
-        "parse" -> AiFailureCategory.PARSE_ERROR
-        "404" -> AiFailureCategory.CONFIG_ERROR
-        "429" -> AiFailureCategory.RATE_LIMIT
-        else -> AiFailureCategory.OTHER
-    }
 }

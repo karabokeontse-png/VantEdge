@@ -1,0 +1,10 @@
+ref	sha	merge_base	ahead_count	behind_count	contains_5609322	contains_ed83a02	contains_3f23859	contains_06bb4ac	paths_count	files	insertions	deletions
+origin/main	b3c9d06c82a553a53bf9bca62cc521014ce4f159	b3c9d06c82a553a53bf9bca62cc521014ce4f159	4	0	no	no	no	no	41	41	2768	197
+origin/verification/ced-p0-authority	b3c9d06c82a553a53bf9bca62cc521014ce4f159	b3c9d06c82a553a53bf9bca62cc521014ce4f159	4	0	no	no	no	no	41	41	2768	197
+origin/verification/phase-a-requirements-forwarding	56093227307f5b4ab7d7511e14541fa3d496fc78	56093227307f5b4ab7d7511e14541fa3d496fc78	3	0	yes	no	no	no	41	41	2753	190
+origin/recovery/reconstructed	71d130de810ec79b60d80800db134eea3d3928b4	71d130de810ec79b60d80800db134eea3d3928b4	67	0	no	no	no	no	128	128	9150	1251
+origin/recovery/main	c67d003853e6a1f457896e9fd1cf0189e546293d	c67d003853e6a1f457896e9fd1cf0189e546293d	79	0	no	no	no	no	488	488	26578	40601
+origin/fix/p0-sanitizer-r5-skill-ocr	e620278dd75ce5507d3b0bb06fcd3345cbc74e23	e620278dd75ce5507d3b0bb06fcd3345cbc74e23	43	0	no	no	no	no	113	113	6693	942
+origin/feature/ced-10-fallback-restoration	3e800b3762487f7f384fdb228bf481577cd9693f	3e800b3762487f7f384fdb228bf481577cd9693f	30	0	no	no	no	no	94	94	4794	891
+origin/feature/td-compatibility-001	965c884a2d2a5d9fc8c32b7341d7631f89151776	965c884a2d2a5d9fc8c32b7341d7631f89151776	25	0	no	no	no	no	90	90	4764	925
+origin/feature/td-telemetry-001	b56e6c7b8c0d005a245abcaafa4f863989c8c9fc	b56e6c7b8c0d005a245abcaafa4f863989c8c9fc	29	0	no	no	no	no	90	90	4764	862
