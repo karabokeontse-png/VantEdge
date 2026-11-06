@@ -21,7 +21,7 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      - name: Fix gradle.properties for CI
+      - name: Fix gradle.properties for CI run
         run: |
           sed -i '/org.gradle.java.home/d' gradle.properties
           sed -i '/android.aapt2FromMavenOverride/d' gradle.properties
